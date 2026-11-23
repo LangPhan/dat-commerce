@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -62,15 +63,22 @@ public class AuthService {
         this.auditLogService = auditLogService;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = ApiException.class)
     public AuthSessionResult login(LoginRequest request, String userAgent, String ipAddress) {
-        AdminUserEntity user = userRepository.findByEmailIgnoreCase(request.email().trim())
-                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED, "Invalid email or password"));
+        String normalizedEmail = request.email().trim().toLowerCase(Locale.ROOT);
+        String safeIp = StringUtils.hasText(ipAddress) ? ipAddress.trim() : "unknown";
+        String rateLimitKey = "auth:rl:login:" + safeIp + ":" + sha256Hex(normalizedEmail);
+        enforceLoginRateLimit(rateLimitKey);
 
-        if (!"ACTIVE".equalsIgnoreCase(user.getStatus())
+        AdminUserEntity user = userRepository.findByEmailIgnoreCase(normalizedEmail).orElse(null);
+        if (user == null
+                || !"ACTIVE".equalsIgnoreCase(user.getStatus())
                 || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            recordFailedLoginAttempt(rateLimitKey, normalizedEmail, safeIp);
             throw new ApiException(ErrorCode.UNAUTHORIZED, "Invalid email or password");
         }
+
+        clearLoginRateLimit(rateLimitKey);
 
         Instant now = Instant.now();
         user.setLastLoginAt(now);
@@ -241,6 +249,53 @@ public class AuthService {
         Duration ttl = Duration.between(now, expiresAt);
         if (!ttl.isNegative() && !ttl.isZero()) {
             redisTemplate.opsForValue().set(REDIS_REVOKED_PREFIX + tokenHash, "1", ttl);
+        }
+    }
+
+    private void enforceLoginRateLimit(String key) {
+        try {
+            String raw = redisTemplate.opsForValue().get(key);
+            if (raw != null && Long.parseLong(raw) >= appProperties.getAuth().getLoginMaxFailures()) {
+                throw new ApiException(
+                        ErrorCode.RATE_LIMITED,
+                        "Too many failed login attempts. Please retry later."
+                );
+            }
+        } catch (ApiException ex) {
+            throw ex;
+        } catch (Exception ignored) {
+            // Do not lock logins if Redis is momentarily unavailable
+        }
+    }
+
+    private void recordFailedLoginAttempt(String key, String email, String ip) {
+        try {
+            Long count = redisTemplate.opsForValue().increment(key);
+            if (count != null && count == 1L) {
+                redisTemplate.expire(key, Duration.ofSeconds(Math.max(10, appProperties.getAuth().getLoginWindowSeconds())));
+            }
+        } catch (Exception ignored) {
+            // Best-effort rate counter
+        }
+        try {
+            UUID storeId = storeRepository.findAll().stream().findFirst().map(StoreEntity::getId).orElse(null);
+            if (storeId != null) {
+                auditLogService.record(
+                        storeId, null, email,
+                        "AUTH_LOGIN_FAILED", "SESSION", email,
+                        null, null, Map.of("ip", ip), null
+                );
+            }
+        } catch (Exception ignored) {
+            // Do not mask UNAUTHORIZED
+        }
+    }
+
+    private void clearLoginRateLimit(String key) {
+        try {
+            redisTemplate.delete(key);
+        } catch (Exception ignored) {
+            // Ignore cleanup failure
         }
     }
 

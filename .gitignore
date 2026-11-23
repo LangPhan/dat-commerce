@@ -3,6 +3,9 @@ node_modules/
 out/
 target/
 build/
+backups/
+*.dump
+*.sha256
 .env
 .env.local
 .env.*.local

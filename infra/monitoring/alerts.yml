@@ -1,0 +1,56 @@
+groups:
+  - name: dat-commerce-runtime
+    rules:
+      - alert: DatCommerceApiDown
+        expr: up{job="dat-commerce-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Dat Commerce API target is down"
+          description: "Prometheus cannot scrape api:8080/actuator/prometheus for over 1 minute."
+
+      - alert: HighHttp5xxRate
+        expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Elevated HTTP 5xx error rate (> 5%)"
+          description: "More than 5% of API requests are returning 5xx responses over 5 minutes."
+
+      - alert: HighAiTurnFailureRate
+        expr: sum(rate(datcommerce_ai_turns_total{status="error"}[10m])) / clamp_min(sum(rate(datcommerce_ai_turns_total[10m])), 0.001) > 0.15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High AI gateway/turn failure ratio (> 15%)"
+          description: "9Router gateway or orchestrator turns are failing at an elevated rate."
+
+      - alert: HighAiTurnLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(datcommerce_ai_turn_duration_seconds_bucket[10m])) by (le)) > 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI turn p95 latency above 15s"
+          description: "95th percentile AI orchestrator response latency exceeded 15 seconds."
+
+      - alert: HighRateLimitedSpike
+        expr: increase(datcommerce_ai_rate_limited_total[5m]) > 20
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Frequent AI rate-limit or token-budget blocks"
+          description: "More than 20 AI requests were throttled or budget-rejected in the past 5 minutes."
+
+      - alert: JvmHeapUsageHigh
+        expr: sum(jvm_memory_used_bytes{area="heap"}) / clamp_min(sum(jvm_memory_max_bytes{area="heap"}), 1) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API JVM heap utilization above 85%"
+          description: "Dat Commerce Spring Boot JVM heap usage has remained above 85% for 5 minutes."

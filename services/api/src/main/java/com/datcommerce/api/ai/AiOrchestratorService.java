@@ -6,6 +6,8 @@ import com.datcommerce.api.common.exception.ApiException;
 import com.datcommerce.api.common.exception.ErrorCode;
 import com.datcommerce.api.common.security.AuthenticatedUser;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -32,6 +34,8 @@ public class AiOrchestratorService {
     private static final int RATE_LIMIT_PER_MINUTE = 30;
     private static final DateTimeFormatter MIN_FMT =
             DateTimeFormatter.ofPattern("yyyyMMddHHmm").withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter DAY_FMT =
+            DateTimeFormatter.ofPattern("yyyyMMdd").withZone(ZoneOffset.UTC);
 
     private static final String SYSTEM_PROMPT = """
             You are Dat Commerce AI Assistant helping an authenticated merchant administrator.
@@ -53,6 +57,7 @@ public class AiOrchestratorService {
     private final AppProperties appProperties;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
     private final ExecutorService sseExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public AiOrchestratorService(
@@ -66,7 +71,8 @@ public class AiOrchestratorService {
             AuditLogService auditLogService,
             AppProperties appProperties,
             StringRedisTemplate redisTemplate,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            MeterRegistry meterRegistry
     ) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
@@ -79,6 +85,7 @@ public class AiOrchestratorService {
         this.appProperties = appProperties;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional(readOnly = true)
@@ -137,6 +144,7 @@ public class AiOrchestratorService {
             AiDtos.SendMessageRequest req
     ) {
         enforceRateLimit(actor.userId());
+        enforceDailyTokenBudget(actor.storeId());
         findAuthorizedConversation(actor, conversationId);
 
         SseEmitter emitter = new SseEmitter(Math.max(15_000L, appProperties.getAi().getRequestTimeoutSeconds() * 1000L + 5000L));
@@ -174,6 +182,7 @@ public class AiOrchestratorService {
             AiDtos.SendMessageRequest req
     ) {
         enforceRateLimit(actor.userId());
+        enforceDailyTokenBudget(actor.storeId());
         findAuthorizedConversation(actor, conversationId);
         return executeChatTurn(actor, conversationId, req, (ev, data) -> {
         });
@@ -220,84 +229,103 @@ public class AiOrchestratorService {
 
         List<AiDtos.ToolCallDto> executedTools = new ArrayList<>();
         List<AiDtos.ChangePlanDto> createdPlans = new ArrayList<>();
+        String chosenGatewayStatus = "success";
 
-        for (int round = 0; round < maxRounds; round++) {
-            AiModelGateway.GatewayTurnResponse turn = gateway.generateTurn(new AiModelGateway.GatewayRequest(
-                    chosenModel,
-                    transcript,
-                    tools,
-                    req.context() != null ? req.context() : Map.of(),
-                    appProperties.getAi().getMaxOutputTokens(),
-                    round
-            ));
-            totalPromptTokens += turn.promptTokens();
-            totalCompletionTokens += turn.completionTokens();
+        try {
+            for (int round = 0; round < maxRounds; round++) {
+                AiModelGateway.GatewayTurnResponse turn = gateway.generateTurn(new AiModelGateway.GatewayRequest(
+                        chosenModel,
+                        transcript,
+                        tools,
+                        req.context() != null ? req.context() : Map.of(),
+                        appProperties.getAi().getMaxOutputTokens(),
+                        round
+                ));
+                totalPromptTokens += turn.promptTokens();
+                totalCompletionTokens += turn.completionTokens();
 
-            if (turn.toolCalls() == null || turn.toolCalls().isEmpty()) {
-                finalText = StringUtils.hasText(turn.content())
-                        ? turn.content()
-                        : "Done.";
-                break;
-            }
-
-            transcript.add(AiModelGateway.GatewayMessage.assistant(turn.content(), turn.toolCalls()));
-
-            for (AiModelGateway.GatewayToolCall call : turn.toolCalls()) {
-                emit.accept("tool.started", Map.of("tool", call.toolName(), "callId", call.callId()));
-                long toolStart = System.nanoTime();
-                Map<String, Object> resultMap;
-                String status = "COMPLETED";
-                String errorMsg = null;
-
-                try {
-                    resultMap = toolRegistry.executeTool(actor, conv.getId(), call.toolName(), call.arguments());
-                } catch (ApiException ex) {
-                    status = ex.getCode() == ErrorCode.FORBIDDEN ? "FORBIDDEN" : "FAILED";
-                    errorMsg = ex.getMessage();
-                    resultMap = Map.of("error", ex.getMessage(), "code", ex.getCode().name());
-                } catch (Exception ex) {
-                    status = "FAILED";
-                    errorMsg = "Tool execution failed: " + ex.getMessage();
-                    resultMap = Map.of("error", errorMsg, "code", "INTERNAL_ERROR");
+                if (turn.toolCalls() == null || turn.toolCalls().isEmpty()) {
+                    finalText = StringUtils.hasText(turn.content())
+                            ? turn.content()
+                            : "Done.";
+                    break;
                 }
 
-                int durationMs = (int) ((System.nanoTime() - toolStart) / 1_000_000L);
-                AiToolCallEntity tcEntity = new AiToolCallEntity();
-                tcEntity.setId(UUID.randomUUID());
-                tcEntity.setConversationId(conv.getId());
-                tcEntity.setMessageId(userMsg.getId());
-                tcEntity.setToolName(call.toolName());
-                tcEntity.setArgumentsJson(call.arguments() != null ? call.arguments() : Map.of());
-                tcEntity.setResultSummaryJson(summarizeResult(resultMap));
-                tcEntity.setStatus(status);
-                tcEntity.setDurationMs(durationMs);
-                tcEntity.setErrorMessage(errorMsg);
-                tcEntity.setCreatedAt(Instant.now());
-                AiToolCallEntity savedTc = toolCallRepository.save(tcEntity);
-                AiDtos.ToolCallDto tcDto = AiDtos.ToolCallDto.from(savedTc);
-                executedTools.add(tcDto);
+                transcript.add(AiModelGateway.GatewayMessage.assistant(turn.content(), turn.toolCalls()));
 
-                emit.accept("tool.completed", Map.of(
-                        "toolCall", tcDto,
-                        "status", status
-                ));
+                for (AiModelGateway.GatewayToolCall call : turn.toolCalls()) {
+                    emit.accept("tool.started", Map.of("tool", call.toolName(), "callId", call.callId()));
+                    long toolStart = System.nanoTime();
+                    Map<String, Object> resultMap;
+                    String status = "COMPLETED";
+                    String errorMsg = null;
 
-                if (resultMap.get("planId") instanceof String pid) {
-                    changePlanRepository.findByIdAndStoreId(UUID.fromString(pid), actor.storeId())
-                            .ifPresent(planEntity -> {
-                                AiDtos.ChangePlanDto planDto = AiDtos.ChangePlanDto.from(planEntity);
-                                createdPlans.add(planDto);
-                                emit.accept("plan.created", planDto);
-                                emit.accept("approval.required", Map.of("planId", planDto.id(), "riskLevel", planDto.riskLevel()));
-                            });
+                    try {
+                        resultMap = toolRegistry.executeTool(actor, conv.getId(), call.toolName(), call.arguments());
+                    } catch (ApiException ex) {
+                        status = ex.getCode() == ErrorCode.FORBIDDEN ? "FORBIDDEN" : "FAILED";
+                        errorMsg = ex.getMessage();
+                        resultMap = Map.of("error", ex.getMessage(), "code", ex.getCode().name());
+                    } catch (Exception ex) {
+                        status = "FAILED";
+                        errorMsg = "Tool execution failed: " + ex.getMessage();
+                        resultMap = Map.of("error", errorMsg, "code", "INTERNAL_ERROR");
+                    }
+
+                    int durationMs = (int) ((System.nanoTime() - toolStart) / 1_000_000L);
+                    meterRegistry.counter("datcommerce.ai.tool.calls.total", "tool", call.toolName(), "status", status).increment();
+
+                    AiToolCallEntity tcEntity = new AiToolCallEntity();
+                    tcEntity.setId(UUID.randomUUID());
+                    tcEntity.setConversationId(conv.getId());
+                    tcEntity.setMessageId(userMsg.getId());
+                    tcEntity.setToolName(call.toolName());
+                    tcEntity.setArgumentsJson(call.arguments() != null ? call.arguments() : Map.of());
+                    tcEntity.setResultSummaryJson(summarizeResult(resultMap));
+                    tcEntity.setStatus(status);
+                    tcEntity.setDurationMs(durationMs);
+                    tcEntity.setErrorMessage(errorMsg);
+                    tcEntity.setCreatedAt(Instant.now());
+                    AiToolCallEntity savedTc = toolCallRepository.save(tcEntity);
+                    AiDtos.ToolCallDto tcDto = AiDtos.ToolCallDto.from(savedTc);
+                    executedTools.add(tcDto);
+
+                    emit.accept("tool.completed", Map.of(
+                            "toolCall", tcDto,
+                            "status", status
+                    ));
+
+                    if (resultMap.get("planId") instanceof String pid) {
+                        changePlanRepository.findByIdAndStoreId(UUID.fromString(pid), actor.storeId())
+                                .ifPresent(planEntity -> {
+                                    AiDtos.ChangePlanDto planDto = AiDtos.ChangePlanDto.from(planEntity);
+                                    createdPlans.add(planDto);
+                                    meterRegistry.counter(
+                                            "datcommerce.ai.plans.total",
+                                            "plan_type", planDto.planType(),
+                                            "status", "created"
+                                    ).increment();
+                                    emit.accept("plan.created", planDto);
+                                    emit.accept("approval.required", Map.of("planId", planDto.id(), "riskLevel", planDto.riskLevel()));
+                                });
+                    }
+
+                    transcript.add(AiModelGateway.GatewayMessage.toolResult(
+                            call.callId(),
+                            call.toolName(),
+                            toJsonString(resultMap)
+                    ));
                 }
-
-                transcript.add(AiModelGateway.GatewayMessage.toolResult(
-                        call.callId(),
-                        call.toolName(),
-                        toJsonString(resultMap)
-                ));
             }
+        } catch (RuntimeException ex) {
+            chosenGatewayStatus = "error";
+            meterRegistry.counter("datcommerce.ai.turns.total", "model", chosenModel, "status", chosenGatewayStatus).increment();
+            Timer.builder("datcommerce.ai.turn.duration")
+                    .tag("model", chosenModel)
+                    .tag("status", chosenGatewayStatus)
+                    .register(meterRegistry)
+                    .record(Duration.ofNanos(System.nanoTime() - startedNs));
+            throw ex;
         }
 
         if (!StringUtils.hasText(finalText)) {
@@ -307,6 +335,15 @@ public class AiOrchestratorService {
         emit.accept("message.delta", Map.of("text", finalText));
 
         int totalLatencyMs = (int) ((System.nanoTime() - startedNs) / 1_000_000L);
+        recordDailyTokenUsage(actor.storeId(), totalPromptTokens + totalCompletionTokens);
+        meterRegistry.counter("datcommerce.ai.turns.total", "model", chosenModel, "status", chosenGatewayStatus).increment();
+        meterRegistry.counter("datcommerce.ai.tokens.prompt", "model", chosenModel).increment(totalPromptTokens);
+        meterRegistry.counter("datcommerce.ai.tokens.completion", "model", chosenModel).increment(totalCompletionTokens);
+        Timer.builder("datcommerce.ai.turn.duration")
+                .tag("model", chosenModel)
+                .tag("status", chosenGatewayStatus)
+                .register(meterRegistry)
+                .record(Duration.ofNanos(System.nanoTime() - startedNs));
         AiMessageEntity assistantMsg = new AiMessageEntity();
         assistantMsg.setId(UUID.randomUUID());
         assistantMsg.setConversationId(conv.getId());
@@ -395,12 +432,47 @@ public class AiOrchestratorService {
                 redisTemplate.expire(key, Duration.ofSeconds(70));
             }
             if (count != null && count > RATE_LIMIT_PER_MINUTE) {
+                meterRegistry.counter("datcommerce.ai.rate_limited.total", "reason", "user_rpm").increment();
                 throw new ApiException(ErrorCode.RATE_LIMITED, "AI rate limit exceeded (30 requests/minute). Please retry shortly.");
             }
         } catch (ApiException ex) {
             throw ex;
         } catch (Exception ignored) {
             // Do not crash if Redis momentarily hiccups
+        }
+    }
+
+    private void enforceDailyTokenBudget(UUID storeId) {
+        long budget = appProperties.getAi().getDailyTokenBudget();
+        if (budget <= 0) {
+            return;
+        }
+        try {
+            String key = "ai:budget:tokens:" + storeId + ":" + DAY_FMT.format(Instant.now());
+            String raw = redisTemplate.opsForValue().get(key);
+            if (raw != null && Long.parseLong(raw) >= budget) {
+                meterRegistry.counter("datcommerce.ai.rate_limited.total", "reason", "token_budget").increment();
+                throw new ApiException(ErrorCode.RATE_LIMITED, "Daily AI token budget exceeded for this store.");
+            }
+        } catch (ApiException ex) {
+            throw ex;
+        } catch (Exception ignored) {
+            // Best-effort guard
+        }
+    }
+
+    private void recordDailyTokenUsage(UUID storeId, int tokens) {
+        if (tokens <= 0) {
+            return;
+        }
+        try {
+            String key = "ai:budget:tokens:" + storeId + ":" + DAY_FMT.format(Instant.now());
+            Long total = redisTemplate.opsForValue().increment(key, tokens);
+            if (total != null && total == tokens) {
+                redisTemplate.expire(key, Duration.ofHours(48));
+            }
+        } catch (Exception ignored) {
+            // Best-effort accounting
         }
     }
 

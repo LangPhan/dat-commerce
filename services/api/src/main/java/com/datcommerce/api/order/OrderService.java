@@ -14,6 +14,7 @@ import com.datcommerce.api.payment.PaymentGateway;
 import com.datcommerce.api.payment.PaymentRepository;
 import com.datcommerce.api.pricing.PricingCalculationService;
 import com.datcommerce.api.promotion.PromotionRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -56,6 +57,7 @@ public class OrderService {
     private final InventoryService inventoryService;
     private final PromotionRepository promotionRepository;
     private final AuditLogService auditLogService;
+    private final MeterRegistry meterRegistry;
 
     public OrderService(
             OrderRepository orderRepository,
@@ -70,7 +72,8 @@ public class OrderService {
             PricingCalculationService pricingCalculationService,
             InventoryService inventoryService,
             PromotionRepository promotionRepository,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            MeterRegistry meterRegistry
     ) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
@@ -85,6 +88,7 @@ public class OrderService {
         this.inventoryService = inventoryService;
         this.promotionRepository = promotionRepository;
         this.auditLogService = auditLogService;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional
@@ -95,6 +99,16 @@ public class OrderService {
                 return assembleOrders(List.of(existing.get())).getFirst();
             }
         }
+
+        try {
+            return executeCheckout(sessionToken, idempotencyKey, req);
+        } catch (RuntimeException ex) {
+            meterRegistry.counter("datcommerce.orders.checkout.total", "status", "failed").increment();
+            throw ex;
+        }
+    }
+
+    private OrderDto executeCheckout(String sessionToken, String idempotencyKey, CheckoutRequest req) {
 
         CartEntity cart = cartService.resolveCartEntity(sessionToken);
         List<PricingCalculationService.PricedLineInput> cartLines = cartService.loadPricedLines(cart.getId());
@@ -206,6 +220,7 @@ public class OrderService {
         cart.setUpdatedAt(now);
         cartRepository.save(cart);
 
+        meterRegistry.counter("datcommerce.orders.checkout.total", "status", "confirmed").increment();
         return assembleOrders(List.of(savedOrder)).getFirst();
     }
 
@@ -302,6 +317,7 @@ public class OrderService {
                 Map.of("status", "CANCELED", "paymentStatus", "REFUNDED"),
                 Map.of("orderNumber", saved.getOrderNumber(), "reason", reason), null
         );
+        meterRegistry.counter("datcommerce.orders.canceled.total").increment();
         return assembleOrders(List.of(saved)).getFirst();
     }
 

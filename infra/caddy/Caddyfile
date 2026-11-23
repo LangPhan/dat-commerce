@@ -1,4 +1,20 @@
 :80 {
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	handle /actuator/prometheus* {
+		respond "Forbidden" 403
+	}
+
+	handle /actuator/metrics* {
+		respond "Forbidden" 403
+	}
+
 	handle /api/* {
 		reverse_proxy api:8080 {
 			flush_interval -1

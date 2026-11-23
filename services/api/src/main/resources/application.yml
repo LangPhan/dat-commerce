@@ -37,7 +37,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: when-authorized
@@ -51,6 +51,9 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  auth:
+    login-max-failures: ${APP_AUTH_LOGIN_MAX_FAILURES:10}
+    login-window-seconds: ${APP_AUTH_LOGIN_WINDOW_SECONDS:300}
   jwt:
     secret: ${JWT_SECRET:dev-only-insecure-default-jwt-secret-replace-with-at-least-64-chars-123456}
     access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:900}
@@ -81,3 +84,7 @@ app:
     max-tool-rounds: ${AI_MAX_TOOL_ROUNDS:6}
     max-input-tokens: ${AI_MAX_INPUT_TOKENS:16000}
     max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:4096}
+    daily-token-budget: ${AI_DAILY_TOKEN_BUDGET:2000000}
+    retry-max-attempts: ${AI_RETRY_MAX_ATTEMPTS:3}
+    circuit-breaker-threshold: ${AI_CIRCUIT_BREAKER_THRESHOLD:5}
+    circuit-breaker-open-seconds: ${AI_CIRCUIT_BREAKER_OPEN_SECONDS:30}

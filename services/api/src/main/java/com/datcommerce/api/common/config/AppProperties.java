@@ -12,6 +12,15 @@ public class AppProperties {
     private Cors cors = new Cors();
     private Storage storage = new Storage();
     private Ai ai = new Ai();
+    private Auth auth = new Auth();
+
+    public Auth getAuth() {
+        return auth;
+    }
+
+    public void setAuth(Auth auth) {
+        this.auth = auth;
+    }
 
     public Jwt getJwt() {
         return jwt;
@@ -213,6 +222,10 @@ public class AppProperties {
         private int maxToolRounds = 6;
         private int maxInputTokens = 16000;
         private int maxOutputTokens = 4096;
+        private long dailyTokenBudget = 2_000_000L;
+        private int retryMaxAttempts = 3;
+        private int circuitBreakerThreshold = 5;
+        private int circuitBreakerOpenSeconds = 30;
 
         public String getGatewayMode() {
             return gatewayMode;
@@ -292,6 +305,59 @@ public class AppProperties {
 
         public void setMaxOutputTokens(int maxOutputTokens) {
             this.maxOutputTokens = maxOutputTokens;
+        }
+
+        public long getDailyTokenBudget() {
+            return dailyTokenBudget;
+        }
+
+        public void setDailyTokenBudget(long dailyTokenBudget) {
+            this.dailyTokenBudget = dailyTokenBudget;
+        }
+
+        public int getRetryMaxAttempts() {
+            return retryMaxAttempts;
+        }
+
+        public void setRetryMaxAttempts(int retryMaxAttempts) {
+            this.retryMaxAttempts = retryMaxAttempts;
+        }
+
+        public int getCircuitBreakerThreshold() {
+            return circuitBreakerThreshold;
+        }
+
+        public void setCircuitBreakerThreshold(int circuitBreakerThreshold) {
+            this.circuitBreakerThreshold = circuitBreakerThreshold;
+        }
+
+        public int getCircuitBreakerOpenSeconds() {
+            return circuitBreakerOpenSeconds;
+        }
+
+        public void setCircuitBreakerOpenSeconds(int circuitBreakerOpenSeconds) {
+            this.circuitBreakerOpenSeconds = circuitBreakerOpenSeconds;
+        }
+    }
+
+    public static class Auth {
+        private int loginMaxFailures = 10;
+        private int loginWindowSeconds = 300;
+
+        public int getLoginMaxFailures() {
+            return loginMaxFailures;
+        }
+
+        public void setLoginMaxFailures(int loginMaxFailures) {
+            this.loginMaxFailures = loginMaxFailures;
+        }
+
+        public int getLoginWindowSeconds() {
+            return loginWindowSeconds;
+        }
+
+        public void setLoginWindowSeconds(int loginWindowSeconds) {
+            this.loginWindowSeconds = loginWindowSeconds;
         }
     }
 }

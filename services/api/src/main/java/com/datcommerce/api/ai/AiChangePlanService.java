@@ -11,6 +11,7 @@ import com.datcommerce.api.inventory.InventoryService;
 import com.datcommerce.api.promotion.PromotionService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -38,6 +39,7 @@ public class AiChangePlanService {
     private final CmsService cmsService;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
     private final TransactionTemplate requiresNewTx;
 
     public AiChangePlanService(
@@ -48,6 +50,7 @@ public class AiChangePlanService {
             CmsService cmsService,
             AuditLogService auditLogService,
             ObjectMapper objectMapper,
+            MeterRegistry meterRegistry,
             PlatformTransactionManager transactionManager
     ) {
         this.changePlanRepository = changePlanRepository;
@@ -57,6 +60,7 @@ public class AiChangePlanService {
         this.cmsService = cmsService;
         this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
         this.requiresNewTx = new TransactionTemplate(transactionManager);
         this.requiresNewTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -115,6 +119,7 @@ public class AiChangePlanService {
                         p.setUpdatedAt(Instant.now());
                         changePlanRepository.save(p);
                     }));
+            meterRegistry.counter("datcommerce.ai.plans.total", "plan_type", plan.getPlanType(), "status", "expired").increment();
             throw new ApiException(ErrorCode.CONFLICT, "Change plan has expired; generate a fresh plan");
         }
 
@@ -127,6 +132,7 @@ public class AiChangePlanService {
         plan.setRollbackSnapshotJson(rollbackSnapshot);
         plan.setUpdatedAt(now);
         AiChangePlanEntity saved = changePlanRepository.save(plan);
+        meterRegistry.counter("datcommerce.ai.plans.total", "plan_type", saved.getPlanType(), "status", "applied").increment();
 
         auditLogService.record(
                 actor.storeId(), actor.userId(), actor.email(),
@@ -152,6 +158,7 @@ public class AiChangePlanService {
         plan.setErrorMessage(StringUtils.hasText(reason) ? reason.trim() : "Rejected by admin");
         plan.setUpdatedAt(Instant.now());
         AiChangePlanEntity saved = changePlanRepository.save(plan);
+        meterRegistry.counter("datcommerce.ai.plans.total", "plan_type", saved.getPlanType(), "status", "rejected").increment();
 
         auditLogService.record(
                 actor.storeId(), actor.userId(), actor.email(),
@@ -183,6 +190,7 @@ public class AiChangePlanService {
         plan.setRolledBackAt(now);
         plan.setUpdatedAt(now);
         AiChangePlanEntity saved = changePlanRepository.save(plan);
+        meterRegistry.counter("datcommerce.ai.plans.total", "plan_type", saved.getPlanType(), "status", "rolled_back").increment();
 
         auditLogService.record(
                 actor.storeId(), actor.userId(), actor.email(),
