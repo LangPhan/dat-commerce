@@ -36,6 +36,31 @@ export function Breadcrumbs({
   );
 }
 
+export type PaginationItem = number | "ellipsis-left" | "ellipsis-right";
+
+export function buildPaginationItems(page: number, totalPages: number): PaginationItem[] {
+  const safeTotal = Math.max(1, totalPages);
+  if (safeTotal <= 7) {
+    return Array.from({ length: safeTotal }, (_, index) => index + 1);
+  }
+  const safePage = Math.min(Math.max(1, page), safeTotal);
+  if (safePage <= 4) {
+    return [1, 2, 3, 4, 5, "ellipsis-right", safeTotal];
+  }
+  if (safePage >= safeTotal - 3) {
+    return [
+      1,
+      "ellipsis-left",
+      safeTotal - 4,
+      safeTotal - 3,
+      safeTotal - 2,
+      safeTotal - 1,
+      safeTotal,
+    ];
+  }
+  return [1, "ellipsis-left", safePage - 1, safePage, safePage + 1, "ellipsis-right", safeTotal];
+}
+
 export function Pagination({
   page,
   totalItems,
@@ -47,7 +72,8 @@ export function Pagination({
   pageSize: number;
   onPageChange: (next: number) => void;
 }) {
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePageSize = Math.max(1, pageSize);
+  const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
   if (totalPages <= 1) {
     return (
       <span className="muted">
@@ -55,42 +81,51 @@ export function Pagination({
       </span>
     );
   }
-  const start = (page - 1) * pageSize + 1;
-  const end = Math.min(totalItems, page * pageSize);
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * safePageSize + 1;
+  const end = Math.min(totalItems, safePage * safePageSize);
+  const items = buildPaginationItems(safePage, totalPages);
 
   return (
-    <div className="ui-pagination">
-      <span className="muted">
+    <nav className="ui-pagination" aria-label="Pagination">
+      <span className="muted ui-pagination-summary">
         {start}–{end} of {totalItems}
       </span>
       <div className="ui-pagination-pages">
         <IconButton
           label="Previous page"
-          disabled={page <= 1}
-          onClick={() => onPageChange(page - 1)}
+          disabled={safePage <= 1}
+          onClick={() => onPageChange(safePage - 1)}
         >
           <ChevronLeft size={15} />
         </IconButton>
-        {Array.from({ length: totalPages }, (_, index) => index + 1).map((num) => (
-          <Button
-            key={num}
-            size="sm"
-            variant={num === page ? "primary" : "ghost"}
-            aria-current={num === page ? "page" : undefined}
-            onClick={() => onPageChange(num)}
-          >
-            {num}
-          </Button>
-        ))}
+        {items.map((item) =>
+          typeof item === "number" ? (
+            <Button
+              key={item}
+              size="sm"
+              className="ui-pagination-btn"
+              variant={item === safePage ? "primary" : "ghost"}
+              aria-current={item === safePage ? "page" : undefined}
+              onClick={() => onPageChange(item)}
+            >
+              {item}
+            </Button>
+          ) : (
+            <span key={item} className="ui-pagination-ellipsis" aria-hidden="true">
+              …
+            </span>
+          )
+        )}
         <IconButton
           label="Next page"
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
+          disabled={safePage >= totalPages}
+          onClick={() => onPageChange(safePage + 1)}
         >
           <ChevronRight size={15} />
         </IconButton>
       </div>
-    </div>
+    </nav>
   );
 }
 

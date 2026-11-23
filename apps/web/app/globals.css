@@ -786,10 +786,35 @@ label > [data-slot="select-trigger"] {
   flex-wrap: wrap;
 }
 
+.ui-pagination-summary {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .ui-pagination-pages {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-wrap: nowrap;
+}
+
+.btn.ui-pagination-btn {
+  min-width: 32px;
+  padding-left: 6px;
+  padding-right: 6px;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-pagination-ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  color: var(--muted);
+  font-size: 12.5px;
+  user-select: none;
 }
 
 .ui-uploader-wrap {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Grid2X2, List, Search, X } from "lucide-react";
@@ -83,6 +83,7 @@ export function Listing({
         size: PAGE_SIZE,
         attrs,
       }),
+    placeholderData: keepPreviousData,
   });
 
   const categories = categoriesQuery.data || [];
@@ -329,8 +330,11 @@ export function Listing({
           ) : items.length ? (
             <>
               <div
+                aria-busy={productsQuery.isPlaceholderData}
                 className={
-                  "store-products listing-products " + (listView ? "list-view" : "")
+                  "store-products listing-products" +
+                  (listView ? " list-view" : "") +
+                  (productsQuery.isPlaceholderData ? " is-fetching" : "")
                 }
               >
                 {items.map((product) => (
