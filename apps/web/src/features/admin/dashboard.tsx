@@ -1,46 +1,86 @@
 "use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   ArrowDownRight,
   ArrowRight,
-  ArrowUpRight,
   Package,
-  Sparkles,
   TrendingUp,
 } from "lucide-react";
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Drawer } from "@/components/ui/dialog";
-import { usd } from "@/lib/format";
-import { categorySalesBreakdown, revenueSeries } from "@/mocks/operations";
-import type { Order, Product } from "@/types/commerce";
+import { Empty, Skeleton } from "@/components/ui/data-display";
+import { useAuth } from "@/features/auth/auth-context";
+import { ApiError } from "@/lib/api-client";
+import {
+  adminAnalyticsApi,
+  adminInventoryApi,
+  adminOrderApi,
+} from "@/lib/commerce-api";
+import { usd, usdExact } from "@/lib/format";
 
-type RangeKey = keyof typeof revenueSeries;
+export function Dashboard({ notify }: { notify: (msg: string) => void }) {
+  const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canAdjustInventory = hasPermission("inventory:write");
+  const canReadOrders = hasPermission("order:read");
 
-export function Dashboard({
-  products,
-  orders,
-  restock,
-}: {
-  products: Product[];
-  orders: Order[];
-  restock: (productId: string, addUnits: number) => void;
-}) {
-  const [range, setRange] = useState<RangeKey>("Last 30 days");
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const [insightsOpen, setInsightsOpen] = useState(false);
 
-  const series = revenueSeries[range];
-  const totalRevenue = series.reduce((sum, pt) => sum + pt.amount, 0);
-  const totalOrders = series.reduce((sum, pt) => sum + pt.orders, 0);
-  const aov = totalOrders ? totalRevenue / totalOrders : 0;
-  const lowStock = products.filter((p) => p.stock <= 5);
-  const topProducts = [...products]
-    .sort((a, b) => (b.salesCount || 0) - (a.salesCount || 0))
-    .slice(0, 4);
+  const summaryQuery = useQuery({
+    queryKey: ["admin-analytics"],
+    queryFn: () => adminAnalyticsApi.summary(),
+  });
 
-  const maxAmount = Math.max(...series.map((s) => s.amount), 1);
+  const ordersQuery = useQuery({
+    queryKey: ["admin-orders", "dashboard"],
+    queryFn: () => adminOrderApi.list(),
+    enabled: canReadOrders,
+  });
+
+  const restockMutation = useMutation({
+    mutationFn: ({ variantId }: { variantId: string }) =>
+      adminInventoryApi.adjust({
+        variantId,
+        delta: 10,
+        reason: "Dashboard quick restock",
+      }),
+    onSuccess: (lvl) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+      notify(`Added +10 units to SKU ${lvl.sku}`);
+    },
+    onError: (err) =>
+      notify(err instanceof ApiError ? err.message : "Failed to restock SKU"),
+  });
+
+  if (summaryQuery.isLoading) {
+    return <Skeleton rows={5} />;
+  }
+
+  if (summaryQuery.isError || !summaryQuery.data) {
+    return (
+      <Empty
+        title="Could not load dashboard metrics"
+        text={
+          summaryQuery.error instanceof ApiError
+            ? summaryQuery.error.message
+            : "Analytics summary could not be retrieved."
+        }
+      />
+    );
+  }
+
+  const summary = summaryQuery.data;
+  const series = summary.revenueSeries.length
+    ? summary.revenueSeries
+    : [{ label: "Today", amount: 0, orders: 0 }];
+  const recentOrders = ordersQuery.data?.slice(0, 5) || [];
+
+  const maxAmount = Math.max(...series.map((s) => Number(s.amount)), 1);
   const chartW = 540;
   const chartH = 180;
   const padX = 28;
@@ -53,7 +93,7 @@ export function Dashboard({
       series.length === 1
         ? chartW / 2
         : padX + (i / (series.length - 1)) * usableW;
-    const y = padY + usableH - (pt.amount / maxAmount) * usableH;
+    const y = padY + usableH - (Number(pt.amount) / maxAmount) * usableH;
     return { ...pt, x, y };
   });
 
@@ -73,55 +113,40 @@ export function Dashboard({
       <div className="admin-title">
         <div>
           <h1>Overview</h1>
-          <p>Revenue, fulfillment health, and catalog signals for Terrain Supply.</p>
+          <p>Live store revenue, order throughput, and catalog stock telemetry.</p>
         </div>
         <div className="button-row">
-          <select
-            aria-label="Reporting period"
-            value={range}
-            onChange={(e) => {
-              setRange(e.target.value as RangeKey);
-              setHoveredIdx(null);
-            }}
-          >
-            <option value="Last 14 days">Last 14 days</option>
-            <option value="Last 30 days">Last 30 days</option>
-            <option value="Last 90 days">Last 90 days</option>
-          </select>
-          <Button variant="primary" onClick={() => setInsightsOpen(true)}>
-            <Sparkles size={15} /> Analyze sales
-          </Button>
+          <Link className="btn" href="/admin/orders">
+            Manage orders
+          </Link>
+          <Link className="btn primary" href="/admin/products">
+            Manage catalog
+          </Link>
         </div>
       </div>
 
       <div className="metrics">
         <div className="panel metric">
-          <span>Total revenue</span>
-          <strong>{usd(totalRevenue)}</strong>
-          <small className="success">
-            <ArrowUpRight size={13} /> +16.4% vs prior period
-          </small>
+          <span>Gross revenue</span>
+          <strong>{usdExact(summary.totalRevenue)}</strong>
+          <small className="muted">Calculated from live non-canceled orders</small>
         </div>
         <div className="panel metric">
-          <span>Orders</span>
-          <strong>{totalOrders}</strong>
-          <small className="success">
-            <ArrowUpRight size={13} /> +8.2% conversion velocity
-          </small>
+          <span>Total orders</span>
+          <strong>{summary.totalOrders}</strong>
+          <small className="muted">Persisted in PostgreSQL</small>
         </div>
         <div className="panel metric">
           <span>Average order value</span>
-          <strong>{usd(aov)}</strong>
-          <small className="success">
-            <ArrowUpRight size={13} /> +7.5% basket expansion
-          </small>
+          <strong>{usdExact(summary.averageOrderValue)}</strong>
+          <small className="muted">Per fulfilled or active order</small>
         </div>
         <div className="panel metric">
           <span>Catalog & stock</span>
-          <strong>{products.length} products</strong>
-          <small className={lowStock.length ? "danger" : "muted"}>
-            <Package size={13} /> {lowStock.length} low-stock{" "}
-            {lowStock.length === 1 ? "SKU" : "SKUs"}
+          <strong>{summary.productCount} products</strong>
+          <small className={summary.lowStockCount ? "danger" : "muted"}>
+            <Package size={13} /> {summary.lowStockCount} low-stock{" "}
+            {summary.lowStockCount === 1 ? "SKU" : "SKUs"}
           </small>
         </div>
       </div>
@@ -131,17 +156,22 @@ export function Dashboard({
           <div className="chart-head">
             <div>
               <h2>Revenue trajectory</h2>
-              <p className="muted">Gross sales in USD ({range.toLowerCase()})</p>
+              <p className="muted">Daily order revenue in USD</p>
             </div>
             {activePoint ? (
               <Badge tone="accent">
-                {activePoint.label}: {usd(activePoint.amount)} · {activePoint.orders} orders
+                {activePoint.label}: {usd(Number(activePoint.amount))} ·{" "}
+                {activePoint.orders} orders
               </Badge>
             ) : null}
           </div>
 
           <div className="svg-chart-wrap">
-            <svg viewBox={`0 0 ${chartW} ${chartH + 22}`} role="img" aria-label="Revenue chart">
+            <svg
+              viewBox={`0 0 ${chartW} ${chartH + 22}`}
+              role="img"
+              aria-label="Revenue chart"
+            >
               <defs>
                 <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
@@ -214,21 +244,23 @@ export function Dashboard({
             </div>
             <TrendingUp size={16} className="muted" />
           </div>
-          {categorySalesBreakdown.map((row) => (
-            <div key={row.category}>
-              <span>
-                <span>{row.category}</span>
+          {summary.categoryBreakdown.length ? (
+            summary.categoryBreakdown.map((row) => (
+              <div key={row.category}>
                 <span>
-                  {usd(row.revenue)} · <strong>{row.share}%</strong>
+                  <span>{row.category}</span>
+                  <span>
+                    {usd(Number(row.revenue))} · <strong>{row.share}%</strong>
+                  </span>
                 </span>
-              </span>
-              <progress
-                aria-label={row.category}
-                value={row.share}
-                max={100}
-              />
-            </div>
-          ))}
+                <progress aria-label={row.category} value={row.share} max={100} />
+              </div>
+            ))
+          ) : (
+            <p className="muted" style={{ fontSize: 12.5 }}>
+              No order revenue recorded yet.
+            </p>
+          )}
         </section>
       </div>
 
@@ -240,150 +272,101 @@ export function Dashboard({
               View all orders <ArrowRight size={14} />
             </Link>
           </div>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Order</th>
-                  <th>Customer</th>
-                  <th>Payment</th>
-                  <th>Fulfillment</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.slice(0, 5).map((order) => (
-                  <tr key={order.id}>
-                    <td>
-                      <Link href={`/admin/orders/${order.id}`}>#{order.id}</Link>
-                    </td>
-                    <td>{order.customer}</td>
-                    <td>
-                      <Badge tone={order.payment === "Paid" ? "green" : "amber"}>
-                        {order.payment}
-                      </Badge>
-                    </td>
-                    <td>
-                      <Badge
-                        tone={
-                          order.fulfillment === "Delivered"
-                            ? "green"
-                            : order.fulfillment === "Shipped"
-                              ? "accent"
-                              : "neutral"
-                        }
-                      >
-                        {order.fulfillment}
-                      </Badge>
-                    </td>
-                    <td>{usd(order.total)}</td>
+          {recentOrders.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Order</th>
+                    <th>Customer</th>
+                    <th>Payment</th>
+                    <th>Status</th>
+                    <th>Total</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {recentOrders.map((order) => (
+                    <tr key={order.id}>
+                      <td>
+                        <Link href={`/admin/orders/${order.id}`}>
+                          <strong>{order.orderNumber}</strong>
+                        </Link>
+                      </td>
+                      <td>{order.customerName}</td>
+                      <td>
+                        <StatusBadge status={order.paymentStatus} />
+                      </td>
+                      <td>
+                        <StatusBadge status={order.status} />
+                      </td>
+                      <td>{usdExact(order.grandTotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="muted" style={{ padding: "8px 0" }}>
+              No recent orders available for this role.
+            </p>
+          )}
         </section>
 
         <section className="panel">
           <div className="section-title">
-            <h2>Top-selling products</h2>
+            <h2>Top products</h2>
             <Link href="/admin/products">
               Catalog <ArrowRight size={13} />
             </Link>
           </div>
-          {topProducts.map((item) => (
+          {summary.topProducts.map((item) => (
             <Link
-              key={item.id}
+              key={item.productId}
               className="dash-product"
-              href={`/admin/products/${item.id}`}
+              href={`/admin/products/${item.productId}`}
             >
-              <img src={item.image} alt="" />
+              <img src={item.imageUrl || "/media/terrain-fallback.jpg"} alt="" />
               <div>
                 <strong style={{ display: "block" }}>{item.name}</strong>
                 <span className="muted" style={{ fontSize: 11 }}>
-                  {item.category} · {usd(item.price)}
+                  {usd(Number(item.price))}
                 </span>
               </div>
-              <small>{item.salesCount || 12} sold</small>
+              <small>{item.unitsSold} sold</small>
             </Link>
           ))}
 
           <h2 className="low-title">Low stock alerts</h2>
-          {lowStock.length ? (
-            lowStock.map((item) => (
-              <div key={item.id} className="dash-product">
+          {summary.lowStockItems.length ? (
+            summary.lowStockItems.map((item) => (
+              <div key={item.variantId} className="dash-product">
                 <ArrowDownRight size={15} className="danger" />
                 <div>
-                  <Link href={`/admin/products/${item.id}`}>
-                    <strong>{item.name}</strong>
+                  <Link href={`/admin/products/${item.productId}`}>
+                    <strong>{item.productName}</strong>
                   </Link>
                   <span className="muted" style={{ display: "block", fontSize: 11 }}>
-                    {item.stock} remaining
+                    <code>{item.sku}</code> · Only {item.availableStock} left
                   </span>
                 </div>
-                <Button
-                  size="sm"
-                  style={{ marginLeft: "auto" }}
-                  onClick={() => restock(item.id, 10)}
-                >
-                  +10 Restock
-                </Button>
+                {canAdjustInventory ? (
+                  <Button
+                    size="sm"
+                    disabled={restockMutation.isPending}
+                    onClick={() => restockMutation.mutate({ variantId: item.variantId })}
+                  >
+                    +10
+                  </Button>
+                ) : null}
               </div>
             ))
           ) : (
             <p className="muted" style={{ fontSize: 12.5 }}>
-              All active SKUs are above safety stock levels.
+              All tracked SKUs have healthy stock above 5 units.
             </p>
           )}
         </section>
       </div>
-
-      {insightsOpen ? (
-        <Drawer
-          title="AI Revenue Analysis"
-          description={`Summary generated for ${range.toLowerCase()} across ${products.length} active SKUs.`}
-          close={() => setInsightsOpen(false)}
-        >
-          <div className="form-stack">
-            <div className="panel" style={{ background: "var(--subtle)" }}>
-              <strong>Key takeaways</strong>
-              <ul style={{ marginTop: 8, paddingLeft: 18, display: "grid", gap: 6, fontSize: 13 }}>
-                <li>
-                  <strong>Laptops drive 42% of revenue</strong> ({usd(47418)}) with high
-                  average order value led by FormaBook Pro 14.
-                </li>
-                <li>
-                  <strong>Footwear leads order volume</strong> (27% revenue share) with strong
-                  repeat demand for Ridge Runner GTX.
-                </li>
-                <li>
-                  <strong>{lowStock.length} SKUs are low on stock</strong> — restocking{" "}
-                  {lowStock.map((p) => p.name).join(", ") || "none"} prevents stockouts.
-                </li>
-              </ul>
-            </div>
-
-            <div className="panel form-stack">
-              <strong>Recommended next actions</strong>
-              <p className="muted" style={{ fontSize: 12.5 }}>
-                Launch a targeted bundle discount or adjust slow-moving accessory inventory directly
-                from the AI Workspace.
-              </p>
-              <div className="button-row">
-                <Link
-                  className="btn primary"
-                  href="/admin/assistant?prompt=Analyze+this+month%27s+revenue+and+identify+the+best-performing+categories"
-                >
-                  <Sparkles size={14} /> Open in AI Assistant
-                </Link>
-                <Link className="btn" href="/admin/promotions">
-                  Review promotions
-                </Link>
-              </div>
-            </div>
-          </div>
-        </Drawer>
-      ) : null}
     </>
   );
 }

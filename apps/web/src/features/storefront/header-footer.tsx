@@ -1,4 +1,5 @@
 "use client";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -23,23 +24,28 @@ export function StoreHeader({
   cart = 0,
   wishlistCount = 0,
   currentPath = "/store",
+  storeNameOverride,
+  freeShippingThresholdOverride,
 }: {
   preview?: boolean;
   cart?: number;
   wishlistCount?: number;
   currentPath?: string;
+  storeNameOverride?: string;
+  freeShippingThresholdOverride?: number;
 }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [links] = useStored<StoreMenuLink[]>("store-menu", initialStoreMenu);
-  const [shipping] = useStored<Record<string, string>>("preferences:shipping", {});
-  const [storeInfo] = useStored<Record<string, string>>("preferences:store-information", {});
 
-  const thresholdNum = Number(shipping["Free shipping threshold"] || "100");
-  const freeShippingThreshold = usd(Number.isFinite(thresholdNum) ? thresholdNum : 100);
-  const storeName = (storeInfo["Store name"] || "TERRAIN").toUpperCase();
+  const threshold =
+    freeShippingThresholdOverride && Number.isFinite(freeShippingThresholdOverride)
+      ? freeShippingThresholdOverride
+      : 100;
+  const freeShippingThreshold = usd(threshold);
+  const storeName = (storeNameOverride || "TERRAIN").toUpperCase();
 
   return (
     <>
@@ -53,48 +59,47 @@ export function StoreHeader({
           className="store-menu"
           aria-expanded={menuOpen}
           aria-label="Toggle store navigation"
-          onClick={() => setMenuOpen((v) => !v)}
+          disabled={preview}
+          onClick={() => setMenuOpen((open) => !open)}
         >
-          {menuOpen ? <X size={19} /> : <Menu size={19} />}
+          <Menu size={18} />
         </button>
 
-        <Link
-          href="/store"
-          className="terrain-logo"
-          tabIndex={preview ? -1 : 0}
-        >
-          <Mountain size={22} strokeWidth={2.3} />
+        <Link href="/store" className="terrain-logo" tabIndex={preview ? -1 : 0}>
+          <Mountain size={20} strokeWidth={2.2} />
           <span>{storeName}</span>
         </Link>
 
         <nav
-          className={menuOpen ? "store-nav open" : "store-nav"}
-          aria-label="Store navigation"
+          className={menuOpen ? "open" : ""}
+          aria-label="Storefront navigation"
         >
-          {links.map((item) => (
-            <Link
-              key={item.id}
-              href={item.url}
-              tabIndex={preview ? -1 : 0}
-              aria-current={currentPath === item.url ? "page" : undefined}
-              onClick={() => setMenuOpen(false)}
-            >
-              {item.label}
-            </Link>
-          ))}
+          {links.map((link) => {
+            const active =
+              currentPath === link.url ||
+              (link.url !== "/store" && currentPath.startsWith(link.url));
+            return (
+              <Link
+                key={link.id}
+                href={link.url}
+                className={active ? "active" : ""}
+                tabIndex={preview ? -1 : 0}
+                onClick={() => setMenuOpen(false)}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
 
-        <div className="store-icons">
+        <div className="store-actions">
           {preview ? (
-            <Link href="/store/search" aria-label="Search" tabIndex={-1}>
-              <Search size={17} />
-            </Link>
+            <span>Search</span>
           ) : (
             <button
               type="button"
-              aria-label="Toggle search bar"
-              aria-expanded={searchOpen}
-              onClick={() => setSearchOpen((v) => !v)}
+              aria-label="Search catalog"
+              onClick={() => setSearchOpen((open) => !open)}
             >
               <Search size={17} />
             </button>
@@ -156,19 +161,16 @@ export function StoreHeader({
   );
 }
 
-export function StoreFooter() {
-  const [storeInfo] = useStored<Record<string, string>>("preferences:store-information", {});
-  const storeName = (storeInfo["Store name"] || "TERRAIN").toUpperCase();
-
+export function StoreFooter({ storeName = "Terrain Supply" }: { storeName?: string }) {
   return (
     <footer className="store-footer">
       <div className="store-footer-col">
         <Link href="/store" className="terrain-logo">
           <Mountain size={22} />
-          <span>{storeName}</span>
+          <span>{storeName.toUpperCase()}</span>
         </Link>
         <p style={{ color: "#c2cfc5", fontSize: "12.5px", maxWidth: "30ch", marginTop: "6px" }}>
-          Multi-category technical essentials and precision studio hardware, unified on Forma Commerce.
+          Multi-category technical essentials and precision studio hardware, powered by Dat Commerce.
         </p>
       </div>
 
@@ -197,8 +199,10 @@ export function StoreFooter() {
       </div>
 
       <div className="store-footer-bottom">
-        <span>© {new Date().getFullYear()} {storeInfo["Store name"] || "Terrain Supply"}. Powered by Forma Commerce.</span>
-        <span>{storeInfo["Contact email"] || "hello@terrain.example"}</span>
+        <span>
+          © {new Date().getFullYear()} {storeName}. Powered by Dat Commerce.
+        </span>
+        <span>hello@datcommerce.local</span>
       </div>
     </footer>
   );

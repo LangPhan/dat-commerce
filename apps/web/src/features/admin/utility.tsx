@@ -1,106 +1,604 @@
 "use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ArrowUpRight, Copy, Plus, Trash2, Upload } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpRight,
+  Plus,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
+import { Empty, Skeleton } from "@/components/ui/data-display";
 import { ConfirmDialog, Drawer, Modal } from "@/components/ui/dialog";
-import { Empty } from "@/components/ui/data-display";
-import { newId, usdExact } from "@/lib/format";
+import { useAuth } from "@/features/auth/auth-context";
+import { ApiError } from "@/lib/api-client";
+import {
+  adminCatalogApi,
+  adminMediaApi,
+  adminOrderApi,
+} from "@/lib/commerce-api";
+import { formatDateTime, newId, slugify, usdExact } from "@/lib/format";
 import { useStored } from "@/lib/storage";
-import { initialCollections } from "@/mocks/catalog";
-import { initialMembers } from "@/mocks/operations";
 import { initialBlocks, initialStoreMenu, pagePaths, pageTemplates } from "@/mocks/pages";
-import type {
-  Collection,
-  MediaAsset,
-  Order,
-  Product,
-  StoreMenuLink,
-  TeamMember,
-} from "@/types/commerce";
+import type { CollectionDto, OrderDto } from "@/types/api-commerce";
+import type { StoreMenuLink } from "@/types/commerce";
 import type { Block } from "@/types/editor";
 
-type Field = { label: string; default: string; options?: string[] };
+type FieldConfig = {
+  label: string;
+  default: string;
+  options?: string[];
+};
 
-const settingsConfig: Record<string, Field[]> = {
-  general: [
-    { label: "Currency", default: "USD", options: ["USD", "EUR", "GBP", "VND"] },
-    { label: "Timezone", default: "America/Los_Angeles" },
-    { label: "Unit system", default: "Imperial", options: ["Imperial", "Metric"] },
-  ],
-  "store-information": [
-    { label: "Store name", default: "Terrain Supply" },
-    { label: "Contact email", default: "hello@terrain.example" },
-    { label: "Public domain", default: "terrain.example" },
-  ],
+const settingsConfig: Record<string, FieldConfig[]> = {
   payment: [
-    {
-      label: "Checkout provider",
-      default: "Demo payments",
-      options: ["Demo payments", "Stripe (configured)", "Medusa Pay"],
-    },
-    { label: "Capture method", default: "Automatic", options: ["Automatic", "Manual"] },
+    { label: "Provider", default: "Sandbox Payment Gateway", options: ["Sandbox Payment Gateway", "Stripe", "Adyen"] },
+    { label: "Statement descriptor", default: "DAT COMMERCE" },
+    { label: "Capture timing", default: "Automatic on checkout", options: ["Automatic on checkout", "Manual authorize"] },
   ],
   shipping: [
-    { label: "Standard shipping fee", default: "12" },
-    { label: "Free shipping threshold", default: "100" },
-    { label: "Dispatch estimate", default: "2 business days" },
+    { label: "Origin warehouse", default: "Portland Distribution Hub (US-West)" },
+    { label: "Standard shipping fee", default: "12.00" },
+    { label: "Free shipping threshold", default: "100.00" },
   ],
   tax: [
-    { label: "Tax region", default: "United States" },
-    { label: "Display prices", default: "Exclude tax", options: ["Exclude tax", "Include tax"] },
+    { label: "Tax calculation", default: "Zero-rated sandbox (Phase 3)", options: ["Zero-rated sandbox (Phase 3)", "Automatic regional rates"] },
+    { label: "Included in prices", default: "No", options: ["Yes", "No"] },
   ],
   integrations: [
-    { label: "Commerce backend", default: "Medusa v2" },
-    { label: "CMS & page builder", default: "Payload CMS" },
-    { label: "LLM gateway", default: "9Router" },
+    { label: "S3 media endpoint", default: "http://silo:9000 (/storage proxy)" },
+    { label: "PostgreSQL & Redis", default: "Connected via Docker network" },
   ],
 };
+
+function CollectionsView({ notify }: { notify: (msg: string) => void }) {
+  const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("catalog:write");
+
+  const [edit, setEdit] = useState<{
+    id?: string;
+    name: string;
+    slug: string;
+    description: string;
+    productIds: string[];
+  } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CollectionDto | null>(null);
+  const [error, setError] = useState("");
+
+  const collectionsQuery = useQuery({
+    queryKey: ["admin-collections"],
+    queryFn: () => adminCatalogApi.listCollections(),
+  });
+  const productsQuery = useQuery({
+    queryKey: ["admin-products", "collection-picker"],
+    queryFn: () => adminCatalogApi.listProducts(),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: {
+      id?: string;
+      name: string;
+      slug: string;
+      description: string;
+      productIds: string[];
+    }) =>
+      payload.id
+        ? adminCatalogApi.updateCollection(payload.id, {
+            name: payload.name,
+            slug: payload.slug || undefined,
+            description: payload.description,
+            productIds: payload.productIds,
+          })
+        : adminCatalogApi.createCollection({
+            name: payload.name,
+            slug: payload.slug || undefined,
+            description: payload.description,
+            productIds: payload.productIds,
+          }),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-collections"] });
+      setEdit(null);
+      notify(vars.id ? "Collection updated" : "Collection created");
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : "Failed to save collection"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => adminCatalogApi.deleteCollection(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-collections"] });
+      setDeleteTarget(null);
+      notify("Collection deleted");
+    },
+    onError: (err) => {
+      setDeleteTarget(null);
+      notify(err instanceof ApiError ? err.message : "Failed to delete collection");
+    },
+  });
+
+  const collections = collectionsQuery.data || [];
+  const products = productsQuery.data || [];
+
+  return (
+    <>
+      <div className="admin-title">
+        <div>
+          <h1>Collections</h1>
+          <p>Curate themed product assortments stored in PostgreSQL and exposed on the storefront.</p>
+        </div>
+        {canWrite ? (
+          <Button
+            variant="primary"
+            onClick={() => {
+              setError("");
+              setEdit({ name: "", slug: "", description: "", productIds: [] });
+            }}
+          >
+            <Plus size={15} /> Create collection
+          </Button>
+        ) : null}
+      </div>
+
+      {collectionsQuery.isLoading ? (
+        <Skeleton rows={4} />
+      ) : collections.length ? (
+        <div className="admin-table-panel table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Collection</th>
+                <th>Slug</th>
+                <th>Description</th>
+                <th>Products</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {collections.map((item) => (
+                <tr key={item.id}>
+                  <td>
+                    {canWrite ? (
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => {
+                          setError("");
+                          setEdit({
+                            id: item.id,
+                            name: item.name,
+                            slug: item.slug,
+                            description: item.description || "",
+                            productIds: item.productIds,
+                          });
+                        }}
+                      >
+                        {item.name}
+                      </button>
+                    ) : (
+                      <strong>{item.name}</strong>
+                    )}
+                  </td>
+                  <td>
+                    <code>{item.slug}</code>
+                  </td>
+                  <td className="muted">{item.description || "—"}</td>
+                  <td>
+                    <Badge tone="accent">{item.productIds.length} products</Badge>
+                  </td>
+                  <td>
+                    {canWrite ? (
+                      <IconButton
+                        label={`Delete ${item.name}`}
+                        onClick={() => setDeleteTarget(item)}
+                      >
+                        <Trash2 size={14} />
+                      </IconButton>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty
+          title="No collections yet"
+          text="Create a collection to group featured products across categories."
+        />
+      )}
+
+      {edit ? (
+        <Modal
+          title={edit.id ? `Edit ${edit.name}` : "New collection"}
+          description="Assign products to display under this curated assortment."
+          close={() => setEdit(null)}
+        >
+          <form
+            className="form-stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setError("");
+              if (!edit.name.trim()) {
+                setError("Name is required.");
+                return;
+              }
+              saveMutation.mutate(edit);
+            }}
+          >
+            <div className="field-row">
+              <label>
+                Name
+                <input
+                  required
+                  value={edit.name}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setEdit((prev) =>
+                      prev
+                        ? { ...prev, name, slug: prev.id ? prev.slug : slugify(name) }
+                        : null
+                    );
+                  }}
+                />
+              </label>
+              <label>
+                Slug
+                <input
+                  value={edit.slug}
+                  onChange={(e) =>
+                    setEdit((prev) =>
+                      prev ? { ...prev, slug: slugify(e.target.value) } : null
+                    )
+                  }
+                />
+              </label>
+            </div>
+            <label>
+              Description
+              <textarea
+                rows={2}
+                value={edit.description}
+                onChange={(e) =>
+                  setEdit((prev) =>
+                    prev ? { ...prev, description: e.target.value } : null
+                  )
+                }
+              />
+            </label>
+            <div>
+              <strong style={{ fontSize: 12.5 }}>Assigned products</strong>
+              <div
+                className="check-row"
+                style={{
+                  marginTop: 8,
+                  maxHeight: 200,
+                  overflowY: "auto",
+                  flexWrap: "wrap",
+                  gap: 8,
+                }}
+              >
+                {products.map((p) => {
+                  const checked = edit.productIds.includes(p.id);
+                  return (
+                    <label className="check-label" key={p.id}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          setEdit((prev) => {
+                            if (!prev) return null;
+                            const next = e.target.checked
+                              ? [...prev.productIds, p.id]
+                              : prev.productIds.filter((x) => x !== p.id);
+                            return { ...prev, productIds: next };
+                          })
+                        }
+                      />
+                      {p.name}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            {error ? (
+              <p className="danger" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <div className="modal-actions">
+              <Button onClick={() => setEdit(null)}>Cancel</Button>
+              <Button
+                variant="primary"
+                type="submit"
+                disabled={saveMutation.isPending}
+              >
+                Save collection
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {deleteTarget ? (
+        <ConfirmDialog
+          title={`Delete ${deleteTarget.name}?`}
+          description="Removes this collection without affecting the underlying products."
+          confirmLabel="Delete"
+          destructive
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function MediaLibraryView({ notify }: { notify: (msg: string) => void }) {
+  const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("media:write");
+  const [error, setError] = useState("");
+
+  const mediaQuery = useQuery({
+    queryKey: ["admin-media"],
+    queryFn: () => adminMediaApi.list(),
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => adminMediaApi.upload(file, file.name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-media"] });
+      setError("");
+      notify("Uploaded asset to Silo S3");
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : "Failed to upload asset"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (mediaId: string) => adminMediaApi.remove(mediaId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-media"] });
+      notify("Deleted media asset");
+    },
+    onError: (err) =>
+      notify(err instanceof ApiError ? err.message : "Failed to delete asset"),
+  });
+
+  const assets = mediaQuery.data || [];
+
+  return (
+    <>
+      <div className="admin-title">
+        <div>
+          <h1>Media Library</h1>
+          <p>
+            Upload and manage product images in Silo S3 object storage (served via <code>/storage</code>).
+          </p>
+        </div>
+        {canWrite ? (
+          <label className="btn primary media-upload">
+            <Upload size={15} />{" "}
+            {uploadMutation.isPending ? "Uploading…" : "Upload image"}
+            <input
+              type="file"
+              accept="image/*"
+              aria-label="Upload image"
+              disabled={uploadMutation.isPending}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                if (file.size > 5_000_000) {
+                  setError("Choose an image under 5 MB.");
+                  return;
+                }
+                uploadMutation.mutate(file);
+              }}
+            />
+          </label>
+        ) : null}
+      </div>
+
+      {error ? (
+        <p className="danger" role="alert" style={{ marginBottom: 12 }}>
+          {error}
+        </p>
+      ) : null}
+
+      {mediaQuery.isLoading ? (
+        <Skeleton rows={3} />
+      ) : assets.length ? (
+        <div className="admin-media">
+          {assets.map((asset) => (
+            <div key={asset.id} className="panel">
+              <img src={asset.url} alt={asset.altText || asset.originalFilename} />
+              <div>
+                <strong>{asset.originalFilename}</strong>
+                {canWrite ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate(asset.id)}
+                  >
+                    Remove
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Empty
+          title="No uploaded media assets yet"
+          text="Upload an image above to store it in Silo S3 and attach it to catalog products."
+        />
+      )}
+    </>
+  );
+}
+
+function CustomersView() {
+  const [customerDrawer, setCustomerDrawer] = useState<{
+    name: string;
+    email: string;
+    orders: OrderDto[];
+  } | null>(null);
+
+  const ordersQuery = useQuery({
+    queryKey: ["admin-orders", "customers"],
+    queryFn: () => adminOrderApi.list(),
+  });
+
+  const orders = ordersQuery.data || [];
+  const grouped = new Map<string, { name: string; email: string; orders: OrderDto[] }>();
+  for (const o of orders) {
+    const existing = grouped.get(o.customerEmail.toLowerCase());
+    if (existing) existing.orders.push(o);
+    else {
+      grouped.set(o.customerEmail.toLowerCase(), {
+        name: o.customerName,
+        email: o.customerEmail,
+        orders: [o],
+      });
+    }
+  }
+  const customers = Array.from(grouped.values());
+
+  return (
+    <>
+      <div className="admin-title">
+        <div>
+          <h1>Customers</h1>
+          <p>Customer directory aggregated live from storefront and merchant orders.</p>
+        </div>
+        <Badge tone="accent">{customers.length} customers</Badge>
+      </div>
+
+      {ordersQuery.isLoading ? (
+        <Skeleton rows={4} />
+      ) : customers.length ? (
+        <div className="admin-table-panel table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Email</th>
+                <th>Orders</th>
+                <th>Lifetime spend</th>
+                <th>Latest order</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customers.map((c) => {
+                const spend = c.orders
+                  .filter((o) => o.status !== "CANCELED")
+                  .reduce((s, o) => s + Number(o.grandTotal), 0);
+                return (
+                  <tr key={c.email}>
+                    <td>
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => setCustomerDrawer(c)}
+                      >
+                        {c.name}
+                      </button>
+                    </td>
+                    <td>{c.email}</td>
+                    <td>{c.orders.length}</td>
+                    <td>
+                      <strong>{usdExact(spend)}</strong>
+                    </td>
+                    <td>
+                      <Link href={`/admin/orders/${c.orders[0].id}`}>
+                        {c.orders[0].orderNumber}
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty
+          title="No customer orders yet"
+          text="Customers appear automatically after their first checkout."
+        />
+      )}
+
+      {customerDrawer ? (
+        <Drawer
+          title={customerDrawer.name}
+          description={customerDrawer.email}
+          close={() => setCustomerDrawer(null)}
+        >
+          <div className="form-stack">
+            <strong>Order history ({customerDrawer.orders.length})</strong>
+            {customerDrawer.orders.map((order) => (
+              <Link
+                key={order.id}
+                href={`/admin/orders/${order.id}`}
+                className="panel"
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <strong>{order.orderNumber}</strong>
+                  <p className="muted" style={{ fontSize: 11.5 }}>
+                    {formatDateTime(order.createdAt)} · {order.status}
+                  </p>
+                </div>
+                <strong>{usdExact(order.grandTotal)}</strong>
+              </Link>
+            ))}
+          </div>
+        </Drawer>
+      ) : null}
+    </>
+  );
+}
 
 export function UtilityPage({
   view,
   title,
-  products,
-  orders,
   notify,
 }: {
   view: string;
   title: string;
-  products: Product[];
-  orders: Order[];
   notify: (message: string) => void;
 }) {
   const [preferences, setPreferences, preferencesReady] = useStored<Record<string, string>>(
     "preferences:" + view,
     {}
   );
-  const [collections, setCollections] = useStored<Collection[]>(
-    "collections",
-    initialCollections
-  );
   const [menu, setMenu] = useStored<StoreMenuLink[]>("store-menu", initialStoreMenu);
-  const [members, setMembers] = useStored<TeamMember[]>("members", initialMembers);
-  const [media, setMedia] = useStored<MediaAsset[]>("media", []);
   const [draft] = useStored<Block[]>("draft", initialBlocks);
   const [published] = useStored<Block[]>("published", initialBlocks);
-
   const [modalOpen, setModalOpen] = useState(false);
-  const [collectionEdit, setCollectionEdit] = useState<Collection | null>(null);
-  const [deleteCollection, setDeleteCollection] = useState<Collection | null>(null);
-  const [customerDrawer, setCustomerDrawer] = useState<{
-    name: string;
-    email: string;
-    orders: Order[];
-  } | null>(null);
-  const [error, setError] = useState("");
+
+  if (view === "collections") return <CollectionsView notify={notify} />;
+  if (view === "media") return <MediaLibraryView notify={notify} />;
+  if (view === "customers") return <CustomersView />;
 
   let subtitle = "";
   let action: React.ReactNode = null;
   let content: React.ReactNode = null;
 
   if (settingsConfig[view]) {
-    subtitle = "Configure store preferences persisted across your workspace.";
+    subtitle = "Configure store preferences.";
     content = preferencesReady ? (
       <form
         className="panel form-stack utility-form"
@@ -146,7 +644,7 @@ export function UtilityPage({
       </form>
     ) : null;
   } else if (view === "pages") {
-    subtitle = "Manage CMS pages and jump directly into the AI Visual Store Editor.";
+    subtitle = "Manage storefront CMS pages and open the Visual Editor.";
     const homeSynced = JSON.stringify(draft) === JSON.stringify(published);
     content = (
       <div className="admin-table-panel table-scroll">
@@ -199,122 +697,10 @@ export function UtilityPage({
         </table>
       </div>
     );
-  } else if (view === "customers") {
-    subtitle = "Directory of customers aggregated from storefront and demo orders.";
-    const grouped = new Map<string, { name: string; email: string; orders: Order[] }>();
-    for (const o of orders) {
-      const existing = grouped.get(o.email);
-      if (existing) existing.orders.push(o);
-      else grouped.set(o.email, { name: o.customer, email: o.email, orders: [o] });
-    }
-    const customers = Array.from(grouped.values());
-
-    content = (
-      <div className="admin-table-panel table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Customer</th>
-              <th>Email</th>
-              <th>Orders</th>
-              <th>Lifetime spend</th>
-              <th>Latest order</th>
-            </tr>
-          </thead>
-          <tbody>
-            {customers.map((c) => {
-              const spend = c.orders.reduce((s, o) => s + o.total, 0);
-              return (
-                <tr key={c.email}>
-                  <td>
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() => setCustomerDrawer(c)}
-                    >
-                      {c.name}
-                    </button>
-                  </td>
-                  <td>{c.email}</td>
-                  <td>{c.orders.length}</td>
-                  <td>
-                    <strong>{usdExact(spend)}</strong>
-                  </td>
-                  <td>
-                    <Link href={`/admin/orders/${c.orders[0].id}`}>
-                      #{c.orders[0].id}
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    );
-  } else if (view === "collections") {
-    subtitle = "Curate themed product assortments for editorial banners and storefront pages.";
-    action = (
-      <Button
-        variant="primary"
-        onClick={() =>
-          setCollectionEdit({ id: "", name: "", description: "", products: [] })
-        }
-      >
-        <Plus size={15} /> Create collection
-      </Button>
-    );
-    content = (
-      <div className="admin-table-panel table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Collection</th>
-              <th>Description</th>
-              <th>Products</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {collections.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => setCollectionEdit(item)}
-                  >
-                    {item.name}
-                  </button>
-                </td>
-                <td className="muted">{item.description || "—"}</td>
-                <td>
-                  <Badge tone="accent">{item.products.length} products</Badge>
-                </td>
-                <td>
-                  <IconButton
-                    label={`Delete ${item.name}`}
-                    onClick={() => setDeleteCollection(item)}
-                  >
-                    <Trash2 size={14} />
-                  </IconButton>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
   } else if (view === "navigation") {
-    subtitle = "Reorder, add, or remove links shown in the customer storefront header.";
+    subtitle = "Reorder, add, or remove storefront header links.";
     action = (
-      <Button
-        variant="primary"
-        onClick={() => {
-          setError("");
-          setModalOpen(true);
-        }}
-      >
+      <Button variant="primary" onClick={() => setModalOpen(true)}>
         <Plus size={15} /> Add link
       </Button>
     );
@@ -325,7 +711,7 @@ export function UtilityPage({
             <tr>
               <th>Label</th>
               <th>Destination</th>
-              <th>Actions</th>
+              <th>Order</th>
             </tr>
           </thead>
           <tbody>
@@ -384,151 +770,9 @@ export function UtilityPage({
         text="Add links to populate the storefront header menu."
       />
     );
-  } else if (view === "users") {
-    subtitle = "Manage team members and role-based access across the merchant admin.";
-    action = (
-      <Button
-        variant="primary"
-        onClick={() => {
-          setError("");
-          setModalOpen(true);
-        }}
-      >
-        <Plus size={15} /> Invite member
-      </Button>
-    );
-    content = (
-      <div className="admin-table-panel table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((member) => (
-              <tr key={member.id}>
-                <td>
-                  <strong>{member.name}</strong>
-                </td>
-                <td>{member.email}</td>
-                <td>
-                  {member.role === "Owner" ? (
-                    <Badge tone="accent">Owner</Badge>
-                  ) : (
-                    <select
-                      aria-label={`Role for ${member.name}`}
-                      value={member.role}
-                      onChange={(e) => {
-                        setMembers(
-                          members.map((m) =>
-                            m.id === member.id ? { ...m, role: e.target.value } : m
-                          )
-                        );
-                        notify("Role updated");
-                      }}
-                    >
-                      <option>Editor</option>
-                      <option>Analyst</option>
-                    </select>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
   } else {
-    // Media Library
-    subtitle = "Browse catalog imagery and upload custom assets for storefront sections.";
-    action = (
-      <label className="btn primary media-upload">
-        <Upload size={15} /> Upload image
-        <input
-          type="file"
-          accept="image/*"
-          aria-label="Upload image"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            if (file.size > 2_000_000) {
-              setError("Choose an image under 2 MB.");
-              return;
-            }
-            setError("");
-            const reader = new FileReader();
-            reader.onload = () => {
-              setMedia((curr) => [
-                { id: newId(), name: file.name, url: String(reader.result) },
-                ...curr,
-              ]);
-              notify("Image added to library");
-            };
-            reader.readAsDataURL(file);
-          }}
-        />
-      </label>
-    );
-    const allMedia = [
-      ...media.map((m) => ({ ...m, custom: true })),
-      ...products.map((p) => ({
-        id: p.id,
-        name: p.name,
-        url: p.image,
-        custom: false,
-      })),
-    ];
     content = (
-      <>
-        {error ? (
-          <p className="danger" role="alert" style={{ marginBottom: 12 }}>
-            {error}
-          </p>
-        ) : null}
-        <div className="admin-media">
-          {allMedia.map((item) => (
-            <div key={item.id} className="panel">
-              <img src={item.url} alt={item.name} />
-              <div>
-                <strong
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {item.name}
-                </strong>
-                <div className="button-row" style={{ gap: 2 }}>
-                  <IconButton
-                    label={`Copy URL for ${item.name}`}
-                    onClick={() => {
-                      navigator.clipboard?.writeText(item.url).catch(() => {});
-                      notify("Image URL copied");
-                    }}
-                  >
-                    <Copy size={13} />
-                  </IconButton>
-                  {item.custom ? (
-                    <IconButton
-                      label={`Delete ${item.name}`}
-                      onClick={() => {
-                        setMedia((curr) => curr.filter((m) => m.id !== item.id));
-                        notify("Asset removed");
-                      }}
-                    >
-                      <Trash2 size={13} />
-                    </IconButton>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </>
+      <Empty title={title} text="Configuration view ready for Phase 4 CMS expansion." />
     );
   }
 
@@ -537,107 +781,15 @@ export function UtilityPage({
       <div className="admin-title">
         <div>
           <h1>{title}</h1>
-          <p>{subtitle}</p>
+          {subtitle ? <p>{subtitle}</p> : null}
         </div>
         {action}
       </div>
       {content}
-
-      {collectionEdit ? (
+      {modalOpen && view === "navigation" ? (
         <Modal
-          title={collectionEdit.id ? "Edit collection" : "New collection"}
-          description="Select the products featured in this collection."
-          close={() => setCollectionEdit(null)}
-        >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setCollections(
-                collectionEdit.id
-                  ? collections.map((c) =>
-                      c.id === collectionEdit.id ? collectionEdit : c
-                    )
-                  : [...collections, { ...collectionEdit, id: newId() }]
-              );
-              setCollectionEdit(null);
-              notify("Collection saved");
-            }}
-          >
-            <label>
-              Collection name
-              <input
-                required
-                value={collectionEdit.name}
-                onChange={(e) =>
-                  setCollectionEdit({ ...collectionEdit, name: e.target.value })
-                }
-              />
-            </label>
-            <label>
-              Description
-              <input
-                value={collectionEdit.description || ""}
-                onChange={(e) =>
-                  setCollectionEdit({
-                    ...collectionEdit,
-                    description: e.target.value,
-                  })
-                }
-              />
-            </label>
-            <div className="form-stack" style={{ maxHeight: "35dvh", overflow: "auto" }}>
-              {products.map((p) => (
-                <label className="check-label" key={p.id}>
-                  <input
-                    type="checkbox"
-                    checked={collectionEdit.products.includes(p.id)}
-                    onChange={(e) =>
-                      setCollectionEdit({
-                        ...collectionEdit,
-                        products: e.target.checked
-                          ? [...collectionEdit.products, p.id]
-                          : collectionEdit.products.filter((pid) => pid !== p.id),
-                      })
-                    }
-                  />
-                  <span>{p.name}</span>
-                </label>
-              ))}
-            </div>
-            <div className="modal-actions">
-              <Button onClick={() => setCollectionEdit(null)}>Cancel</Button>
-              <Button variant="primary" type="submit">
-                Save collection
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      ) : null}
-
-      {deleteCollection ? (
-        <ConfirmDialog
-          title={`Delete collection "${deleteCollection.name}"?`}
-          description="Products inside this collection will remain in your catalog."
-          confirmLabel="Delete collection"
-          destructive
-          onCancel={() => setDeleteCollection(null)}
-          onConfirm={() => {
-            setCollections(collections.filter((c) => c.id !== deleteCollection.id));
-            setDeleteCollection(null);
-            notify("Collection deleted");
-          }}
-        />
-      ) : null}
-
-      {modalOpen ? (
-        <Modal
-          title={view === "users" ? "Invite workspace member" : "Add navigation link"}
-          description={
-            view === "users"
-              ? "Assign a role for this collaborator."
-              : "Use an internal storefront path (e.g. /store/shop) or an HTTPS URL."
-          }
+          title="Add navigation link"
+          description="Add a storefront menu item."
           close={() => setModalOpen(false)}
         >
           <form
@@ -645,98 +797,34 @@ export function UtilityPage({
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              const name = String(fd.get("name"));
-              if (view === "users") {
-                const email = String(fd.get("email"));
-                if (
-                  members.some(
-                    (m) => m.email.toLowerCase() === email.toLowerCase()
-                  )
-                ) {
-                  setError("This email is already on the workspace.");
-                  return;
-                }
-                setMembers([
-                  ...members,
-                  { id: newId(), name, email, role: String(fd.get("role")) },
-                ]);
-              } else {
-                const url = String(fd.get("url"));
-                if (!/^\/(?!\/)|^https:\/\//i.test(url)) {
-                  setError("Enter a valid internal path or HTTPS URL.");
-                  return;
-                }
-                setMenu([...menu, { id: newId(), label: name, url }]);
-              }
+              setMenu([
+                ...menu,
+                {
+                  id: newId(),
+                  label: String(fd.get("label") || "").trim(),
+                  url: String(fd.get("url") || "").trim(),
+                },
+              ]);
               setModalOpen(false);
-              notify(view === "users" ? "Member invited" : "Navigation updated");
+              notify("Navigation link added");
             }}
           >
             <label>
-              {view === "users" ? "Full name" : "Link label"}
-              <input name="name" required />
+              Label
+              <input name="label" required placeholder="New Arrivals" />
             </label>
-            {view === "users" ? (
-              <>
-                <label>
-                  Email address
-                  <input type="email" name="email" required />
-                </label>
-                <label>
-                  Role
-                  <select name="role">
-                    <option>Editor</option>
-                    <option>Analyst</option>
-                  </select>
-                </label>
-              </>
-            ) : (
-              <label>
-                Destination URL
-                <input required name="url" placeholder="/store/shop" />
-              </label>
-            )}
-            {error ? (
-              <p className="danger" role="alert">
-                {error}
-              </p>
-            ) : null}
+            <label>
+              Destination path
+              <input name="url" required placeholder="/store/shop" />
+            </label>
             <div className="modal-actions">
               <Button onClick={() => setModalOpen(false)}>Cancel</Button>
               <Button variant="primary" type="submit">
-                Save
+                Add link
               </Button>
             </div>
           </form>
         </Modal>
-      ) : null}
-
-      {customerDrawer ? (
-        <Drawer
-          title={customerDrawer.name}
-          description={customerDrawer.email}
-          close={() => setCustomerDrawer(null)}
-        >
-          <div className="form-stack">
-            <strong>Order history ({customerDrawer.orders.length})</strong>
-            {customerDrawer.orders.map((ord) => (
-              <Link
-                key={ord.id}
-                href={`/admin/orders/${ord.id}`}
-                className="panel"
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-              >
-                <div>
-                  <strong>#{ord.id}</strong>
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    {ord.date} · {ord.fulfillment}
-                  </div>
-                </div>
-                <strong>{usdExact(ord.total)}</strong>
-              </Link>
-            ))}
-          </div>
-        </Drawer>
       ) : null}
     </>
   );

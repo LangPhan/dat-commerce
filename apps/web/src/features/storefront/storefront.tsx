@@ -1,25 +1,20 @@
 "use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Empty } from "@/components/ui/data-display";
+import { Empty, Skeleton } from "@/components/ui/data-display";
 import { Toast } from "@/components/ui/toast";
+import { ApiError } from "@/lib/api-client";
+import { storeApi } from "@/lib/commerce-api";
 import { formatDate, usdExact } from "@/lib/format";
 import { useStored } from "@/lib/storage";
-import { initialCollections, initialProducts } from "@/mocks/catalog";
-import { initialDiscounts, initialOrders } from "@/mocks/operations";
 import { initialBlocks, pageTemplates } from "@/mocks/pages";
-import type {
-  CartItem,
-  Collection,
-  CustomerProfile,
-  Discount,
-  Order,
-  OrderReceipt,
-  Product,
-} from "@/types/commerce";
+import type { OrderDto } from "@/types/api-commerce";
+import type { CustomerProfile } from "@/types/commerce";
 import type { Block } from "@/types/editor";
 import { ProductCard, StoreBlock } from "./blocks";
 import { CartPage, CheckoutPage, ConfirmationPage } from "./cart-checkout";
@@ -27,24 +22,27 @@ import { StoreFooter, StoreHeader } from "./header-footer";
 import { Listing } from "./listing";
 import { ProductDetail } from "./product-detail";
 
+type StoredOrderSummary = {
+  orderNumber: string;
+  email: string;
+  total: number;
+  date: string;
+};
+
 export function Storefront({ route }: { route: string[] }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+
   const [blocks] = useStored<Block[]>("published", initialBlocks);
-  const [catalog] = useStored<Product[]>("catalog", initialProducts);
   const [publishedPages] = useStored<Record<string, Block[]>>(
     "published-pages",
     pageTemplates
   );
-  const [collections] = useStored<Collection[]>("collections", initialCollections);
-  const [offers] = useStored<Discount[]>("discounts", initialDiscounts);
-  const [, setMerchantOrders] = useStored<Order[]>("orders", initialOrders);
-  const [shippingSettings] = useStored<Record<string, string>>(
-    "preferences:shipping",
-    {}
-  );
-  const [cart, setCart] = useStored<CartItem[]>("cart", []);
   const [wishlist, setWishlist] = useStored<string[]>("wishlist", []);
-  const [orders, setOrders] = useStored<OrderReceipt[]>("receipts", []);
+  const [orderHistory, setOrderHistory] = useStored<StoredOrderSummary[]>(
+    "store-order-history",
+    []
+  );
   const [profile, setProfile] = useStored<CustomerProfile>("profile", {
     name: "",
     email: "",
@@ -52,21 +50,48 @@ export function Storefront({ route }: { route: string[] }) {
   const [toast, setToast] = useState("");
 
   const [view, id] = route;
-  const selected = catalog.find((product) => product.id === id);
 
-  const items = useMemo(
-    () =>
-      cart.flatMap((item) => {
-        const product = catalog.find((entry) => entry.id === item.id);
-        return product ? [{ ...item, product }] : [];
-      }),
-    [cart, catalog]
-  );
+  const cartQuery = useQuery({
+    queryKey: ["store-cart"],
+    queryFn: () => storeApi.getCart(),
+  });
 
-  const total = items.reduce((sum, row) => sum + row.qty * row.product.price, 0);
-  const threshold = Number(shippingSettings["Free shipping threshold"] || 100);
-  const baseShippingFee = Number(shippingSettings["Standard shipping fee"] || 12);
-  const shipping = total >= threshold || total === 0 ? 0 : baseShippingFee;
+  const catalogQuery = useQuery({
+    queryKey: ["store-home-catalog"],
+    queryFn: () => storeApi.listProducts({ size: 24 }),
+  });
+
+  const categoriesQuery = useQuery({
+    queryKey: ["store-categories"],
+    queryFn: () => storeApi.listCategories(),
+  });
+
+  const collectionsQuery = useQuery({
+    queryKey: ["store-collections"],
+    queryFn: () => storeApi.listCollections(),
+    enabled: view === "collections" || view === "collection",
+  });
+
+  const addToCartMutation = useMutation({
+    mutationFn: ({
+      variantId,
+      qty,
+    }: {
+      variantId: string;
+      qty: number;
+      buyNow?: boolean;
+    }) => storeApi.addCartItem(variantId, qty),
+    onSuccess: (nextCart, vars) => {
+      queryClient.setQueryData(["store-cart"], nextCart);
+      if (vars.buyNow) {
+        router.push("/store/checkout");
+      } else {
+        setToast("Added item to cart");
+      }
+    },
+    onError: (err) =>
+      setToast(err instanceof ApiError ? err.message : "Could not add item to cart"),
+  });
 
   useEffect(() => {
     if (!toast) return;
@@ -75,116 +100,109 @@ export function Storefront({ route }: { route: string[] }) {
   }, [toast]);
 
   const toggleWishlist = (productId: string) => {
+    const exists = wishlist.includes(productId);
     setWishlist((current) =>
-      current.includes(productId)
+      exists
         ? current.filter((value) => value !== productId)
         : [...current, productId]
     );
-    setToast(
-      wishlist.includes(productId) ? "Removed from wishlist" : "Saved to wishlist"
-    );
+    setToast(exists ? "Removed from wishlist" : "Saved to wishlist");
   };
 
-  function add(product: Product, qty: number, variant: string, buyNow = false) {
-    setCart((current) => {
-      const line = current.find(
-        (item) => item.id === product.id && item.variant === variant
-      );
-      return line
-        ? current.map((item) =>
-            item === line
-              ? { ...item, qty: Math.min(product.stock, item.qty + qty) }
-              : item
-          )
-        : [...current, { id: product.id, qty, variant }];
-    });
-    if (buyNow) router.push("/store/checkout");
-    else setToast(`Added ${product.name} to cart`);
-  }
+  const catalog = catalogQuery.data?.items || [];
+  const categories = categoriesQuery.data || [];
+  const collections = collectionsQuery.data || [];
+  const cart = cartQuery.data;
+  const cartCount =
+    cart?.items.reduce((sum, line) => sum + line.quantity, 0) || 0;
 
   let content: React.ReactNode;
   if (!view) {
     content = blocks
       .filter((block) => block.visible)
       .map((block) => (
-        <StoreBlock key={block.id} block={block} catalog={catalog} />
+        <StoreBlock
+          key={block.id}
+          block={block}
+          catalog={catalog}
+          categories={categories}
+        />
       ));
-  } else if (view === "shop" || view === "search") {
-    content = <Listing key={view} catalog={catalog} search={view === "search"} />;
-  } else if (view === "product" && selected) {
+  } else if (view === "shop" || view === "search" || view === "category") {
+    content = (
+      <Suspense
+        fallback={
+          <div className="store-container">
+            <Skeleton rows={4} />
+          </div>
+        }
+      >
+        <Listing
+          key={view + ":" + (id || "")}
+          search={view === "search"}
+          forcedCategory={view === "category" ? id : undefined}
+        />
+      </Suspense>
+    );
+  } else if (view === "product" && id) {
+    const related = catalog.filter((p) => p.id !== id && p.slug !== id).slice(0, 4);
     content = (
       <>
         <ProductDetail
-          key={selected.id}
-          product={selected}
-          add={(qty, variant, buyNow) => add(selected, qty, variant, buyNow)}
-          wished={wishlist.includes(selected.id)}
-          toggleWishlist={() => toggleWishlist(selected.id)}
+          key={id}
+          idOrSlug={id}
+          onAddToCart={(variantId, qty, buyNow) =>
+            addToCartMutation.mutate({ variantId, qty, buyNow })
+          }
+          adding={addToCartMutation.isPending}
+          wished={wishlist.some(
+            (w) => w === id || catalog.find((p) => p.id === w)?.slug === id
+          )}
+          toggleWishlist={toggleWishlist}
         />
-        <div className="store-container" style={{ paddingTop: 0 }}>
-          <h2>Related products</h2>
-          <div className="store-products">
-            {catalog
-              .filter((item) => item.id !== id)
-              .sort(
-                (a, b) =>
-                  Number(b.category === selected.category) -
-                  Number(a.category === selected.category)
-              )
-              .slice(0, 4)
-              .map((item) => (
+        {related.length ? (
+          <div className="store-container" style={{ paddingTop: 0 }}>
+            <h2>Related products</h2>
+            <div className="store-products">
+              {related.map((item) => (
                 <ProductCard key={item.id} product={item} />
               ))}
+            </div>
           </div>
-        </div>
+        ) : null}
       </>
     );
   } else if (view === "cart") {
     content = (
       <CartPage
-        items={items}
-        total={total}
-        shippingThreshold={threshold}
-        shippingCost={shipping}
-        updateQty={(itemId, variant, qty) =>
-          setCart((curr) =>
-            curr.map((line) =>
-              line.id === itemId && line.variant === variant
-                ? { ...line, qty }
-                : line
-            )
-          )
-        }
-        removeLine={(itemId, variant) =>
-          setCart((curr) =>
-            curr.filter(
-              (line) => line.id !== itemId || line.variant !== variant
-            )
-          )
-        }
+        cart={cart}
+        loading={cartQuery.isLoading}
+        notify={setToast}
       />
     );
   } else if (view === "checkout") {
     content = (
       <CheckoutPage
-        items={items}
-        total={total}
-        baseShipping={shipping}
-        offers={offers}
-        profile={profile}
+        cart={cart}
+        loading={cartQuery.isLoading}
+        defaultProfile={profile}
         notify={setToast}
-        onComplete={(receipt, merchantOrder) => {
-          setOrders((prev) => [receipt, ...prev]);
-          setMerchantOrders((prev) => [merchantOrder, ...prev]);
-          setCart([]);
-          router.push("/store/confirmation/" + receipt.id);
+        onOrderPlaced={(order: OrderDto) => {
+          setOrderHistory((curr) => [
+            {
+              orderNumber: order.orderNumber,
+              email: order.customerEmail,
+              total: Number(order.grandTotal),
+              date: order.createdAt,
+            },
+            ...curr.filter((x) => x.orderNumber !== order.orderNumber),
+          ]);
         }}
       />
     );
   } else if (view === "confirmation") {
-    const receipt = orders.find((o) => o.id === id);
-    content = receipt ? (
-      <ConfirmationPage receipt={receipt} />
+    content = id ? (
+      <ConfirmationPage orderNumber={id} />
     ) : (
       <div className="store-container">
         <h1>Order not found</h1>
@@ -197,40 +215,70 @@ export function Storefront({ route }: { route: string[] }) {
     content = (
       <div className="store-container">
         <h1>Shop by category</h1>
-        <p className="muted">Browse every product line with dynamic specification filters.</p>
-        <StoreBlock block={{ ...initialBlocks[1], columns: 4 }} catalog={catalog} />
+        <p className="muted">
+          Browse every product line with dynamic specification filters.
+        </p>
+        <StoreBlock
+          block={{ ...initialBlocks[1], columns: 4 }}
+          catalog={catalog}
+          categories={categories}
+        />
       </div>
     );
-  } else if (view === "collections") {
+  } else if (view === "collections" || (view === "collection" && id)) {
+    const filteredCollections =
+      view === "collection" && id
+        ? collections.filter((c) => c.slug === id || c.id === id)
+        : collections;
     content = (
       <>
-        {(publishedPages["Collections page"] || [])
-          .filter((block) => block.visible)
-          .map((block) => (
-            <StoreBlock key={block.id} block={block} catalog={catalog} />
-          ))}
-        {collections.map((collection) => (
-          <div className="store-container" key={collection.id}>
-            <div className="store-section-head">
-              <div>
-                <h2>{collection.name}</h2>
-                {collection.description ? (
-                  <p className="muted">{collection.description}</p>
-                ) : null}
-              </div>
-              <Link href="/store/shop">
-                Shop all <ArrowRight size={14} />
-              </Link>
-            </div>
-            <div className="store-products">
-              {catalog
-                .filter((product) => collection.products.includes(product.id))
-                .map((product) => (
-                  <ProductCard key={product.id} product={product} />
-                ))}
-            </div>
+        {view === "collections"
+          ? (publishedPages["Collections page"] || [])
+              .filter((block) => block.visible)
+              .map((block) => (
+                <StoreBlock
+                  key={block.id}
+                  block={block}
+                  catalog={catalog}
+                  categories={categories}
+                />
+              ))
+          : null}
+        {collectionsQuery.isLoading ? (
+          <div className="store-container">
+            <Skeleton rows={4} />
           </div>
-        ))}
+        ) : filteredCollections.length ? (
+          filteredCollections.map((collection) => (
+            <div className="store-container" key={collection.id}>
+              <div className="store-section-head">
+                <div>
+                  <h2>{collection.name}</h2>
+                  {collection.description ? (
+                    <p className="muted">{collection.description}</p>
+                  ) : null}
+                </div>
+                <Link href="/store/shop">
+                  Shop all <ArrowRight size={14} />
+                </Link>
+              </div>
+              <div className="store-products">
+                {catalog
+                  .filter((product) => collection.productIds.includes(product.id))
+                  .map((product) => (
+                    <ProductCard key={product.id} product={product} />
+                  ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="store-container">
+            <Empty
+              title="No collections found"
+              text="Check back soon for new curated seasonal collections."
+            />
+          </div>
+        )}
       </>
     );
   } else if (view === "wishlist") {
@@ -301,7 +349,7 @@ export function Storefront({ route }: { route: string[] }) {
         </form>
         <div className="button-row">
           <Link className="btn" href="/store/history">
-            Order history ({orders.length})
+            Order history ({orderHistory.length})
           </Link>
           <Link className="btn" href="/store/wishlist">
             Wishlist ({wishlist.length})
@@ -313,17 +361,21 @@ export function Storefront({ route }: { route: string[] }) {
     content = (
       <div className="store-container">
         <h1>Order history</h1>
-        {orders.length ? (
+        {orderHistory.length ? (
           <div className="receipt-list" style={{ marginTop: 18 }}>
-            {orders.map((order) => (
+            {orderHistory.map((order) => (
               <Link
                 className="panel"
-                href={`/store/confirmation/${order.id}`}
-                key={order.id}
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                href={`/store/confirmation/${encodeURIComponent(order.orderNumber)}`}
+                key={order.orderNumber}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
               >
                 <div>
-                  <strong>{order.id}</strong>
+                  <strong>{order.orderNumber}</strong>
                   <p className="muted" style={{ fontSize: 12 }}>
                     {formatDate(order.date)} · {order.email}
                   </p>
@@ -344,19 +396,26 @@ export function Storefront({ route }: { route: string[] }) {
     content = (publishedPages["About page"] || [])
       .filter((block) => block.visible)
       .map((block) => (
-        <StoreBlock key={block.id} block={block} catalog={catalog} />
+        <StoreBlock
+          key={block.id}
+          block={block}
+          catalog={catalog}
+          categories={categories}
+        />
       ));
   } else if (view === "contact") {
     content = (
       <div className="store-container">
         <h1>Contact support</h1>
-        <p className="muted">Questions about sizing, hardware specs, or an existing order?</p>
+        <p className="muted">
+          Questions about sizing, hardware specs, or an existing order?
+        </p>
         <form
           className="panel form-stack account-form"
           onSubmit={(e) => {
             e.preventDefault();
             e.currentTarget.reset();
-            setToast("Message sent to Terrain & Forma support");
+            setToast("Message sent to Dat Commerce support");
           }}
         >
           <label>
@@ -400,9 +459,10 @@ export function Storefront({ route }: { route: string[] }) {
   return (
     <div className="store public-store">
       <StoreHeader
-        cart={cart.reduce((sum, item) => sum + item.qty, 0)}
+        cart={cartCount}
         wishlistCount={wishlist.length}
         currentPath={view ? `/store/${view}` : "/store"}
+        freeShippingThresholdOverride={cart?.freeShippingThreshold}
       />
       <main>{content}</main>
       <StoreFooter />

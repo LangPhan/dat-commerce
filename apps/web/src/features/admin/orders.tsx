@@ -1,113 +1,217 @@
 "use client";
-import Link from "next/link";
-import { CheckCircle2, CreditCard, MapPin, PackageCheck, Search, Truck } from "lucide-react";
-import { useState } from "react";
-import { StatusBadge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/dialog";
-import { Empty, Pagination } from "@/components/ui/data-display";
-import { usdExact } from "@/lib/format";
-import type { Order } from "@/types/commerce";
 
-const PAGE_SIZE = 7;
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import {
+  CheckCircle2,
+  CreditCard,
+  MapPin,
+  PackageCheck,
+  Search,
+  ShoppingBag,
+  Truck,
+  XCircle,
+} from "lucide-react";
+import { useState } from "react";
+import { Badge, StatusBadge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Empty, Skeleton } from "@/components/ui/data-display";
+import { Modal } from "@/components/ui/dialog";
+import { useAuth } from "@/features/auth/auth-context";
+import { ApiError } from "@/lib/api-client";
+import { adminOrderApi } from "@/lib/commerce-api";
+import { formatDateTime, usdExact } from "@/lib/format";
+import type { OrderDto } from "@/types/api-commerce";
+
+const NEXT_STATUSES: Record<string, string[]> = {
+  CONFIRMED: ["PROCESSING", "SHIPPED"],
+  PROCESSING: ["SHIPPED"],
+  SHIPPED: ["DELIVERED"],
+  DELIVERED: [],
+  CANCELED: [],
+};
 
 export function Orders({
-  items,
   id,
-  save,
   notify,
 }: {
-  items: Order[];
   id?: string;
-  save: (items: Order[]) => void;
   notify: (message: string) => void;
 }) {
+  const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("order:write");
+  const canCancel = hasPermission("order:cancel");
+
   const [query, setQuery] = useState("");
-  const [fulfillmentFilter, setFulfillmentFilter] = useState("");
-  const [paymentFilter, setPaymentFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [shippingModal, setShippingModal] = useState(false);
-  const [paymentModal, setPaymentModal] = useState(false);
-  const [page, setPage] = useState(1);
+  const [cancelModal, setCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [actionError, setActionError] = useState("");
 
-  const order = items.find((item) => item.id === id);
+  const listQuery = useQuery({
+    queryKey: ["admin-orders", statusFilter],
+    queryFn: () => adminOrderApi.list(statusFilter || undefined),
+    enabled: !id,
+  });
 
-  if (order) {
-    const timeline = order.timeline || [
-      {
-        label: "Order placed",
-        detail: "Storefront order recorded",
-        timestamp: order.date,
-        kind: "placed" as const,
-      },
-      {
-        label: `Payment ${order.payment.toLowerCase()}`,
-        detail: usdExact(order.total),
-        timestamp: order.date,
-        kind: "payment" as const,
-      },
-    ];
+  const detailQuery = useQuery({
+    queryKey: ["admin-order", id],
+    queryFn: () => adminOrderApi.get(id!),
+    enabled: Boolean(id),
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: ({
+      orderId,
+      status,
+      trackingNumber,
+    }: {
+      orderId: string;
+      status: string;
+      trackingNumber?: string;
+    }) => adminOrderApi.updateStatus(orderId, { status, trackingNumber }),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-order", updated.id] });
+      queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+      setShippingModal(false);
+      setActionError("");
+      notify(`Order ${updated.orderNumber} updated to ${updated.status}`);
+    },
+    onError: (err) =>
+      setActionError(err instanceof ApiError ? err.message : "Failed to update order"),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: ({ orderId, reason }: { orderId: string; reason?: string }) =>
+      adminOrderApi.cancel(orderId, reason),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-order", updated.id] });
+      queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-inventory"] });
+      setCancelModal(false);
+      setCancelReason("");
+      setActionError("");
+      notify(`Order ${updated.orderNumber} canceled and stock restored`);
+    },
+    onError: (err) =>
+      setActionError(err instanceof ApiError ? err.message : "Failed to cancel order"),
+  });
+
+  if (id) {
+    if (detailQuery.isLoading) return <Skeleton rows={4} />;
+    if (detailQuery.isError || !detailQuery.data) {
+      return (
+        <Empty
+          title="Order not found"
+          text={
+            detailQuery.error instanceof ApiError
+              ? detailQuery.error.message
+              : "This order could not be loaded."
+          }
+          action={
+            <Link className="btn primary" href="/admin/orders">
+              Back to orders
+            </Link>
+          }
+        />
+      );
+    }
+
+    const order: OrderDto = detailQuery.data;
+    const validNext = NEXT_STATUSES[order.status.toUpperCase()] || [];
+    const allowCancel =
+      canCancel &&
+      order.status.toUpperCase() !== "DELIVERED" &&
+      order.status.toUpperCase() !== "CANCELED";
 
     return (
       <>
         <div className="admin-title">
           <div>
-            <h1>Order #{order.id}</h1>
-            <p>
-              Placed {order.date} · {order.customer}
-            </p>
+            <div className="button-row" style={{ marginBottom: 6 }}>
+              <Link href="/admin/orders" className="muted" style={{ fontSize: 12 }}>
+                ← All orders
+              </Link>
+              <StatusBadge status={order.paymentStatus} />
+              <StatusBadge status={order.status} />
+            </div>
+            <h1>Order {order.orderNumber}</h1>
+            <p>{formatDateTime(order.createdAt)}</p>
           </div>
           <div className="button-row">
-            <Button onClick={() => setPaymentModal(true)}>Update payment</Button>
-            <Button variant="primary" onClick={() => setShippingModal(true)}>
-              <Truck size={15} /> Update fulfillment
-            </Button>
+            {canWrite && validNext.length > 0 ? (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setActionError("");
+                  setShippingModal(true);
+                }}
+              >
+                <Truck size={15} /> Update fulfillment
+              </Button>
+            ) : null}
+            {allowCancel ? (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setActionError("");
+                  setCancelModal(true);
+                }}
+              >
+                <XCircle size={15} /> Cancel order
+              </Button>
+            ) : null}
           </div>
         </div>
 
-        <div className="admin-form-grid">
+        <div className="detail-grid">
           <div className="form-stack">
             <section className="panel form-stack">
-              <div className="section-title" style={{ padding: 0 }}>
-                <h2>Items & pricing</h2>
-                <div className="button-row">
-                  <StatusBadge status={order.payment} />
-                  <StatusBadge status={order.fulfillment} />
-                </div>
-              </div>
+              <h2>Line items</h2>
               {order.items.map((item) => (
-                <div key={item.name} className="line-item">
+                <div className="line-item" key={item.id}>
                   <span>
-                    <strong>{item.name}</strong>
-                    {item.sku ? (
-                      <code style={{ marginLeft: 8 }}>{item.sku}</code>
-                    ) : null}
+                    <strong>{item.productName}</strong> · {item.variantTitle}
+                    <code style={{ marginLeft: 8 }}>{item.sku}</code>
                     <small className="muted" style={{ marginLeft: 6 }}>
-                      × {item.qty}
+                      × {item.quantity}
                     </small>
                   </span>
-                  <strong>{usdExact(item.price * item.qty)}</strong>
+                  <strong>{usdExact(item.lineTotal)}</strong>
                 </div>
               ))}
-              {order.discountAmount ? (
+              {order.discountTotal > 0 ? (
                 <div className="line-item success">
-                  <span>Discount</span>
-                  <span>−{usdExact(order.discountAmount)}</span>
+                  <span>
+                    Discount {order.promotionCode ? `(${order.promotionCode})` : ""}
+                  </span>
+                  <span>−{usdExact(order.discountTotal)}</span>
                 </div>
               ) : null}
               <div className="line-item">
+                <span className="muted">Subtotal</span>
+                <span>{usdExact(order.subtotal)}</span>
+              </div>
+              <div className="line-item">
                 <span className="muted">Shipping</span>
-                <span>{order.shippingCost ? usdExact(order.shippingCost) : "Free"}</span>
+                <span>
+                  {order.shippingTotal > 0 ? usdExact(order.shippingTotal) : "Free"}
+                </span>
               </div>
               <div className="line-item">
                 <strong>Total</strong>
-                <strong style={{ fontSize: 16 }}>{usdExact(order.total)}</strong>
+                <strong style={{ fontSize: 16 }}>{usdExact(order.grandTotal)}</strong>
               </div>
             </section>
 
             <section className="panel form-stack">
               <h2>Order timeline</h2>
               <ol className="order-timeline">
-                {timeline.map((evt, idx) => (
+                {order.events.map((evt, idx) => (
                   <li key={idx}>
                     <span className="order-timeline-dot">
                       {evt.kind === "payment" ? (
@@ -121,7 +225,7 @@ export function Orders({
                     <div>
                       <strong>{evt.label}</strong>
                       <div className="muted" style={{ fontSize: 12 }}>
-                        {evt.detail} · {evt.timestamp}
+                        {evt.detail} · {formatDateTime(evt.createdAt)}
                       </div>
                     </div>
                   </li>
@@ -134,13 +238,13 @@ export function Orders({
             <section className="panel form-stack">
               <h2>Customer</h2>
               <div>
-                <strong style={{ display: "block" }}>{order.customer}</strong>
+                <strong style={{ display: "block" }}>{order.customerName}</strong>
                 <a
-                  href={`mailto:${order.email}`}
+                  href={`mailto:${order.customerEmail}`}
                   className="muted"
                   style={{ fontSize: 12.5 }}
                 >
-                  {order.email}
+                  {order.customerEmail}
                 </a>
               </div>
               {order.shippingAddress ? (
@@ -148,7 +252,11 @@ export function Orders({
                   <strong className="inline-label" style={{ marginBottom: 3 }}>
                     <MapPin size={13} /> Shipping address
                   </strong>
-                  <p className="muted">{order.shippingAddress}</p>
+                  <p className="muted">
+                    {order.shippingAddress.line1}, {order.shippingAddress.city}
+                    {order.shippingAddress.state ? `, ${order.shippingAddress.state}` : ""}{" "}
+                    {order.shippingAddress.postalCode} {order.shippingAddress.country}
+                  </p>
                 </div>
               ) : null}
             </section>
@@ -156,11 +264,15 @@ export function Orders({
             <section className="panel form-stack">
               <h2>Shipment</h2>
               <div>
-                <StatusBadge status={order.fulfillment} />
+                <StatusBadge status={order.fulfillmentStatus} />
               </div>
               <p className="muted" style={{ fontSize: 12.5 }}>
                 Tracking:{" "}
-                {order.tracking ? <code>{order.tracking}</code> : "Not assigned yet"}
+                {order.trackingNumber ? (
+                  <code>{order.trackingNumber}</code>
+                ) : (
+                  "Not assigned yet"
+                )}
               </p>
             </section>
           </aside>
@@ -169,121 +281,95 @@ export function Orders({
         {shippingModal ? (
           <Modal
             title="Update fulfillment & tracking"
-            description="Record shipment progress and notify the order timeline."
+            description="Advance order status along validated fulfillment transitions."
             close={() => setShippingModal(false)}
           >
             <form
               className="form-stack"
               onSubmit={(e) => {
                 e.preventDefault();
-                const fields = new FormData(e.currentTarget);
-                const nextStatus = String(fields.get("status"));
-                const nextTracking = String(fields.get("tracking"));
-                save(
-                  items.map((item) =>
-                    item.id === order.id
-                      ? {
-                          ...item,
-                          fulfillment: nextStatus,
-                          tracking: nextTracking,
-                          timeline: [
-                            ...(item.timeline || timeline),
-                            {
-                              label: `Marked as ${nextStatus}`,
-                              detail: nextTracking
-                                ? `Tracking ${nextTracking}`
-                                : "Fulfillment updated",
-                              timestamp: new Date()
-                                .toISOString()
-                                .slice(0, 16)
-                                .replace("T", " "),
-                              kind: "fulfillment",
-                            },
-                          ],
-                        }
-                      : item
-                  )
-                );
-                setShippingModal(false);
-                notify("Fulfillment updated");
+                const fd = new FormData(e.currentTarget);
+                updateStatusMutation.mutate({
+                  orderId: order.id,
+                  status: String(fd.get("status") || validNext[0]),
+                  trackingNumber: String(fd.get("trackingNumber") || "").trim(),
+                });
               }}
             >
               <label>
-                Fulfillment status
-                <select name="status" defaultValue={order.fulfillment}>
-                  <option>Unfulfilled</option>
-                  <option>Processing</option>
-                  <option>Shipped</option>
-                  <option>Delivered</option>
+                Next status
+                <select name="status" defaultValue={validNext[0]}>
+                  {validNext.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>
                 Tracking number
                 <input
-                  name="tracking"
-                  defaultValue={order.tracking}
-                  placeholder="DEMO-765001"
+                  name="trackingNumber"
+                  defaultValue={order.trackingNumber || ""}
+                  placeholder="1Z999AA10123456784"
                 />
               </label>
+              {actionError ? (
+                <p className="danger" role="alert">
+                  {actionError}
+                </p>
+              ) : null}
               <div className="modal-actions">
                 <Button onClick={() => setShippingModal(false)}>Cancel</Button>
-                <Button type="submit" variant="primary">
-                  Save shipment
+                <Button
+                  variant="primary"
+                  type="submit"
+                  disabled={updateStatusMutation.isPending}
+                >
+                  Save fulfillment
                 </Button>
               </div>
             </form>
           </Modal>
         ) : null}
 
-        {paymentModal ? (
+        {cancelModal ? (
           <Modal
-            title="Update payment status"
-            description="Record payment capture or refund for this order."
-            close={() => setPaymentModal(false)}
+            title={`Cancel ${order.orderNumber}?`}
+            description="Canceling marks payment as REFUNDED and immediately restores reserved stock."
+            close={() => setCancelModal(false)}
           >
             <form
               className="form-stack"
               onSubmit={(e) => {
                 e.preventDefault();
-                const nextPay = String(new FormData(e.currentTarget).get("payment"));
-                save(
-                  items.map((item) =>
-                    item.id === order.id
-                      ? {
-                          ...item,
-                          payment: nextPay,
-                          timeline: [
-                            ...(item.timeline || timeline),
-                            {
-                              label: `Payment ${nextPay.toLowerCase()}`,
-                              detail: usdExact(order.total),
-                              timestamp: new Date()
-                                .toISOString()
-                                .slice(0, 16)
-                                .replace("T", " "),
-                              kind: "payment",
-                            },
-                          ],
-                        }
-                      : item
-                  )
-                );
-                setPaymentModal(false);
-                notify("Payment status updated");
+                cancelMutation.mutate({
+                  orderId: order.id,
+                  reason: cancelReason.trim() || undefined,
+                });
               }}
             >
               <label>
-                Payment status
-                <select name="payment" defaultValue={order.payment}>
-                  <option>Paid</option>
-                  <option>Pending</option>
-                  <option>Refunded</option>
-                </select>
+                Cancellation reason
+                <input
+                  value={cancelReason}
+                  placeholder="Customer requested cancel"
+                  onChange={(e) => setCancelReason(e.target.value)}
+                />
               </label>
+              {actionError ? (
+                <p className="danger" role="alert">
+                  {actionError}
+                </p>
+              ) : null}
               <div className="modal-actions">
-                <Button onClick={() => setPaymentModal(false)}>Cancel</Button>
-                <Button type="submit" variant="primary">
-                  Save payment
+                <Button onClick={() => setCancelModal(false)}>Keep order</Button>
+                <Button
+                  variant="destructive"
+                  type="submit"
+                  disabled={cancelMutation.isPending}
+                >
+                  Confirm cancel & refund
                 </Button>
               </div>
             </form>
@@ -293,27 +379,24 @@ export function Orders({
     );
   }
 
-  const rows = items.filter((item) => {
-    if (fulfillmentFilter && item.fulfillment !== fulfillmentFilter) return false;
-    if (paymentFilter && item.payment !== paymentFilter) return false;
+  const orders: OrderDto[] = (listQuery.data || []).filter((o) => {
     if (!query.trim()) return true;
-    return [item.customer, item.email, item.id, item.tracking]
-      .join(" ")
-      .toLowerCase()
-      .includes(query.trim().toLowerCase());
+    const q = query.trim().toLowerCase();
+    return (
+      o.orderNumber.toLowerCase().includes(q) ||
+      o.customerName.toLowerCase().includes(q) ||
+      o.customerEmail.toLowerCase().includes(q)
+    );
   });
-
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const displayed = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <>
       <div className="admin-title">
         <div>
           <h1>Orders</h1>
-          <p>Monitor payments, fulfillment stages, and customer shipments.</p>
+          <p>Track payments, advance fulfillment state, and process cancellations.</p>
         </div>
+        <Badge tone="accent">{orders.length} orders</Badge>
       </div>
 
       <div className="admin-table-panel">
@@ -321,80 +404,66 @@ export function Orders({
           <label className="search-field">
             <Search size={15} />
             <input
-              aria-label="Find orders"
-              placeholder="Search by order #, customer, email…"
+              aria-label="Search orders"
+              placeholder="Search order #, customer, or email…"
               value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setQuery(e.target.value)}
             />
           </label>
           <select
-            aria-label="Payment status"
-            value={paymentFilter}
-            onChange={(e) => {
-              setPaymentFilter(e.target.value);
-              setPage(1);
-            }}
+            aria-label="Filter by status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
           >
-            <option value="">All payments</option>
-            <option>Paid</option>
-            <option>Pending</option>
-            <option>Refunded</option>
-          </select>
-          <select
-            aria-label="Fulfillment status"
-            value={fulfillmentFilter}
-            onChange={(e) => {
-              setFulfillmentFilter(e.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="">All fulfillment</option>
-            <option>Unfulfilled</option>
-            <option>Processing</option>
-            <option>Shipped</option>
-            <option>Delivered</option>
+            <option value="">All statuses</option>
+            <option value="CONFIRMED">Confirmed</option>
+            <option value="PROCESSING">Processing</option>
+            <option value="SHIPPED">Shipped</option>
+            <option value="DELIVERED">Delivered</option>
+            <option value="CANCELED">Canceled</option>
           </select>
         </div>
 
-        {displayed.length ? (
+        {listQuery.isLoading ? (
+          <Skeleton rows={4} />
+        ) : orders.length ? (
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
                   <th>Order</th>
-                  <th>Date</th>
                   <th>Customer</th>
-                  <th>Items</th>
+                  <th>Date</th>
                   <th>Payment</th>
-                  <th>Fulfillment</th>
+                  <th>Status</th>
+                  <th>Items</th>
                   <th>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {displayed.map((row) => (
-                  <tr key={row.id}>
+                {orders.map((order) => (
+                  <tr key={order.id}>
                     <td>
-                      <Link href={`/admin/orders/${row.id}`}>
-                        <strong>#{row.id}</strong>
+                      <Link href={`/admin/orders/${order.id}`}>
+                        <strong>{order.orderNumber}</strong>
                       </Link>
                     </td>
-                    <td>{row.date}</td>
                     <td>
-                      <div>{row.customer}</div>
-                      <small className="muted">{row.email}</small>
+                      <span style={{ display: "block" }}>{order.customerName}</span>
+                      <span className="muted" style={{ fontSize: 11.5 }}>
+                        {order.customerEmail}
+                      </span>
                     </td>
-                    <td>{row.items.reduce((sum, i) => sum + i.qty, 0)} items</td>
+                    <td>{formatDateTime(order.createdAt)}</td>
                     <td>
-                      <StatusBadge status={row.payment} />
-                    </td>
-                    <td>
-                      <StatusBadge status={row.fulfillment} />
+                      <StatusBadge status={order.paymentStatus} />
                     </td>
                     <td>
-                      <strong>{usdExact(row.total)}</strong>
+                      <StatusBadge status={order.status} />
+                    </td>
+                    <td>{order.items.reduce((s, l) => s + l.quantity, 0)}</td>
+                    <td>
+                      <strong>{usdExact(order.grandTotal)}</strong>
                     </td>
                   </tr>
                 ))}
@@ -403,19 +472,11 @@ export function Orders({
           </div>
         ) : (
           <Empty
-            title="No matching orders"
-            text="Adjust your search query or status filters."
+            icon={<ShoppingBag size={22} />}
+            title="No orders match"
+            text="Orders placed on the public storefront will appear here."
           />
         )}
-
-        <div className="table-footer">
-          <Pagination
-            page={safePage}
-            totalItems={rows.length}
-            pageSize={PAGE_SIZE}
-            onPageChange={setPage}
-          />
-        </div>
       </div>
     </>
   );

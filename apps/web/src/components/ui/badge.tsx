@@ -30,7 +30,9 @@ export function StatusBadge({ status }: { status: string }) {
   const lower = status.toLowerCase();
   const tone: BadgeTone =
     lower === "paid" ||
+    lower === "captured" ||
     lower === "delivered" ||
+    lower === "fulfilled" ||
     lower === "active" ||
     lower === "completed" ||
     lower === "published" ||
@@ -40,10 +42,13 @@ export function StatusBadge({ status }: { status: string }) {
           lower === "processing" ||
           lower === "shipped" ||
           lower === "low stock" ||
-          lower === "draft"
+          lower === "draft" ||
+          lower === "paused"
         ? "amber"
         : lower === "failed" ||
             lower === "refunded" ||
+            lower === "canceled" ||
+            lower === "cancelled" ||
             lower === "out of stock" ||
             lower === "unsaved changes"
           ? "red"

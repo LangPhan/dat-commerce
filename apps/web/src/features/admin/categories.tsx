@@ -1,65 +1,128 @@
 "use client";
-import Link from "next/link";
-import { ArrowRight, ChevronDown, ChevronRight, Folder, Plus, Sparkles, Trash2 } from "lucide-react";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, ChevronRight, Folder, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Empty, Skeleton } from "@/components/ui/data-display";
 import { ConfirmDialog, Modal } from "@/components/ui/dialog";
-import { Empty } from "@/components/ui/data-display";
-import { newId } from "@/lib/format";
-import type { Attribute, Category, Product } from "@/types/commerce";
+import { useAuth } from "@/features/auth/auth-context";
+import { ApiError } from "@/lib/api-client";
+import { adminCatalogApi } from "@/lib/commerce-api";
+import { slugify } from "@/lib/format";
+import type { CategoryDto, ProductTypeDto } from "@/types/api-commerce";
 
-export function CategoryManager({
-  categories,
-  save,
-  products,
-  updateProducts,
-  attributes,
-  notify,
-}: {
-  categories: Category[];
-  save: (next: Category[]) => void;
-  products: Product[];
-  updateProducts: (next: Product[]) => void;
-  attributes: Attribute[];
-  notify: (message: string) => void;
-}) {
-  const [current, setCurrent] = useState(categories[0]?.id || "");
+type CategoryForm = {
+  id?: string;
+  name: string;
+  slug: string;
+  parentId: string;
+  description: string;
+  seoDescription: string;
+  imageUrl: string;
+  defaultProductTypeId: string;
+};
+
+export function CategoryManager({ notify }: { notify: (message: string) => void }) {
+  const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("catalog:write");
+
+  const [selectedId, setSelectedId] = useState<string>("");
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
-  const [editor, setEditor] = useState<Category | null>(null);
-  const [assign, setAssign] = useState<string[] | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [modalDraft, setModalDraft] = useState<CategoryForm | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<CategoryDto | null>(null);
   const [error, setError] = useState("");
 
-  const selected =
-    categories.find((category) => category.id === current) || categories[0];
-  const assigned = selected
-    ? products.filter((product) => product.category === selected.name)
-    : [];
-  const matchingAttrs = selected
-    ? attributes.filter(
-        (attr) =>
-          attr.productType === "All products" ||
-          attr.productType === selected.name
-      )
-    : [];
+  const categoriesQuery = useQuery({
+    queryKey: ["admin-categories"],
+    queryFn: () => adminCatalogApi.listCategories(),
+  });
 
-  function renderTree(parent: string, depth = 0): React.ReactNode {
-    if (depth > categories.length) return null;
+  const typesQuery = useQuery({
+    queryKey: ["admin-product-types"],
+    queryFn: () => adminCatalogApi.listProductTypes(),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (form: CategoryForm) =>
+      adminCatalogApi.createCategory({
+        name: form.name.trim(),
+        slug: form.slug.trim() || undefined,
+        parentId: form.parentId || null,
+        description: form.description.trim() || undefined,
+        seoDescription: form.seoDescription.trim() || undefined,
+        imageUrl: form.imageUrl.trim() || undefined,
+        defaultProductTypeId: form.defaultProductTypeId || null,
+      }),
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
+      setModalDraft(null);
+      setSelectedId(created.id);
+      notify("Category created");
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : "Failed to create category"),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, form }: { id: string; form: CategoryForm }) =>
+      adminCatalogApi.updateCategory(id, {
+        name: form.name.trim(),
+        slug: form.slug.trim() || undefined,
+        parentId: form.parentId || null,
+        clearParent: !form.parentId,
+        description: form.description.trim(),
+        seoDescription: form.seoDescription.trim(),
+        imageUrl: form.imageUrl.trim() || undefined,
+        defaultProductTypeId: form.defaultProductTypeId || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
+      setModalDraft(null);
+      notify("Category saved");
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : "Failed to update category"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (categoryId: string) => adminCatalogApi.deleteCategory(categoryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
+      setConfirmDelete(null);
+      setSelectedId("");
+      notify("Category removed");
+    },
+    onError: (err) => {
+      setConfirmDelete(null);
+      notify(err instanceof ApiError ? err.message : "Failed to delete category");
+    },
+  });
+
+  const categories: CategoryDto[] = categoriesQuery.data || [];
+  const productTypes: ProductTypeDto[] = typesQuery.data || [];
+  const selected = categories.find((c) => c.id === selectedId) || categories[0];
+
+  const defaultTypeForSelected = selected?.defaultProductTypeId
+    ? productTypes.find((pt) => pt.id === selected.defaultProductTypeId)
+    : undefined;
+
+  function renderTree(parentId: string | null, depth = 0): React.ReactNode {
+    if (depth > categories.length + 1) return null;
     return categories
-      .filter((item) => item.parent === parent)
+      .filter((item) => (item.parentId || null) === parentId)
       .map((item) => {
-        const children = categories.filter((c) => c.parent === item.id);
+        const children = categories.filter((c) => (c.parentId || null) === item.id);
         const isCollapsed = collapsedIds.includes(item.id);
-        const count = products.filter((p) => p.category === item.name).length;
-
         return (
           <div key={item.id}>
             <button
               type="button"
               className={"category-node " + (selected?.id === item.id ? "active" : "")}
               style={{ paddingLeft: 10 + depth * 18 }}
-              onClick={() => setCurrent(item.id)}
+              onClick={() => setSelectedId(item.id)}
             >
               {children.length ? (
                 <span
@@ -67,7 +130,7 @@ export function CategoryManager({
                     e.stopPropagation();
                     setCollapsedIds((prev) =>
                       isCollapsed
-                        ? prev.filter((idVal) => idVal !== item.id)
+                        ? prev.filter((v) => v !== item.id)
                         : [...prev, item.id]
                     );
                   }}
@@ -78,7 +141,7 @@ export function CategoryManager({
                 <Folder size={13} />
               )}
               <span>{item.name}</span>
-              <small>{count}</small>
+              <small>{item.productCount}</small>
             </button>
             {!isCollapsed ? renderTree(item.id, depth + 1) : null}
           </div>
@@ -91,329 +154,318 @@ export function CategoryManager({
       <div className="admin-title">
         <div>
           <h1>Categories</h1>
-          <p>Organize hierarchical categories, assigned products, and attribute schemas.</p>
+          <p>
+            Organize catalog hierarchy, SEO copy, and default product type bindings.
+          </p>
         </div>
-        <Button
-          variant="primary"
-          onClick={() => {
-            setError("");
-            setEditor({ id: "", name: "", parent: "", description: "", seoDescription: "", image: "" });
-          }}
-        >
-          <Plus size={15} /> New category
-        </Button>
+        {canWrite ? (
+          <Button
+            variant="primary"
+            onClick={() => {
+              setError("");
+              setModalDraft({
+                name: "",
+                slug: "",
+                parentId: selected?.id || "",
+                description: "",
+                seoDescription: "",
+                imageUrl: "/media/terrain-fallback.jpg",
+                defaultProductTypeId: productTypes[0]?.id || "",
+              });
+            }}
+          >
+            <Plus size={15} /> Add category
+          </Button>
+        ) : null}
       </div>
 
-      <div className="admin-split">
-        <aside className="panel">
-          <h2 style={{ marginBottom: 8 }}>Category tree</h2>
-          {renderTree("")}
-        </aside>
+      {categoriesQuery.isLoading ? (
+        <Skeleton rows={4} />
+      ) : !categories.length ? (
+        <Empty
+          title="No categories yet"
+          text="Create your first category to structure the storefront catalog."
+        />
+      ) : (
+        <div className="category-grid">
+          <div className="panel category-tree">{renderTree(null)}</div>
 
-        {selected ? (
-          <section className="panel category-detail form-stack">
-            <div className="section-title" style={{ padding: 0 }}>
-              <div>
+          {selected ? (
+            <form
+              key={selected.id}
+              className="panel form-stack"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!canWrite) return;
+                const fd = new FormData(e.currentTarget);
+                updateMutation.mutate({
+                  id: selected.id,
+                  form: {
+                    name: String(fd.get("name") || ""),
+                    slug: String(fd.get("slug") || ""),
+                    parentId: String(fd.get("parentId") || ""),
+                    description: String(fd.get("description") || ""),
+                    seoDescription: String(fd.get("seoDescription") || ""),
+                    imageUrl: String(fd.get("imageUrl") || ""),
+                    defaultProductTypeId: String(fd.get("defaultProductTypeId") || ""),
+                  },
+                });
+              }}
+            >
+              <div className="section-title">
                 <h2>{selected.name}</h2>
-                {selected.parent ? (
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    Parent: {categories.find((c) => c.id === selected.parent)?.name}
-                  </span>
-                ) : null}
+                <Badge tone="accent">{selected.productCount} products</Badge>
               </div>
-              <div className="button-row">
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setEditor(selected);
-                    setError("");
-                  }}
-                >
-                  Edit category
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  aria-label="Delete category"
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
-            </div>
 
-            {selected.image ? <img src={selected.image} alt={selected.name} /> : null}
-            <p>{selected.description || "No storefront description yet."}</p>
-            {selected.seoDescription ? (
-              <div className="seo-preview">
-                <span className="seo-preview-url">Category SEO summary</span>
-                <span className="seo-preview-desc">{selected.seoDescription}</span>
+              <div className="field-row">
+                <label>
+                  Name
+                  <input
+                    name="name"
+                    required
+                    disabled={!canWrite}
+                    defaultValue={selected.name}
+                  />
+                </label>
+                <label>
+                  Slug
+                  <input
+                    name="slug"
+                    required
+                    disabled={!canWrite}
+                    defaultValue={selected.slug}
+                  />
+                </label>
               </div>
-            ) : null}
 
-            <div className="section-title">
-              <h3>Assigned products ({assigned.length})</h3>
-              <Button
-                size="sm"
-                onClick={() => setAssign(assigned.map((p) => p.id))}
-              >
-                Assign products
-              </Button>
-            </div>
-            {assigned.length ? (
-              <div>
-                {assigned.map((product) => (
-                  <Link
-                    className="dash-product"
-                    href={`/admin/products/${product.id}`}
-                    key={product.id}
+              <div className="field-row">
+                <label>
+                  Parent category
+                  <select
+                    name="parentId"
+                    disabled={!canWrite}
+                    defaultValue={selected.parentId || ""}
                   >
-                    <img src={product.image} alt="" />
-                    <strong>{product.name}</strong>
-                    <small>{product.stock} in stock</small>
-                  </Link>
-                ))}
+                    <option value="">Top-level root</option>
+                    {categories
+                      .filter((c) => c.id !== selected.id)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  Default product type
+                  <select
+                    name="defaultProductTypeId"
+                    disabled={!canWrite}
+                    defaultValue={selected.defaultProductTypeId || ""}
+                  >
+                    <option value="">None</option>
+                    {productTypes.map((pt) => (
+                      <option key={pt.id} value={pt.id}>
+                        {pt.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
-            ) : (
-              <p className="muted" style={{ fontSize: 12.5 }}>
-                No products assigned to {selected.name} yet.
-              </p>
-            )}
 
-            <div className="section-title">
-              <h3>Attribute configuration ({matchingAttrs.length})</h3>
-              <Link href="/admin/attributes">
-                Configure attributes <ArrowRight size={13} />
-              </Link>
-            </div>
-            <div className="button-row">
-              {matchingAttrs.length ? (
-                matchingAttrs.map((attr) => (
-                  <Badge key={attr.id} tone="accent">
-                    {attr.name} · {attr.type}
-                  </Badge>
-                ))
-              ) : (
-                <span className="muted" style={{ fontSize: 12.5 }}>
-                  No attributes configured for this product type.
-                </span>
-              )}
-            </div>
-          </section>
-        ) : (
-          <Empty
-            title="No categories"
-            text="Create a category to organize products and dynamic filters."
-          />
-        )}
-      </div>
+              <label>
+                Category image URL
+                <input
+                  name="imageUrl"
+                  disabled={!canWrite}
+                  defaultValue={selected.imageUrl || ""}
+                />
+              </label>
 
-      {editor ? (
+              <label>
+                Description
+                <textarea
+                  name="description"
+                  rows={2}
+                  disabled={!canWrite}
+                  defaultValue={selected.description || ""}
+                />
+              </label>
+
+              <label>
+                SEO meta description
+                <textarea
+                  name="seoDescription"
+                  rows={2}
+                  disabled={!canWrite}
+                  defaultValue={selected.seoDescription || ""}
+                />
+              </label>
+
+              {defaultTypeForSelected ? (
+                <div className="panel" style={{ padding: 12 }}>
+                  <strong style={{ fontSize: 12.5 }}>
+                    Bound attributes via {defaultTypeForSelected.name}
+                  </strong>
+                  <div className="button-row" style={{ marginTop: 8 }}>
+                    {defaultTypeForSelected.attributes.map((attr) => (
+                      <Badge key={attr.attributeDefinitionId} tone="accent">
+                        {attr.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {canWrite ? (
+                <div className="button-row">
+                  <Button
+                    variant="primary"
+                    type="submit"
+                    disabled={updateMutation.isPending}
+                  >
+                    Save category
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => setConfirmDelete(selected)}
+                  >
+                    <Trash2 size={14} /> Delete
+                  </Button>
+                </div>
+              ) : null}
+            </form>
+          ) : null}
+        </div>
+      )}
+
+      {modalDraft ? (
         <Modal
-          title={editor.id ? "Edit category" : "New category"}
-          description="Set hierarchy, imagery, and storefront SEO copy."
-          close={() => setEditor(null)}
+          title="New category"
+          description="Create a storefront category node and optionally link a default product type."
+          close={() => setModalDraft(null)}
         >
           <form
             className="form-stack"
             onSubmit={(e) => {
               e.preventDefault();
-              const cleanName = editor.name.trim();
-              if (
-                categories.some(
-                  (item) =>
-                    item.name.toLowerCase() === cleanName.toLowerCase() &&
-                    item.id !== editor.id
-                )
-              ) {
-                setError("A category with this name already exists.");
+              setError("");
+              if (!modalDraft.name.trim()) {
+                setError("Category name is required.");
                 return;
               }
-              const next: Category = {
-                ...editor,
-                name: cleanName,
-                id: editor.id || newId(),
-              };
-              if (editor.id) {
-                let parent = next.parent;
-                while (parent) {
-                  if (parent === editor.id) {
-                    setError("Choose a parent outside this category's descendants.");
-                    return;
-                  }
-                  parent = categories.find((item) => item.id === parent)?.parent || "";
-                }
-                const old = categories.find((item) => item.id === editor.id);
-                if (old && old.name !== next.name) {
-                  updateProducts(
-                    products.map((item) =>
-                      item.category === old.name ? { ...item, category: next.name } : item
-                    )
-                  );
-                }
-              }
-              save(
-                editor.id
-                  ? categories.map((item) => (item.id === editor.id ? next : item))
-                  : [...categories, next]
-              );
-              setCurrent(next.id);
-              setEditor(null);
-              notify("Category saved");
+              createMutation.mutate(modalDraft);
             }}
           >
-            <label>
-              Name
-              <input
-                required
-                value={editor.name}
-                onChange={(e) => setEditor({ ...editor, name: e.target.value })}
-              />
-            </label>
-            <label>
-              Parent category
-              <select
-                value={editor.parent}
-                onChange={(e) => setEditor({ ...editor, parent: e.target.value })}
-              >
-                <option value="">Top-level category</option>
-                {categories
-                  .filter((item) => item.id !== editor.id)
-                  .map((item) => (
-                    <option value={item.id} key={item.id}>
-                      {item.name}
+            <div className="field-row">
+              <label>
+                Name
+                <input
+                  required
+                  value={modalDraft.name}
+                  placeholder="Trail Packs"
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    setModalDraft((prev) =>
+                      prev ? { ...prev, name, slug: slugify(name) } : null
+                    );
+                  }}
+                />
+              </label>
+              <label>
+                Slug
+                <input
+                  value={modalDraft.slug}
+                  placeholder="trail-packs"
+                  onChange={(e) =>
+                    setModalDraft((prev) =>
+                      prev ? { ...prev, slug: slugify(e.target.value) } : null
+                    )
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="field-row">
+              <label>
+                Parent
+                <select
+                  value={modalDraft.parentId}
+                  onChange={(e) =>
+                    setModalDraft((prev) =>
+                      prev ? { ...prev, parentId: e.target.value } : null
+                    )
+                  }
+                >
+                  <option value="">Top-level root</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
                     </option>
                   ))}
-              </select>
-            </label>
-            <label>
-              Image URL
-              <input
-                value={editor.image}
-                placeholder="/media/shoe-olive.jpg"
-                onChange={(e) => setEditor({ ...editor, image: e.target.value })}
-              />
-            </label>
+                </select>
+              </label>
+              <label>
+                Default product type
+                <select
+                  value={modalDraft.defaultProductTypeId}
+                  onChange={(e) =>
+                    setModalDraft((prev) =>
+                      prev ? { ...prev, defaultProductTypeId: e.target.value } : null
+                    )
+                  }
+                >
+                  <option value="">None</option>
+                  {productTypes.map((pt) => (
+                    <option key={pt.id} value={pt.id}>
+                      {pt.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
             <label>
               Description
               <textarea
                 rows={2}
-                value={editor.description}
+                value={modalDraft.description}
                 onChange={(e) =>
-                  setEditor({ ...editor, description: e.target.value })
+                  setModalDraft((prev) =>
+                    prev ? { ...prev, description: e.target.value } : null
+                  )
                 }
               />
             </label>
-            <label>
-              SEO description
-              <textarea
-                rows={2}
-                value={editor.seoDescription || ""}
-                onChange={(e) =>
-                  setEditor({ ...editor, seoDescription: e.target.value })
-                }
-              />
-            </label>
-            <div>
-              <Button
-                size="sm"
-                onClick={() =>
-                  setEditor({
-                    ...editor,
-                    seoDescription: `Explore ${editor.name || "our"} essentials crafted for durability, precision specs, and fast delivery on Terrain Supply.`,
-                  })
-                }
-              >
-                <Sparkles size={13} /> Generate SEO description
-              </Button>
-            </div>
+
             {error ? (
-              <p role="alert" className="danger">
+              <p className="danger" role="alert">
                 {error}
               </p>
             ) : null}
+
             <div className="modal-actions">
-              <Button onClick={() => setEditor(null)}>Cancel</Button>
-              <Button type="submit" variant="primary">
-                Save category
+              <Button onClick={() => setModalDraft(null)}>Cancel</Button>
+              <Button
+                variant="primary"
+                type="submit"
+                disabled={createMutation.isPending}
+              >
+                Create category
               </Button>
             </div>
           </form>
         </Modal>
       ) : null}
 
-      {assign && selected ? (
-        <Modal
-          title={`Assign products to ${selected.name}`}
-          description="Checked products move into this category; unchecked items from this category become Uncategorized."
-          close={() => setAssign(null)}
-        >
-          <div className="form-stack" style={{ maxHeight: "45dvh", overflow: "auto" }}>
-            {products.map((product) => (
-              <label className="check-label" key={product.id}>
-                <input
-                  type="checkbox"
-                  checked={assign.includes(product.id)}
-                  onChange={(e) =>
-                    setAssign(
-                      e.target.checked
-                        ? [...assign, product.id]
-                        : assign.filter((idVal) => idVal !== product.id)
-                    )
-                  }
-                />
-                <span>
-                  {product.name} <small className="muted">({product.category})</small>
-                </span>
-              </label>
-            ))}
-          </div>
-          <div className="modal-actions">
-            <Button onClick={() => setAssign(null)}>Cancel</Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                updateProducts(
-                  products.map((item) =>
-                    assign.includes(item.id)
-                      ? { ...item, category: selected.name }
-                      : item.category === selected.name
-                        ? { ...item, category: "Uncategorized" }
-                        : item
-                  )
-                );
-                setAssign(null);
-                notify("Product assignments saved");
-              }}
-            >
-              Save assignments
-            </Button>
-          </div>
-        </Modal>
-      ) : null}
-
-      {confirmDelete && selected ? (
+      {confirmDelete ? (
         <ConfirmDialog
-          title={`Delete category "${selected.name}"?`}
-          description="Products currently in this category will remain in your catalog as Uncategorized."
+          title={`Delete ${confirmDelete.name}?`}
+          description="Product links to this category will be unlinked cleanly."
           confirmLabel="Delete category"
           destructive
-          onCancel={() => setConfirmDelete(false)}
-          onConfirm={() => {
-            save(
-              categories
-                .filter((c) => c.id !== selected.id)
-                .map((c) => (c.parent === selected.id ? { ...c, parent: "" } : c))
-            );
-            updateProducts(
-              products.map((p) =>
-                p.category === selected.name ? { ...p, category: "Uncategorized" } : p
-              )
-            );
-            setConfirmDelete(false);
-            setCurrent("");
-            notify("Category deleted");
-          }}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => deleteMutation.mutate(confirmDelete.id)}
         />
       ) : null}
     </>

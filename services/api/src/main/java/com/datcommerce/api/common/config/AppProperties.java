@@ -10,6 +10,7 @@ public class AppProperties {
     private Cookie cookie = new Cookie();
     private Seed seed = new Seed();
     private Cors cors = new Cors();
+    private Storage storage = new Storage();
 
     public Jwt getJwt() {
         return jwt;
@@ -41,6 +42,14 @@ public class AppProperties {
 
     public void setCors(Cors cors) {
         this.cors = cors;
+    }
+
+    public Storage getStorage() {
+        return storage;
+    }
+
+    public void setStorage(Storage storage) {
+        this.storage = storage;
     }
 
     public static class Jwt {
@@ -124,6 +133,63 @@ public class AppProperties {
 
         public void setAllowedOrigins(List<String> allowedOrigins) {
             this.allowedOrigins = allowedOrigins;
+        }
+    }
+
+    public static class Storage {
+        private String endpoint = "http://localhost:9000";
+        private String accessKey = "datcommerce";
+        private String secretKey = "change_me_silo_password";
+        private String bucket = "dat-commerce-media";
+        private String region = "us-east-1";
+        private String publicUrlPrefix = "/storage";
+
+        public String getEndpoint() {
+            return endpoint;
+        }
+
+        public void setEndpoint(String endpoint) {
+            this.endpoint = endpoint;
+        }
+
+        public String getAccessKey() {
+            return accessKey;
+        }
+
+        public void setAccessKey(String accessKey) {
+            this.accessKey = accessKey;
+        }
+
+        public String getSecretKey() {
+            return secretKey;
+        }
+
+        public void setSecretKey(String secretKey) {
+            this.secretKey = secretKey;
+        }
+
+        public String getBucket() {
+            return bucket;
+        }
+
+        public void setBucket(String bucket) {
+            this.bucket = bucket;
+        }
+
+        public String getRegion() {
+            return region;
+        }
+
+        public void setRegion(String region) {
+            this.region = region;
+        }
+
+        public String getPublicUrlPrefix() {
+            return publicUrlPrefix;
+        }
+
+        public void setPublicUrlPrefix(String publicUrlPrefix) {
+            this.publicUrlPrefix = publicUrlPrefix;
         }
     }
 }

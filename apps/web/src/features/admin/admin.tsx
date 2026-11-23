@@ -1,4 +1,5 @@
 "use client";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Empty, Skeleton } from "@/components/ui/data-display";
@@ -11,26 +12,17 @@ import {
   initialCategories,
   initialProducts,
 } from "@/mocks/catalog";
-import {
-  initialActivity,
-  initialDiscounts,
-  initialOrders,
-} from "@/mocks/operations";
+import { initialActivity, initialDiscounts } from "@/mocks/operations";
 import { initialBlocks } from "@/mocks/pages";
 import type { AIActivityEntry, Snapshot } from "@/types/ai";
-import type {
-  Attribute,
-  Category,
-  Discount,
-  Order,
-  Product,
-} from "@/types/commerce";
+import type { Attribute, Category, Discount, Product } from "@/types/commerce";
 import type { Block } from "@/types/editor";
 import { Attributes } from "./attributes";
 import { AuditLogsView } from "./audit-logs";
 import { CategoryManager } from "./categories";
 import { Dashboard } from "./dashboard";
 import { Orders } from "./orders";
+import { ProductTypesManager } from "./product-types";
 import { Catalog } from "./products";
 import { Promotions } from "./promotions";
 import { AdminShell, navigation } from "./shell";
@@ -40,10 +32,7 @@ import { UtilityPage } from "./utility";
 
 function AdminWorkspace({ route }: { route: string[] }) {
   const [view = "", id, subView] = route;
-  const [catalog, setCatalog, ready] = useStored<Product[]>(
-    "catalog",
-    initialProducts
-  );
+  const [catalog, setCatalog] = useStored<Product[]>("catalog", initialProducts);
   const [categories, setCategories] = useStored<Category[]>(
     "categories",
     initialCategories
@@ -56,16 +45,12 @@ function AdminWorkspace({ route }: { route: string[] }) {
     "discounts",
     initialDiscounts
   );
-  const [orderList, setOrders] = useStored<Order[]>("orders", initialOrders);
-  const [draftBlocks, setDraftBlocks] = useStored<Block[]>(
-    "draft",
-    initialBlocks
-  );
+  const [draftBlocks, setDraftBlocks] = useStored<Block[]>("draft", initialBlocks);
   const [activity, setActivity] = useStored<AIActivityEntry[]>(
     "ai-activity",
     initialActivity
   );
-  const [theme, setTheme] = useStored("theme", "light");
+  const [theme, setTheme, ready] = useStored("theme", "light");
   const [collapsed, setCollapsed] = useStored("admin-collapsed", false);
   const [toast, setToast] = useState("");
 
@@ -99,86 +84,69 @@ function AdminWorkspace({ route }: { route: string[] }) {
     content = <Skeleton rows={4} />;
   } else if (view === "") {
     content = (
-      <Dashboard
-        products={catalog}
-        orders={orderList}
-        restock={(productId, addUnits) => {
-          setCatalog((curr) =>
-            curr.map((p) =>
-              p.id === productId ? { ...p, stock: p.stock + addUnits } : p
-            )
-          );
-          setToast(`Added ${addUnits} units to inventory`);
-        }}
-      />
+      <AuthGuard requiredPermission="dashboard:read">
+        <Dashboard notify={setToast} />
+      </AuthGuard>
     );
-  } else if (view === "products" || view === "inventory") {
+  } else if (view === "products") {
     content = (
-      <Catalog
-        key={route.join("/")}
-        products={catalog}
-        save={setCatalog}
-        categories={categories}
-        attributes={attributeList}
-        notify={setToast}
-        route={route}
-      />
+      <AuthGuard requiredPermission="catalog:read">
+        <Catalog key={route.join("/")} route={route} notify={setToast} />
+      </AuthGuard>
+    );
+  } else if (view === "inventory") {
+    content = (
+      <AuthGuard requiredPermission="inventory:read">
+        <Catalog key={route.join("/")} route={route} notify={setToast} />
+      </AuthGuard>
     );
   } else if (view === "categories") {
     content = (
-      <CategoryManager
-        categories={categories}
-        save={setCategories}
-        products={catalog}
-        updateProducts={setCatalog}
-        attributes={attributeList}
-        notify={setToast}
-      />
+      <AuthGuard requiredPermission="catalog:read">
+        <CategoryManager notify={setToast} />
+      </AuthGuard>
     );
   } else if (view === "product-types") {
     content = (
-      <>
-        <div className="admin-title">
-          <div>
-            <h1>Product Types</h1>
-            <p>Define domain schemas and attribute sets per product family.</p>
-          </div>
-        </div>
-        <Empty
-          title="Product Type API integration scheduled for Phase 2"
-          text="Database schema and ERD for product_types, attribute_definitions, and variant_option_definitions are documented in docs/architecture/erd.md."
-        />
-      </>
+      <AuthGuard requiredPermission="catalog:read">
+        <ProductTypesManager notify={setToast} />
+      </AuthGuard>
     );
   } else if (view === "attributes") {
     content = (
-      <Attributes
-        items={attributeList}
-        save={setAttributes}
-        categories={categories}
-        notify={setToast}
-      />
+      <AuthGuard requiredPermission="catalog:read">
+        <Attributes notify={setToast} />
+      </AuthGuard>
+    );
+  } else if (view === "collections") {
+    content = (
+      <AuthGuard requiredPermission="catalog:read">
+        <UtilityPage key={view} view={view} title="Collections" notify={setToast} />
+      </AuthGuard>
     );
   } else if (view === "orders") {
     content = (
-      <Orders
-        key={id || "orders"}
-        id={id}
-        items={orderList}
-        save={setOrders}
-        notify={setToast}
-      />
+      <AuthGuard requiredPermission="order:read">
+        <Orders key={id || "orders"} id={id} notify={setToast} />
+      </AuthGuard>
+    );
+  } else if (view === "customers") {
+    content = (
+      <AuthGuard requiredPermission="order:read">
+        <UtilityPage key={view} view={view} title="Customers" notify={setToast} />
+      </AuthGuard>
     );
   } else if (view === "discounts" || view === "promotions") {
     content = (
-      <Promotions
-        items={discountList}
-        save={setDiscounts}
-        categories={categories}
-        products={catalog}
-        notify={setToast}
-        isCampaignView={view === "promotions"}
-      />
+      <AuthGuard requiredPermission="promotion:read">
+        <Promotions notify={setToast} isCampaignView={view === "promotions"} />
+      </AuthGuard>
+    );
+  } else if (view === "media") {
+    content = (
+      <AuthGuard requiredPermission="content:read">
+        <UtilityPage key={view} view={view} title="Media Library" notify={setToast} />
+      </AuthGuard>
     );
   } else if (view === "theme") {
     content = (
@@ -241,8 +209,6 @@ function AdminWorkspace({ route }: { route: string[] }) {
         key={view}
         view={view}
         title={activeItem.title}
-        products={catalog}
-        orders={orderList}
         notify={setToast}
       />
     );

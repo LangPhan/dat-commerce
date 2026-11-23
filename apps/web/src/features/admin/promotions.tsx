@@ -1,40 +1,151 @@
 "use client";
-import Link from "next/link";
-import { Copy, Plus, Sparkles, Trash2 } from "lucide-react";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Plus, Tag } from "lucide-react";
 import { useState } from "react";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
-import { ConfirmDialog, Drawer, Modal } from "@/components/ui/dialog";
-import { newId, usd } from "@/lib/format";
-import type { Category, Discount, Product } from "@/types/commerce";
+import { Empty, Skeleton } from "@/components/ui/data-display";
+import { Modal } from "@/components/ui/dialog";
+import { useAuth } from "@/features/auth/auth-context";
+import { ApiError } from "@/lib/api-client";
+import { adminCatalogApi, adminPromotionApi } from "@/lib/commerce-api";
+import { formatDate, usdExact } from "@/lib/format";
+import type {
+  PromotionDto,
+  PromotionScopeType,
+  PromotionStatus,
+  PromotionType,
+} from "@/types/api-commerce";
+
+type PromoDraft = {
+  id?: string;
+  code: string;
+  name: string;
+  type: PromotionType;
+  value: number;
+  scopeType: PromotionScopeType;
+  startsAtDate: string;
+  endsAtDate: string;
+  usageLimit: string;
+  status: PromotionStatus;
+  targetIds: string[];
+};
 
 export function Promotions({
-  items,
-  categories,
-  products,
-  save,
   notify,
   isCampaignView = false,
 }: {
-  items: Discount[];
-  categories: Category[];
-  products: Product[];
-  save: (items: Discount[]) => void;
   notify: (message: string) => void;
   isCampaignView?: boolean;
 }) {
-  const [edit, setEdit] = useState<Discount | null>(null);
-  const [confirmSave, setConfirmSave] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Discount | null>(null);
-  const [aiDrawer, setAiDrawer] = useState(false);
+  const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("promotion:write");
+
+  const [draft, setDraft] = useState<PromoDraft | null>(null);
   const [error, setError] = useState("");
 
-  const update = (change: Partial<Discount>) =>
-    setEdit((current) => (current ? { ...current, ...change } : null));
+  const promosQuery = useQuery({
+    queryKey: ["admin-promotions"],
+    queryFn: () => adminPromotionApi.list(),
+  });
 
-  const slowProducts = [...products]
-    .sort((a, b) => (a.salesCount || 0) - (b.salesCount || 0))
-    .slice(0, 3);
+  const categoriesQuery = useQuery({
+    queryKey: ["admin-categories"],
+    queryFn: () => adminCatalogApi.listCategories(),
+  });
+
+  const productsQuery = useQuery({
+    queryKey: ["admin-products", "promo-picker"],
+    queryFn: () => adminCatalogApi.listProducts(),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (form: PromoDraft) =>
+      adminPromotionApi.create({
+        code: form.code.trim().toUpperCase(),
+        name: form.name.trim(),
+        type: form.type,
+        value: Number(form.value),
+        scopeType: form.scopeType,
+        startsAt: `${form.startsAtDate}T00:00:00Z`,
+        endsAt: `${form.endsAtDate}T23:59:59Z`,
+        usageLimit: form.usageLimit ? Number(form.usageLimit) : null,
+        status: form.status,
+        targetIds: form.scopeType === "ORDER" ? [] : form.targetIds,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-promotions"] });
+      setDraft(null);
+      notify("Promotion created");
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : "Failed to create promotion"),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (form: PromoDraft) => {
+      if (!form.id) throw new Error("Missing promotion id");
+      return adminPromotionApi.update(form.id, {
+        name: form.name.trim(),
+        type: form.type,
+        value: Number(form.value),
+        scopeType: form.scopeType,
+        startsAt: `${form.startsAtDate}T00:00:00Z`,
+        endsAt: `${form.endsAtDate}T23:59:59Z`,
+        usageLimit: form.usageLimit ? Number(form.usageLimit) : null,
+        status: form.status,
+        targetIds: form.scopeType === "ORDER" ? [] : form.targetIds,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-promotions"] });
+      setDraft(null);
+      notify("Promotion updated");
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : "Failed to update promotion"),
+  });
+
+  const promos: PromotionDto[] = promosQuery.data || [];
+  const categories = categoriesQuery.data || [];
+  const products = productsQuery.data || [];
+
+  function openNew() {
+    setError("");
+    const today = new Date().toISOString().slice(0, 10);
+    const nextMonth = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    setDraft({
+      code: "",
+      name: "",
+      type: "PERCENTAGE",
+      value: 15,
+      scopeType: "ORDER",
+      startsAtDate: today,
+      endsAtDate: nextMonth,
+      usageLimit: "100",
+      status: "ACTIVE",
+      targetIds: [],
+    });
+  }
+
+  function openEdit(promo: PromotionDto) {
+    setError("");
+    setDraft({
+      id: promo.id,
+      code: promo.code,
+      name: promo.name,
+      type: promo.type as PromotionType,
+      value: promo.value,
+      scopeType: promo.scopeType as PromotionScopeType,
+      startsAtDate: promo.startsAt.slice(0, 10),
+      endsAtDate: promo.endsAt.slice(0, 10),
+      usageLimit: promo.usageLimit !== null && promo.usageLimit !== undefined ? String(promo.usageLimit) : "",
+      status: promo.status as PromotionStatus,
+      targetIds: promo.targetIds || [],
+    });
+  }
 
   return (
     <>
@@ -42,253 +153,288 @@ export function Promotions({
         <div>
           <h1>{isCampaignView ? "Promotions" : "Discounts"}</h1>
           <p>
-            Configure percentage or fixed-amount codes, eligibility rules, and redemption limits.
+            Configure discount codes, scope rules, redemption limits, and schedules.
           </p>
         </div>
-        <div className="button-row">
-          <Button onClick={() => setAiDrawer(true)}>
-            <Sparkles size={14} /> Suggest promotion
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => {
-              setError("");
-              setConfirmSave(false);
-              const today = new Date().toISOString().slice(0, 10);
-              const nextWeek = new Date(Date.now() + 7 * 86400000)
-                .toISOString()
-                .slice(0, 10);
-              setEdit({
-                id: "",
-                name: "",
-                code: "",
-                type: "Percentage",
-                value: 15,
-                eligible: "All products",
-                start: today,
-                end: nextWeek,
-                limit: 100,
-                used: 0,
-                status: "Draft",
-              });
-            }}
-          >
+        {canWrite ? (
+          <Button variant="primary" onClick={openNew}>
             <Plus size={15} /> New discount
           </Button>
-        </div>
+        ) : null}
       </div>
 
-      <div className="admin-table-panel table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Offer</th>
-              <th>Code</th>
-              <th>Value</th>
-              <th>Eligibility</th>
-              <th>Schedule</th>
-              <th>Redemptions</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => {
-                      setError("");
-                      setConfirmSave(false);
-                      setEdit(item);
-                    }}
-                  >
-                    {item.name}
-                  </button>
-                </td>
-                <td>
-                  <span className="inline-label">
-                    <code>{item.code}</code>
-                    <IconButton
-                      label={`Copy ${item.code}`}
-                      onClick={() => {
-                        navigator.clipboard?.writeText(item.code).catch(() => {});
-                        notify(`Copied ${item.code}`);
-                      }}
-                    >
-                      <Copy size={12} />
-                    </IconButton>
-                  </span>
-                </td>
-                <td>
-                  <strong>
-                    {item.type === "Percentage" ? `${item.value}%` : usd(item.value)}
-                  </strong>
-                </td>
-                <td>{item.eligible}</td>
-                <td>
-                  <small className="muted">
-                    {item.start} → {item.end}
-                  </small>
-                </td>
-                <td>
-                  {item.used || 0} / {item.limit}
-                </td>
-                <td>
-                  <StatusBadge status={item.status} />
-                </td>
-                <td>
-                  <IconButton
-                    label={`Delete ${item.code}`}
-                    onClick={() => setDeleteTarget(item)}
-                  >
-                    <Trash2 size={14} />
-                  </IconButton>
-                </td>
+      {promosQuery.isLoading ? (
+        <Skeleton rows={4} />
+      ) : promos.length ? (
+        <div className="admin-table-panel table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Offer</th>
+                <th>Code</th>
+                <th>Discount</th>
+                <th>Scope</th>
+                <th>Window</th>
+                <th>Usage</th>
+                <th>Status</th>
+                <th />
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {promos.map((p) => (
+                <tr key={p.id}>
+                  <td>
+                    <strong>{p.name}</strong>
+                  </td>
+                  <td>
+                    <code>{p.code}</code>
+                  </td>
+                  <td>
+                    {p.type === "PERCENTAGE"
+                      ? `${p.value}% off`
+                      : p.type === "FIXED"
+                        ? `${usdExact(p.value)} off`
+                        : "Free shipping"}
+                  </td>
+                  <td>{p.scopeType}</td>
+                  <td>
+                    {formatDate(p.startsAt)} – {formatDate(p.endsAt)}
+                  </td>
+                  <td>
+                    {p.usedCount}
+                    {p.usageLimit ? ` / ${p.usageLimit}` : ""}
+                  </td>
+                  <td>
+                    <StatusBadge status={p.status} />
+                  </td>
+                  <td>
+                    {canWrite ? (
+                      <IconButton
+                        label={`Edit ${p.code}`}
+                        onClick={() => openEdit(p)}
+                      >
+                        <Pencil size={14} />
+                      </IconButton>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty
+          icon={<Tag size={22} />}
+          title="No promotions configured"
+          text="Create a coupon code to enable storefront cart and checkout discounts."
+        />
+      )}
 
-      {edit && !confirmSave ? (
+      {draft ? (
         <Modal
-          title={edit.id ? `Edit ${edit.code}` : "Create discount"}
-          description="Define the offer terms before reviewing the change summary."
-          close={() => setEdit(null)}
+          wide
+          title={draft.id ? `Edit ${draft.code}` : "New promotion"}
+          description="Server checkout recalculates totals using these validated discount rules."
+          close={() => setDraft(null)}
         >
           <form
             className="form-stack"
             onSubmit={(e) => {
               e.preventDefault();
-              if (
-                items.some(
-                  (item) => item.code === edit.code && item.id !== edit.id
-                )
-              ) {
-                setError("This discount code is already in use.");
+              setError("");
+              if (!draft.name.trim()) {
+                setError("Offer name is required.");
                 return;
               }
-              if (edit.end < edit.start) {
-                setError("End date must be on or after the start date.");
+              if (!draft.id && !/^[A-Za-z0-9_-]+$/.test(draft.code.trim())) {
+                setError("Promo code must use letters, numbers, hyphens, or underscores.");
                 return;
               }
-              setConfirmSave(true);
+              if (draft.id) {
+                updateMutation.mutate(draft);
+              } else {
+                createMutation.mutate(draft);
+              }
             }}
           >
-            <div className="form-pair">
+            <div className="field-row">
               <label>
                 Offer name
                 <input
                   required
-                  value={edit.name}
-                  onChange={(e) => update({ name: e.target.value })}
+                  value={draft.name}
+                  placeholder="Alpine Autumn 15% Off"
+                  onChange={(e) =>
+                    setDraft((prev) => (prev ? { ...prev, name: e.target.value } : null))
+                  }
                 />
               </label>
               <label>
                 Promo code
                 <input
                   required
-                  pattern="[A-Z0-9]+"
-                  value={edit.code}
+                  disabled={Boolean(draft.id)}
+                  value={draft.code}
+                  placeholder="ALPINE15"
                   onChange={(e) =>
-                    update({ code: e.target.value.toUpperCase() })
+                    setDraft((prev) =>
+                      prev
+                        ? { ...prev, code: e.target.value.toUpperCase().replace(/\s+/g, "") }
+                        : null
+                    )
                   }
                 />
               </label>
+            </div>
+
+            <div className="field-row">
               <label>
-                Type
+                Discount type
                 <select
-                  value={edit.type}
+                  value={draft.type}
                   onChange={(e) =>
-                    update({ type: e.target.value as Discount["type"] })
+                    setDraft((prev) =>
+                      prev ? { ...prev, type: e.target.value as PromotionType } : null
+                    )
                   }
                 >
-                  <option>Percentage</option>
-                  <option>Fixed amount</option>
+                  <option value="PERCENTAGE">Percentage (%)</option>
+                  <option value="FIXED">Fixed amount ($)</option>
+                  <option value="FREE_SHIPPING">Free shipping</option>
                 </select>
               </label>
               <label>
                 Value
                 <input
                   type="number"
-                  min="0.01"
                   step="0.01"
-                  max={edit.type === "Percentage" ? 100 : undefined}
+                  min="0.01"
                   required
-                  value={edit.value}
-                  onChange={(e) => update({ value: Number(e.target.value) })}
+                  value={draft.value}
+                  onChange={(e) =>
+                    setDraft((prev) =>
+                      prev ? { ...prev, value: Number(e.target.value) } : null
+                    )
+                  }
                 />
               </label>
+            </div>
+
+            <div className="field-row">
               <label>
-                Starts
-                <input
-                  type="date"
-                  required
-                  value={edit.start}
-                  onChange={(e) => update({ start: e.target.value })}
-                />
-              </label>
-              <label>
-                Ends
-                <input
-                  type="date"
-                  required
-                  min={edit.start}
-                  value={edit.end}
-                  onChange={(e) => update({ end: e.target.value })}
-                />
-              </label>
-              <label>
-                Usage limit
-                <input
-                  type="number"
-                  min={1}
-                  required
-                  value={edit.limit}
-                  onChange={(e) => update({ limit: Number(e.target.value) })}
-                />
+                Scope
+                <select
+                  value={draft.scopeType}
+                  onChange={(e) =>
+                    setDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            scopeType: e.target.value as PromotionScopeType,
+                            targetIds: [],
+                          }
+                        : null
+                    )
+                  }
+                >
+                  <option value="ORDER">Entire order</option>
+                  <option value="CATEGORY">Specific categories</option>
+                  <option value="PRODUCT">Specific products</option>
+                </select>
               </label>
               <label>
                 Status
                 <select
-                  value={edit.status}
+                  value={draft.status}
                   onChange={(e) =>
-                    update({ status: e.target.value as Discount["status"] })
+                    setDraft((prev) =>
+                      prev ? { ...prev, status: e.target.value as PromotionStatus } : null
+                    )
                   }
                 >
-                  <option>Draft</option>
-                  <option>Active</option>
-                  <option>Paused</option>
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="DRAFT">DRAFT</option>
+                  <option value="PAUSED">PAUSED</option>
                 </select>
               </label>
             </div>
 
-            <label>
-              Eligible items
-              <select
-                value={edit.eligible}
-                onChange={(e) => update({ eligible: e.target.value })}
-              >
-                <option>All products</option>
-                <optgroup label="Categories">
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.name}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Specific products">
-                  {products.map((prod) => (
-                    <option key={prod.id} value={prod.name}>
-                      {prod.name}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </label>
+            {draft.scopeType !== "ORDER" ? (
+              <div className="panel" style={{ padding: 12 }}>
+                <strong style={{ fontSize: 12.5 }}>
+                  Eligible {draft.scopeType === "CATEGORY" ? "categories" : "products"}
+                </strong>
+                <div
+                  className="check-row"
+                  style={{ marginTop: 8, flexWrap: "wrap", gap: 10 }}
+                >
+                  {(draft.scopeType === "CATEGORY" ? categories : products).map((entry) => {
+                    const checked = draft.targetIds.includes(entry.id);
+                    return (
+                      <label className="check-label" key={entry.id}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) =>
+                            setDraft((prev) => {
+                              if (!prev) return null;
+                              const nextIds = e.target.checked
+                                ? [...prev.targetIds, entry.id]
+                                : prev.targetIds.filter((id) => id !== entry.id);
+                              return { ...prev, targetIds: nextIds };
+                            })
+                          }
+                        />
+                        {entry.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="field-row">
+              <label>
+                Starts on
+                <input
+                  type="date"
+                  required
+                  value={draft.startsAtDate}
+                  onChange={(e) =>
+                    setDraft((prev) =>
+                      prev ? { ...prev, startsAtDate: e.target.value } : null
+                    )
+                  }
+                />
+              </label>
+              <label>
+                Ends on
+                <input
+                  type="date"
+                  required
+                  value={draft.endsAtDate}
+                  onChange={(e) =>
+                    setDraft((prev) =>
+                      prev ? { ...prev, endsAtDate: e.target.value } : null
+                    )
+                  }
+                />
+              </label>
+              <label>
+                Usage limit (optional)
+                <input
+                  type="number"
+                  min="1"
+                  value={draft.usageLimit}
+                  placeholder="Unlimited"
+                  onChange={(e) =>
+                    setDraft((prev) =>
+                      prev ? { ...prev, usageLimit: e.target.value } : null
+                    )
+                  }
+                />
+              </label>
+            </div>
 
             {error ? (
               <p className="danger" role="alert">
@@ -297,129 +443,17 @@ export function Promotions({
             ) : null}
 
             <div className="modal-actions">
-              <Button onClick={() => setEdit(null)}>Cancel</Button>
-              <Button type="submit" variant="primary">
-                Review changes
+              <Button onClick={() => setDraft(null)}>Cancel</Button>
+              <Button
+                variant="primary"
+                type="submit"
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
+                {draft.id ? "Save promotion" : "Create promotion"}
               </Button>
             </div>
           </form>
         </Modal>
-      ) : null}
-
-      {edit && confirmSave ? (
-        <ConfirmDialog
-          title="Confirm promotion changes"
-          description={`Review impact for ${edit.code} before saving.`}
-          confirmLabel="Confirm & save"
-          summary={
-            <div>
-              <div>
-                Before:{" "}
-                {items.find((i) => i.id === edit.id)?.status || "New promotion"}
-              </div>
-              <strong>
-                After: {edit.status} ·{" "}
-                {edit.type === "Percentage" ? `${edit.value}%` : usd(edit.value)} off{" "}
-                {edit.eligible} ({edit.start} to {edit.end})
-              </strong>
-            </div>
-          }
-          onCancel={() => setConfirmSave(false)}
-          onConfirm={() => {
-            save(
-              edit.id
-                ? items.map((item) => (item.id === edit.id ? edit : item))
-                : [...items, { ...edit, id: newId() }]
-            );
-            setEdit(null);
-            setConfirmSave(false);
-            notify("Promotion saved");
-          }}
-        />
-      ) : null}
-
-      {deleteTarget ? (
-        <ConfirmDialog
-          title={`Delete discount "${deleteTarget.code}"?`}
-          description="Shoppers will no longer be able to redeem this code at checkout."
-          confirmLabel="Delete discount"
-          destructive
-          onCancel={() => setDeleteTarget(null)}
-          onConfirm={() => {
-            save(items.filter((d) => d.id !== deleteTarget.id));
-            setDeleteTarget(null);
-            notify("Discount deleted");
-          }}
-        />
-      ) : null}
-
-      {aiDrawer ? (
-        <Drawer
-          title="AI Promotion Suggestions"
-          description="Opportunities identified from slower-moving inventory."
-          close={() => setAiDrawer(false)}
-        >
-          <div className="form-stack">
-            <div className="panel" style={{ background: "var(--subtle)" }}>
-              <strong>Lowest velocity SKUs</strong>
-              <ul style={{ marginTop: 8, paddingLeft: 18, fontSize: 12.5, display: "grid", gap: 4 }}>
-                {slowProducts.map((p) => (
-                  <li key={p.id}>
-                    {p.name} ({p.category}) — {p.salesCount || 12} sold
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="panel form-stack">
-              <strong>Recommended offer: 15% off Accessories</strong>
-              <p className="muted" style={{ fontSize: 12.5 }}>
-                Pair a 7-day 15% bundle offer (code <code>PACK15</code>) with Accessories to lift
-                attachment rate on Footwear and Laptop orders.
-              </p>
-              <div className="button-row">
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    const today = new Date().toISOString().slice(0, 10);
-                    const nextWeek = new Date(Date.now() + 7 * 86400000)
-                      .toISOString()
-                      .slice(0, 10);
-                    const code = items.some((i) => i.code === "PACK15")
-                      ? "PACK15B"
-                      : "PACK15";
-                    save([
-                      ...items,
-                      {
-                        id: newId(),
-                        name: "Accessories Velocity Boost",
-                        code,
-                        type: "Percentage",
-                        value: 15,
-                        eligible: "Accessories",
-                        start: today,
-                        end: nextWeek,
-                        limit: 150,
-                        used: 0,
-                        status: "Draft",
-                      },
-                    ]);
-                    setAiDrawer(false);
-                    notify(`Drafted ${code} in Promotions`);
-                  }}
-                >
-                  <Sparkles size={14} /> Create draft PACK15
-                </Button>
-                <Link
-                  className="btn"
-                  href="/admin/assistant?prompt=Suggest+a+promotion+for+products+with+low+sales"
-                >
-                  Ask AI Assistant
-                </Link>
-              </div>
-            </div>
-          </div>
-        </Drawer>
       ) : null}
     </>
   );

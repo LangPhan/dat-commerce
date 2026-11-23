@@ -1,37 +1,86 @@
 "use client";
+
 import Link from "next/link";
 import { ArrowRight, Play, Star } from "lucide-react";
 import { useState } from "react";
 import { Modal } from "@/components/ui/dialog";
 import { cn, usd } from "@/lib/format";
-import { useStored } from "@/lib/storage";
 import { initialCategories, initialProducts } from "@/mocks/catalog";
+import type { CategoryDto, ProductDto } from "@/types/api-commerce";
 import type { Category, Product } from "@/types/commerce";
 import type { Block } from "@/types/editor";
 
-export function ProductCard({ product }: { product: Product }) {
-  const isLow = product.stock > 0 && product.stock <= 5;
+export type StoreProductItem = Product | ProductDto;
+export type StoreCategoryItem = Category | CategoryDto;
+
+function isApiProduct(item: StoreProductItem): item is ProductDto {
+  return "minPrice" in item;
+}
+
+function isApiCategory(item: StoreCategoryItem): item is CategoryDto {
+  return "productCount" in item;
+}
+
+function normalizeProduct(item: StoreProductItem) {
+  if (isApiProduct(item)) {
+    return {
+      key: item.id,
+      href: `/store/product/${encodeURIComponent(item.slug)}`,
+      name: item.name,
+      brand: item.brand || "Terrain",
+      categoryLabel: item.categories[0]?.name || item.productTypeName,
+      categoryKey: item.categories[0]?.slug || item.categories[0]?.name || "",
+      image: item.primaryImageUrl || "/media/terrain-fallback.jpg",
+      price: Number(item.minPrice),
+      compareAtPrice:
+        item.compareAtPrice !== undefined && item.compareAtPrice !== null
+          ? Number(item.compareAtPrice)
+          : undefined,
+      stock: item.totalStock,
+      rating: Number(item.rating || 4.8),
+      salesCount: item.reviewCount || 0,
+    };
+  }
+  return {
+    key: item.id,
+    href: `/store/product/${encodeURIComponent(item.id)}`,
+    name: item.name,
+    brand: item.brand,
+    categoryLabel: item.category,
+    categoryKey: item.category,
+    image: item.image,
+    price: item.price,
+    compareAtPrice: item.compareAtPrice,
+    stock: item.stock,
+    rating: item.rating,
+    salesCount: item.salesCount || 0,
+  };
+}
+
+export function ProductCard({ product }: { product: StoreProductItem }) {
+  const p = normalizeProduct(product);
+  const isLow = p.stock > 0 && p.stock <= 5;
   return (
-    <Link className="product-card" href={`/store/product/${product.id}`}>
+    <Link className="product-card" href={p.href}>
       <div className="product-card-img-wrap">
-        <img src={product.image} alt={product.name} />
+        <img src={p.image} alt={p.name} />
         {isLow ? (
-          <span className="product-card-badge">Only {product.stock} left</span>
-        ) : product.compareAtPrice && product.compareAtPrice > product.price ? (
+          <span className="product-card-badge">Only {p.stock} left</span>
+        ) : p.compareAtPrice && p.compareAtPrice > p.price ? (
           <span className="product-card-badge">Sale</span>
         ) : null}
       </div>
       <div className="product-card-meta">
-        <strong>{product.name}</strong>
-        <span>{usd(product.price)}</span>
+        <strong>{p.name}</strong>
+        <span>{usd(p.price)}</span>
       </div>
       <div className="product-card-sub">
         <span>
-          {product.brand} · {product.category}
+          {p.brand} · {p.categoryLabel}
         </span>
         <span className="product-card-rating">
           <Star size={11} fill="currentColor" aria-hidden="true" />
-          {product.rating.toFixed(1)}
+          {p.rating.toFixed(1)}
         </span>
       </div>
     </Link>
@@ -76,11 +125,12 @@ function NewsletterForm({ block }: { block: Block }) {
 export function StoreBlock({
   block,
   catalog = initialProducts,
+  categories = initialCategories,
 }: {
   block: Block;
-  catalog?: Product[];
+  catalog?: StoreProductItem[];
+  categories?: StoreCategoryItem[];
 }) {
-  const [categories] = useStored<Category[]>("categories", initialCategories);
   const [videoOpen, setVideoOpen] = useState(false);
 
   const {
@@ -125,9 +175,7 @@ export function StoreBlock({
             </Link>
           ) : null}
         </div>
-        {layout === "split" ? (
-          <img src={image} alt={heading} />
-        ) : null}
+        {layout === "split" ? <img src={image} alt={heading} /> : null}
       </section>
     );
   }
@@ -163,7 +211,9 @@ export function StoreBlock({
   if (type === "Best Sellers" || type === "Product Grid") {
     const list =
       type === "Best Sellers"
-        ? [...catalog].sort((a, b) => (b.salesCount || 0) - (a.salesCount || 0))
+        ? [...catalog].sort(
+            (a, b) => normalizeProduct(b).salesCount - normalizeProduct(a).salesCount
+          )
         : [...catalog].reverse();
     const count = columns === 3 ? 3 : columns === 2 ? 2 : 4;
 
@@ -174,7 +224,10 @@ export function StoreBlock({
             {kicker ? (
               <div
                 className="hero-kicker"
-                style={{ color: tone === "ink" ? "#b7c4ff" : "var(--accent-text)", marginBottom: 6 }}
+                style={{
+                  color: tone === "ink" ? "#b7c4ff" : "var(--accent-text)",
+                  marginBottom: 6,
+                }}
               >
                 {kicker}
               </div>
@@ -197,7 +250,9 @@ export function StoreBlock({
   }
 
   if (type === "Featured Categories") {
-    const topCats = categories.filter((c) => !c.parent).slice(0, columns === 3 ? 3 : 4);
+    const topCats = categories
+      .filter((c) => (isApiCategory(c) ? !c.parentId : !c.parent))
+      .slice(0, columns === 3 ? 3 : 4);
     return (
       <section className={cn("store-section", toneClass, spacingClass)}>
         <div className="store-section-head">
@@ -205,7 +260,10 @@ export function StoreBlock({
             {kicker ? (
               <div
                 className="hero-kicker"
-                style={{ color: tone === "ink" ? "#b7c4ff" : "var(--accent-text)", marginBottom: 6 }}
+                style={{
+                  color: tone === "ink" ? "#b7c4ff" : "var(--accent-text)",
+                  marginBottom: 6,
+                }}
               >
                 {kicker}
               </div>
@@ -220,18 +278,49 @@ export function StoreBlock({
         </div>
         <div className={cn("store-products", colsClass)}>
           {topCats.map((category) => {
-            const match = catalog.find((p) => p.category === category.name);
-            const count = catalog.filter((p) => p.category === category.name).length;
+            if (isApiCategory(category)) {
+              const match = catalog.find(
+                (p) => normalizeProduct(p).categoryKey === category.slug
+              );
+              const imgUrl =
+                category.imageUrl || (match ? normalizeProduct(match).image : image);
+              return (
+                <Link
+                  className="category-card"
+                  key={category.id}
+                  href={`/store/shop?category=${encodeURIComponent(category.slug)}`}
+                >
+                  <img src={imgUrl} alt={category.name} />
+                  <strong>{category.name}</strong>
+                  <ArrowRight size={15} />
+                  <small>
+                    {category.productCount}{" "}
+                    {category.productCount === 1 ? "product" : "products"}
+                  </small>
+                </Link>
+              );
+            }
+            const match = catalog.find(
+              (p) => normalizeProduct(p).categoryLabel === category.name
+            );
+            const count = catalog.filter(
+              (p) => normalizeProduct(p).categoryLabel === category.name
+            ).length;
             return (
               <Link
                 className="category-card"
                 key={category.id}
                 href={`/store/shop?category=${encodeURIComponent(category.name)}`}
               >
-                <img src={category.image || match?.image || image} alt={category.name} />
+                <img
+                  src={category.image || (match ? normalizeProduct(match).image : image)}
+                  alt={category.name}
+                />
                 <strong>{category.name}</strong>
                 <ArrowRight size={15} />
-                <small>{count} {count === 1 ? "product" : "products"}</small>
+                <small>
+                  {count} {count === 1 ? "product" : "products"}
+                </small>
               </Link>
             );
           })}
@@ -243,12 +332,15 @@ export function StoreBlock({
   if (type === "Image Gallery") {
     const galleryItems = items.length
       ? items
-      : catalog.slice(0, 4).map((p) => ({
-          id: p.id,
-          title: p.name,
-          body: p.category,
-          image: p.image,
-        }));
+      : catalog.slice(0, 4).map((item) => {
+          const p = normalizeProduct(item);
+          return {
+            id: p.key,
+            title: p.name,
+            body: p.categoryLabel,
+            image: p.image,
+          };
+        });
 
     return (
       <section className={cn("store-section", toneClass, spacingClass)}>
@@ -283,7 +375,14 @@ export function StoreBlock({
   if (type === "Testimonials") {
     const quoteList = items.length
       ? items
-      : [{ id: "t-default", title: "Maya Rivera", subtitle: "Verified Buyer", body: copy }];
+      : [
+          {
+            id: "t-default",
+            title: "Maya Rivera",
+            subtitle: "Verified Buyer",
+            body: copy,
+          },
+        ];
     return (
       <section className={cn("store-section", toneClass, spacingClass)}>
         <div className="store-section-head">
@@ -325,19 +424,38 @@ export function StoreBlock({
   if (type === "FAQ") {
     const faqItems = items.length
       ? items
-      : [{ id: "faq-1", title: copy || "What is your return policy?", body: "Returns are accepted within 30 days of delivery." }];
+      : [
+          {
+            id: "faq-1",
+            title: copy || "What is your return policy?",
+            body: "Returns are accepted within 30 days of delivery.",
+          },
+        ];
     return (
       <section className={cn("store-section", toneClass, spacingClass)}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           {kicker ? (
-            <div className="hero-kicker" style={{ color: "var(--accent-text)", marginBottom: 6 }}>
+            <div
+              className="hero-kicker"
+              style={{ color: "var(--accent-text)", marginBottom: 6 }}
+            >
               {kicker}
             </div>
           ) : null}
-          <h2 style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: "clamp(24px,3vw,36px)", fontWeight: 500 }}>
+          <h2
+            style={{
+              fontFamily: 'Georgia, "Times New Roman", serif',
+              fontSize: "clamp(24px,3vw,36px)",
+              fontWeight: 500,
+            }}
+          >
             {heading}
           </h2>
-          {copy ? <p className="muted" style={{ marginTop: 6 }}>{copy}</p> : null}
+          {copy ? (
+            <p className="muted" style={{ marginTop: 6 }}>
+              {copy}
+            </p>
+          ) : null}
         </div>
         <div className="faq-list">
           {faqItems.map((item, idx) => (
@@ -400,16 +518,17 @@ export function StoreBlock({
           </button>
         </div>
         {videoOpen ? (
-          <Modal
-            title={heading}
-            description={copy}
-            close={() => setVideoOpen(false)}
-          >
+          <Modal title={heading} description={copy} close={() => setVideoOpen(false)}>
             <div className="form-stack">
               <img
                 src={image}
                 alt={heading}
-                style={{ width: "100%", borderRadius: 8, aspectRatio: "16 / 9", objectFit: "cover" }}
+                style={{
+                  width: "100%",
+                  borderRadius: 8,
+                  aspectRatio: "16 / 9",
+                  objectFit: "cover",
+                }}
               />
               <p className="muted" style={{ fontSize: 13 }}>
                 Studio & Field Documentary Preview — filmed in Portland and the North Cascades.

@@ -17,3 +17,10 @@ app:
     secret: test-jwt-secret-key-for-integration-tests-minimum-64-chars-long-0001
     access-ttl-seconds: 900
     refresh-ttl-seconds: 3600
+  storage:
+    endpoint: ${TEST_STORAGE_ENDPOINT:http://silo:9000}
+    access-key: ${TEST_STORAGE_ACCESS_KEY:datcommerce}
+    secret-key: ${TEST_STORAGE_SECRET_KEY:change_me_silo_password}
+    bucket: ${TEST_STORAGE_BUCKET:dat-commerce-media-test}
+    region: us-east-1
+    public-url-prefix: /storage

@@ -1,82 +1,257 @@
 "use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
+import { Empty, Skeleton } from "@/components/ui/data-display";
 import { ConfirmDialog, Modal } from "@/components/ui/dialog";
-import { Empty } from "@/components/ui/data-display";
-import { newId } from "@/lib/format";
-import { attributeTypes, type Attribute, type Category } from "@/types/commerce";
+import { useAuth } from "@/features/auth/auth-context";
+import { ApiError } from "@/lib/api-client";
+import { adminCatalogApi } from "@/lib/commerce-api";
+import { slugify } from "@/lib/format";
+import type {
+  AttributeDataType,
+  AttributeDefinitionDto,
+  ProductTypeDto,
+} from "@/types/api-commerce";
 
-export function Attributes({
-  items,
-  save,
-  categories,
-  notify,
-}: {
-  items: Attribute[];
-  save: (next: Attribute[]) => void;
-  categories: Category[];
-  notify: (message: string) => void;
-}) {
+const DATA_TYPES: AttributeDataType[] = [
+  "TEXT",
+  "NUMBER",
+  "BOOLEAN",
+  "ENUM",
+  "MULTI_SELECT",
+  "DATE",
+];
+
+type AttributeFormDraft = {
+  id?: string;
+  code: string;
+  name: string;
+  dataType: AttributeDataType;
+  required: boolean;
+  filterable: boolean;
+  searchable: boolean;
+  unit: string;
+  minRule: string;
+  maxRule: string;
+  optionsText: string;
+  bindProductTypeId: string;
+};
+
+export function Attributes({ notify }: { notify: (message: string) => void }) {
+  const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("catalog:write");
+
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
-  const [edit, setEdit] = useState<Attribute | null>(null);
-  const [removeTarget, setRemoveTarget] = useState<Attribute | null>(null);
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [draft, setDraft] = useState<AttributeFormDraft | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<AttributeDefinitionDto | null>(null);
   const [error, setError] = useState("");
 
-  const productTypes = Array.from(
-    new Set([
-      "All products",
-      ...categories.map((c) => c.name),
-      ...items.map((a) => a.productType),
-    ])
-  );
+  const attrsQuery = useQuery({
+    queryKey: ["admin-attributes", includeArchived],
+    queryFn: () => adminCatalogApi.listAttributes(includeArchived),
+  });
 
-  const visible = items
-    .filter((item) => {
-      if (typeFilter && item.productType !== typeFilter) return false;
-      if (!query.trim()) return true;
-      const q = query.trim().toLowerCase();
-      return (
-        item.name.toLowerCase().includes(q) ||
-        item.code.toLowerCase().includes(q) ||
-        item.productType.toLowerCase().includes(q)
+  const typesQuery = useQuery({
+    queryKey: ["admin-product-types"],
+    queryFn: () => adminCatalogApi.listProductTypes(),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (form: AttributeFormDraft) => {
+      const validationRules: Record<string, unknown> = {};
+      if (form.dataType === "NUMBER") {
+        if (form.minRule.trim() !== "") validationRules.min = Number(form.minRule);
+        if (form.maxRule.trim() !== "") validationRules.max = Number(form.maxRule);
+      }
+      const options =
+        form.dataType === "ENUM" || form.dataType === "MULTI_SELECT"
+          ? form.optionsText
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((val, idx) => ({ value: val, label: val, sortOrder: idx }))
+          : undefined;
+
+      const created = await adminCatalogApi.createAttribute({
+        code: form.code.trim().toLowerCase(),
+        name: form.name.trim(),
+        dataType: form.dataType,
+        required: form.required,
+        filterable: form.filterable,
+        searchable: form.searchable,
+        unit: form.unit.trim() || undefined,
+        validationRules,
+        options,
+      });
+
+      if (form.bindProductTypeId) {
+        await adminCatalogApi.bindTypeAttribute(form.bindProductTypeId, {
+          attributeDefinitionId: created.id,
+          requiredOverride: form.required,
+        });
+      }
+      return created;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-attributes"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-product-types"] });
+      setDraft(null);
+      notify("Attribute created");
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : "Failed to create attribute"),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (form: AttributeFormDraft) => {
+      if (!form.id) throw new Error("Missing attribute id");
+      const validationRules: Record<string, unknown> = {};
+      if (form.dataType === "NUMBER") {
+        if (form.minRule.trim() !== "") validationRules.min = Number(form.minRule);
+        if (form.maxRule.trim() !== "") validationRules.max = Number(form.maxRule);
+      }
+      const options =
+        form.dataType === "ENUM" || form.dataType === "MULTI_SELECT"
+          ? form.optionsText
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((val, idx) => ({ value: val, label: val, sortOrder: idx }))
+          : undefined;
+
+      const updated = await adminCatalogApi.updateAttribute(form.id, {
+        name: form.name.trim(),
+        required: form.required,
+        filterable: form.filterable,
+        searchable: form.searchable,
+        unit: form.unit.trim(),
+        validationRules,
+        options,
+      });
+
+      if (form.bindProductTypeId) {
+        await adminCatalogApi.bindTypeAttribute(form.bindProductTypeId, {
+          attributeDefinitionId: updated.id,
+        });
+      }
+      return updated;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-attributes"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-product-types"] });
+      setDraft(null);
+      notify("Attribute updated");
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : "Failed to update attribute"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (attributeId: string) => adminCatalogApi.deleteAttribute(attributeId),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-attributes"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-product-types"] });
+      setRemoveTarget(null);
+      notify(
+        res.archived
+          ? "Attribute is in use and was safely archived instead of deleted"
+          : "Attribute deleted"
       );
-    })
-    .sort((a, b) => a.productType.localeCompare(b.productType) || a.order - b.order);
+    },
+    onError: (err) => {
+      setRemoveTarget(null);
+      notify(err instanceof ApiError ? err.message : "Failed to remove attribute");
+    },
+  });
+
+  const attrs: AttributeDefinitionDto[] = attrsQuery.data || [];
+  const productTypes: ProductTypeDto[] = typesQuery.data || [];
+
+  const typeNamesByAttrId = new Map<string, string[]>();
+  for (const pt of productTypes) {
+    for (const bound of pt.attributes) {
+      const curr = typeNamesByAttrId.get(bound.attributeDefinitionId) || [];
+      curr.push(pt.name);
+      typeNamesByAttrId.set(bound.attributeDefinitionId, curr);
+    }
+  }
+
+  const visible = attrs.filter((item) => {
+    if (typeFilter) {
+      const boundTo = typeNamesByAttrId.get(item.id) || [];
+      if (!boundTo.includes(typeFilter)) return false;
+    }
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      if (
+        !item.name.toLowerCase().includes(q) &&
+        !item.code.toLowerCase().includes(q)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  function openNew() {
+    setError("");
+    setDraft({
+      code: "",
+      name: "",
+      dataType: "TEXT",
+      required: false,
+      filterable: true,
+      searchable: true,
+      unit: "",
+      minRule: "",
+      maxRule: "",
+      optionsText: "",
+      bindProductTypeId: productTypes[0]?.id || "",
+    });
+  }
+
+  function openEdit(item: AttributeDefinitionDto) {
+    setError("");
+    const rules = item.validationRules || {};
+    setDraft({
+      id: item.id,
+      code: item.code,
+      name: item.name,
+      dataType: (DATA_TYPES.includes(item.dataType as AttributeDataType)
+        ? item.dataType
+        : "TEXT") as AttributeDataType,
+      required: item.required,
+      filterable: item.filterable,
+      searchable: item.searchable,
+      unit: item.unit || "",
+      minRule: rules.min !== undefined && rules.min !== null ? String(rules.min) : "",
+      maxRule: rules.max !== undefined && rules.max !== null ? String(rules.max) : "",
+      optionsText: item.options.map((o) => o.value).join(", "),
+      bindProductTypeId: "",
+    });
+  }
 
   return (
     <>
       <div className="admin-title">
         <div>
-          <h1>Dynamic Attributes</h1>
+          <h1>Attributes</h1>
           <p>
-            Define custom product schemas per product type and control storefront filter facets.
+            Configure dynamic attributes, validation bounds, and faceted storefront filters.
           </p>
         </div>
-        <Button
-          variant="primary"
-          onClick={() => {
-            setError("");
-            setEdit({
-              id: "",
-              name: "",
-              code: "",
-              type: "Text",
-              required: false,
-              filterable: true,
-              searchable: true,
-              order: items.length + 1,
-              validation: "",
-              options: "",
-              unit: "",
-              productType: typeFilter || "All products",
-            });
-          }}
-        >
-          <Plus size={15} /> New attribute
-        </Button>
+        {canWrite ? (
+          <Button variant="primary" onClick={openNew}>
+            <Plus size={15} /> New attribute
+          </Button>
+        ) : null}
       </div>
 
       <div className="admin-table-panel">
@@ -97,14 +272,24 @@ export function Attributes({
           >
             <option value="">All product types</option>
             {productTypes.map((pt) => (
-              <option key={pt} value={pt}>
-                {pt}
+              <option key={pt.id} value={pt.name}>
+                {pt.name}
               </option>
             ))}
           </select>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={includeArchived}
+              onChange={(e) => setIncludeArchived(e.target.checked)}
+            />
+            Show archived
+          </label>
         </div>
 
-        {visible.length ? (
+        {attrsQuery.isLoading ? (
+          <Skeleton rows={4} />
+        ) : visible.length ? (
           <div className="table-scroll">
             <table>
               <thead>
@@ -112,57 +297,68 @@ export function Attributes({
                   <th>Name</th>
                   <th>Code</th>
                   <th>Data type</th>
-                  <th>Product type</th>
+                  <th>Product types</th>
                   <th>Behavior</th>
-                  <th>Order</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {visible.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => {
-                          setError("");
-                          setEdit(item);
-                        }}
-                      >
-                        {item.name}
-                      </button>
-                      {item.unit ? (
-                        <span className="muted" style={{ fontSize: 11, marginLeft: 5 }}>
-                          ({item.unit})
-                        </span>
-                      ) : null}
-                    </td>
-                    <td>
-                      <code>{item.code}</code>
-                    </td>
-                    <td>
-                      <Badge tone="accent">{item.type}</Badge>
-                    </td>
-                    <td>{item.productType}</td>
-                    <td>
-                      <div className="button-row" style={{ gap: 4 }}>
-                        {item.required ? <Badge tone="amber">Required</Badge> : null}
-                        {item.filterable ? <Badge tone="green">Filterable</Badge> : null}
-                        {item.searchable ? <Badge>Searchable</Badge> : null}
-                      </div>
-                    </td>
-                    <td>{item.order}</td>
-                    <td>
-                      <IconButton
-                        label={`Delete ${item.name}`}
-                        onClick={() => setRemoveTarget(item)}
-                      >
-                        <Trash2 size={14} />
-                      </IconButton>
-                    </td>
-                  </tr>
-                ))}
+                {visible.map((item) => {
+                  const boundTypes = typeNamesByAttrId.get(item.id) || [];
+                  return (
+                    <tr key={item.id}>
+                      <td>
+                        {canWrite ? (
+                          <button
+                            type="button"
+                            className="text-button"
+                            onClick={() => openEdit(item)}
+                          >
+                            {item.name}
+                          </button>
+                        ) : (
+                          <strong>{item.name}</strong>
+                        )}
+                        {item.unit ? (
+                          <span className="muted" style={{ fontSize: 11, marginLeft: 5 }}>
+                            ({item.unit})
+                          </span>
+                        ) : null}
+                        {item.archivedAt ? (
+                          <Badge tone="neutral" className="ml-1">
+                            Archived
+                          </Badge>
+                        ) : null}
+                      </td>
+                      <td>
+                        <code>{item.code}</code>
+                      </td>
+                      <td>
+                        <Badge tone="accent">{item.dataType}</Badge>
+                      </td>
+                      <td>
+                        {boundTypes.length ? boundTypes.join(", ") : "Unbound"}
+                      </td>
+                      <td>
+                        <div className="button-row" style={{ gap: 4 }}>
+                          {item.required ? <Badge tone="amber">Required</Badge> : null}
+                          {item.filterable ? <Badge tone="green">Filterable</Badge> : null}
+                          {item.searchable ? <Badge>Searchable</Badge> : null}
+                        </div>
+                      </td>
+                      <td>
+                        {canWrite && !item.archivedAt ? (
+                          <IconButton
+                            label={`Delete ${item.name}`}
+                            onClick={() => setRemoveTarget(item)}
+                          >
+                            <Trash2 size={14} />
+                          </IconButton>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -174,170 +370,240 @@ export function Attributes({
         )}
       </div>
 
-      {edit ? (
+      {draft ? (
         <Modal
-          title={edit.id ? `Edit ${edit.name}` : "New dynamic attribute"}
+          title={draft.id ? `Edit ${draft.name}` : "New dynamic attribute"}
           description="Attribute codes must be unique lowercase identifiers (letters, numbers, underscores)."
-          close={() => setEdit(null)}
+          close={() => setDraft(null)}
         >
           <form
             className="form-stack"
             onSubmit={(e) => {
               e.preventDefault();
-              if (
-                items.some(
-                  (item) => item.code === edit.code && item.id !== edit.id
-                )
-              ) {
-                setError("This attribute code is already in use.");
+              setError("");
+              if (!draft.name.trim()) {
+                setError("Attribute name is required.");
                 return;
               }
-              if (edit.validation) {
-                try {
-                  new RegExp(edit.validation);
-                } catch {
-                  setError("Enter a valid regular expression.");
-                  return;
-                }
+              if (!draft.id && !/^[a-z0-9_]+$/.test(draft.code.trim())) {
+                setError(
+                  "Attribute code must contain only lowercase letters, numbers, and underscores."
+                );
+                return;
               }
-              save(
-                edit.id
-                  ? items.map((item) => (item.id === edit.id ? edit : item))
-                  : [...items, { ...edit, id: newId() }]
-              );
-              setEdit(null);
-              notify("Attribute saved");
+              if (
+                (draft.dataType === "ENUM" || draft.dataType === "MULTI_SELECT") &&
+                !draft.optionsText
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean).length
+              ) {
+                setError("Provide at least one comma-separated option.");
+                return;
+              }
+              if (draft.id) {
+                updateMutation.mutate(draft);
+              } else {
+                createMutation.mutate(draft);
+              }
             }}
           >
-            <div className="form-pair">
+            <div className="field-row">
               <label>
-                Display name
+                Name
                 <input
                   required
-                  value={edit.name}
+                  value={draft.name}
+                  placeholder="e.g. Battery Capacity"
                   onChange={(e) => {
-                    const nextName = e.target.value;
-                    setEdit({
-                      ...edit,
-                      name: nextName,
-                      code:
-                        edit.id || edit.code
-                          ? edit.code
-                          : nextName
-                              .toLowerCase()
-                              .replace(/[^a-z0-9]+/g, "_")
-                              .replace(/^_|_$/g, ""),
-                    });
+                    const name = e.target.value;
+                    setDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            name,
+                            code: prev.id
+                              ? prev.code
+                              : slugify(name).replace(/-/g, "_"),
+                          }
+                        : null
+                    );
                   }}
                 />
               </label>
               <label>
-                Unique code
+                Code
                 <input
                   required
-                  pattern="[a-z][a-z0-9_]*"
-                  value={edit.code}
-                  onChange={(e) => setEdit({ ...edit, code: e.target.value })}
+                  disabled={Boolean(draft.id)}
+                  value={draft.code}
+                  placeholder="battery_capacity"
+                  onChange={(e) =>
+                    setDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            code: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""),
+                          }
+                        : null
+                    )
+                  }
                 />
               </label>
+            </div>
+
+            <div className="field-row">
               <label>
                 Data type
                 <select
-                  value={edit.type}
+                  disabled={Boolean(draft.id)}
+                  value={draft.dataType}
                   onChange={(e) =>
-                    setEdit({ ...edit, type: e.target.value as Attribute["type"] })
+                    setDraft((prev) =>
+                      prev
+                        ? { ...prev, dataType: e.target.value as AttributeDataType }
+                        : null
+                    )
                   }
                 >
-                  {attributeTypes.map((type) => (
-                    <option key={type}>{type}</option>
+                  {DATA_TYPES.map((typeOpt) => (
+                    <option key={typeOpt} value={typeOpt}>
+                      {typeOpt}
+                    </option>
                   ))}
                 </select>
               </label>
               <label>
-                Product type
+                Bind to product type (optional)
                 <select
-                  value={edit.productType}
+                  value={draft.bindProductTypeId}
                   onChange={(e) =>
-                    setEdit({ ...edit, productType: e.target.value })
+                    setDraft((prev) =>
+                      prev ? { ...prev, bindProductTypeId: e.target.value } : null
+                    )
                   }
                 >
-                  {productTypes.map((name) => (
-                    <option key={name}>{name}</option>
+                  <option value="">None</option>
+                  {productTypes.map((pt) => (
+                    <option key={pt.id} value={pt.id}>
+                      {pt.name}
+                    </option>
                   ))}
                 </select>
               </label>
             </div>
 
-            <div className="button-row" style={{ gap: 16 }}>
-              {(["required", "filterable", "searchable"] as const).map((key) => (
-                <label className="check-label" key={key}>
-                  <input
-                    type="checkbox"
-                    checked={edit[key]}
-                    onChange={(e) => setEdit({ ...edit, [key]: e.target.checked })}
-                  />
-                  <span style={{ textTransform: "capitalize" }}>{key}</span>
-                </label>
-              ))}
-            </div>
-
-            <div className="form-pair">
+            <div className="field-row">
               <label>
-                Display order
+                Unit (optional)
                 <input
-                  type="number"
-                  min={0}
-                  value={edit.order}
+                  value={draft.unit}
+                  placeholder="GB, mm, Wh"
                   onChange={(e) =>
-                    setEdit({ ...edit, order: Number(e.target.value) })
+                    setDraft((prev) => (prev ? { ...prev, unit: e.target.value } : null))
                   }
                 />
               </label>
-              {edit.type === "Measurement" ? (
-                <label>
-                  Measurement unit
-                  <input
-                    placeholder="e.g. in, GB, mm, L"
-                    value={edit.unit || ""}
-                    onChange={(e) => setEdit({ ...edit, unit: e.target.value })}
-                  />
-                </label>
+              {draft.dataType === "NUMBER" ? (
+                <div className="field-row">
+                  <label>
+                    Min
+                    <input
+                      type="number"
+                      value={draft.minRule}
+                      onChange={(e) =>
+                        setDraft((prev) =>
+                          prev ? { ...prev, minRule: e.target.value } : null
+                        )
+                      }
+                    />
+                  </label>
+                  <label>
+                    Max
+                    <input
+                      type="number"
+                      value={draft.maxRule}
+                      onChange={(e) =>
+                        setDraft((prev) =>
+                          prev ? { ...prev, maxRule: e.target.value } : null
+                        )
+                      }
+                    />
+                  </label>
+                </div>
               ) : (
-                <label>
-                  Validation regex (optional)
-                  <input
-                    placeholder="e.g. ^[A-Z0-9-]+$"
-                    value={edit.validation}
-                    onChange={(e) =>
-                      setEdit({ ...edit, validation: e.target.value })
-                    }
-                  />
-                </label>
+                <div />
               )}
             </div>
 
-            {edit.type === "Select" || edit.type === "Multi-select" ? (
+            {draft.dataType === "ENUM" || draft.dataType === "MULTI_SELECT" ? (
               <label>
-                Options (comma-separated)
+                Allowed options (comma-separated)
                 <input
-                  required
-                  placeholder="16 GB, 32 GB, 64 GB"
-                  value={edit.options}
-                  onChange={(e) => setEdit({ ...edit, options: e.target.value })}
+                  value={draft.optionsText}
+                  placeholder="Small, Medium, Large"
+                  onChange={(e) =>
+                    setDraft((prev) =>
+                      prev ? { ...prev, optionsText: e.target.value } : null
+                    )
+                  }
                 />
               </label>
             ) : null}
 
+            <div className="check-row">
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  checked={draft.required}
+                  onChange={(e) =>
+                    setDraft((prev) =>
+                      prev ? { ...prev, required: e.target.checked } : null
+                    )
+                  }
+                />
+                Required on product
+              </label>
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  checked={draft.filterable}
+                  onChange={(e) =>
+                    setDraft((prev) =>
+                      prev ? { ...prev, filterable: e.target.checked } : null
+                    )
+                  }
+                />
+                Storefront filterable
+              </label>
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  checked={draft.searchable}
+                  onChange={(e) =>
+                    setDraft((prev) =>
+                      prev ? { ...prev, searchable: e.target.checked } : null
+                    )
+                  }
+                />
+                Search indexed
+              </label>
+            </div>
+
             {error ? (
-              <p role="alert" className="danger">
+              <p className="danger" role="alert">
                 {error}
               </p>
             ) : null}
 
             <div className="modal-actions">
-              <Button onClick={() => setEdit(null)}>Cancel</Button>
-              <Button type="submit" variant="primary">
-                Save attribute
+              <Button onClick={() => setDraft(null)}>Cancel</Button>
+              <Button
+                variant="primary"
+                type="submit"
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
+                {draft.id ? "Save attribute" : "Create attribute"}
               </Button>
             </div>
           </form>
@@ -346,16 +612,12 @@ export function Attributes({
 
       {removeTarget ? (
         <ConfirmDialog
-          title={`Delete attribute "${removeTarget.name}"?`}
-          description="It will no longer appear on new product forms or storefront filters."
-          confirmLabel="Delete attribute"
+          title={`Delete or archive ${removeTarget.name}?`}
+          description="If any product or product type already uses this attribute, it will be archived safely instead of hard-deleted."
+          confirmLabel="Continue"
           destructive
           onCancel={() => setRemoveTarget(null)}
-          onConfirm={() => {
-            save(items.filter((a) => a.id !== removeTarget.id));
-            setRemoveTarget(null);
-            notify("Attribute removed");
-          }}
+          onConfirm={() => deleteMutation.mutate(removeTarget.id)}
         />
       ) : null}
     </>

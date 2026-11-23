@@ -1,150 +1,118 @@
 "use client";
+
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Grid2X2, List, Search, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Button, IconButton } from "@/components/ui/button";
-import { Empty, Pagination } from "@/components/ui/data-display";
-import { useStored } from "@/lib/storage";
-import { initialAttributes, initialCategories } from "@/mocks/catalog";
-import type { Attribute, Category, Product } from "@/types/commerce";
+import { Empty, Pagination, Skeleton } from "@/components/ui/data-display";
+import { ApiError } from "@/lib/api-client";
+import { storeApi } from "@/lib/commerce-api";
 import { ProductCard } from "./blocks";
 
 const PAGE_SIZE = 6;
 
 export function Listing({
-  catalog,
-  search,
+  search = false,
+  forcedCategory,
 }: {
-  catalog: Product[];
-  search: boolean;
+  search?: boolean;
+  forcedCategory?: string;
 }) {
-  const [categoryList] = useStored<Category[]>("categories", initialCategories);
-  const [attributeDefs] = useStored<Attribute[]>("attributes", initialAttributes);
+  const searchParams = useSearchParams();
+  const urlCategory = forcedCategory || searchParams.get("category") || "";
+  const urlQuery = searchParams.get("q") || "";
 
-  const [category, setCategory] = useState("");
-  const [query, setQuery] = useState("");
+  const [categoryOverride, setCategoryOverride] = useState<string | null>(null);
+  const [queryOverride, setQueryOverride] = useState<string | null>(null);
   const [sort, setSort] = useState("featured");
   const [maxPrice, setMaxPrice] = useState<string>("");
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [attrs, setAttrs] = useState<Record<string, string>>({});
   const [listView, setListView] = useState(false);
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setCategory(params.get("category") || "");
-    setQuery(params.get("q") || "");
-  }, []);
+  const activeCategory = categoryOverride !== null ? categoryOverride : urlCategory;
+  const activeQuery = queryOverride !== null ? queryOverride : urlQuery;
 
-  const categoryProducts = useMemo(
-    () => catalog.filter((p) => !category || p.category === category),
-    [catalog, category]
+  const categoriesQuery = useQuery({
+    queryKey: ["store-categories"],
+    queryFn: () => storeApi.listCategories(),
+  });
+
+  const productsQuery = useQuery({
+    queryKey: [
+      "store-products",
+      activeQuery,
+      activeCategory,
+      maxPrice,
+      sort,
+      attrs,
+      page,
+    ],
+    queryFn: () =>
+      storeApi.listProducts({
+        q: activeQuery.trim() || undefined,
+        category: activeCategory || undefined,
+        maxPrice: maxPrice ? Number(maxPrice) : undefined,
+        sort,
+        page: page - 1,
+        size: PAGE_SIZE,
+        attrs,
+      }),
+  });
+
+  const categories = categoriesQuery.data || [];
+  const data = productsQuery.data;
+  const items = data?.items || [];
+  const facets = data?.facets || [];
+  const totalElements = data?.totalElements || 0;
+
+  const activeCategoryObj = categories.find(
+    (c) =>
+      c.slug.toLowerCase() === activeCategory.toLowerCase() ||
+      c.name.toLowerCase() === activeCategory.toLowerCase()
   );
-
-  // Dynamic filter facets driven by category + attribute configuration
-  const filterFields = useMemo(() => {
-    const relevantDefs = attributeDefs.filter(
-      (attr) =>
-        attr.filterable &&
-        (attr.productType === "All products" ||
-          !category ||
-          attr.productType === category)
-    );
-    const keysFromProducts = Array.from(
-      new Set(categoryProducts.flatMap((p) => Object.keys(p.attributes)))
-    );
-    const orderedKeys = Array.from(
-      new Set([
-        ...relevantDefs.sort((a, b) => a.order - b.order).map((d) => d.name),
-        ...keysFromProducts,
-      ])
-    ).filter((name) => {
-      const def = attributeDefs.find(
-        (a) => a.name === name && (a.productType === category || a.productType === "All products")
-      );
-      if (def && !def.filterable) return false;
-      const values = new Set(
-        categoryProducts.flatMap((p) =>
-          p.attributes[name] ? p.attributes[name].split(" / ") : []
-        )
-      );
-      return values.size > 0;
-    });
-    return orderedKeys;
-  }, [attributeDefs, category, categoryProducts]);
-
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const ceiling = maxPrice ? Number(maxPrice) : Infinity;
-
-    const filtered = categoryProducts.filter((product) => {
-      if (product.price > ceiling) return false;
-
-      if (q) {
-        const searchableAttrText = Object.entries(product.attributes)
-          .filter(([name]) => {
-            const def = attributeDefs.find((a) => a.name === name);
-            return def ? def.searchable !== false : true;
-          })
-          .map(([, val]) => val)
-          .join(" ");
-
-        const haystack = [
-          product.name,
-          product.category,
-          product.brand,
-          product.description,
-          searchableAttrText,
-        ]
-          .join(" ")
-          .toLowerCase();
-
-        if (!haystack.includes(q)) return false;
-      }
-
-      return Object.entries(filters).every(([key, val]) => {
-        if (!val) return true;
-        const raw = product.attributes[key] || "";
-        return raw.split(" / ").includes(val);
-      });
-    });
-
-    const sorted = [...filtered];
-    if (sort === "low") sorted.sort((a, b) => a.price - b.price);
-    if (sort === "high") sorted.sort((a, b) => b.price - a.price);
-    if (sort === "rating") sorted.sort((a, b) => b.rating - a.rating);
-    if (sort === "newest")
-      sorted.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-    return sorted;
-  }, [attributeDefs, categoryProducts, filters, maxPrice, query, sort]);
-
-  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paginated = visible.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const activeChips = [
-    ...(category ? [{ key: "__category", label: `Category: ${category}` }] : []),
+    ...(activeCategory
+      ? [
+          {
+            key: "__category",
+            label: `Category: ${activeCategoryObj?.name || activeCategory}`,
+          },
+        ]
+      : []),
     ...(maxPrice ? [{ key: "__price", label: `Max $${maxPrice}` }] : []),
-    ...Object.entries(filters)
+    ...Object.entries(attrs)
       .filter(([, val]) => Boolean(val))
-      .map(([key, val]) => ({ key, label: `${key}: ${val}` })),
+      .map(([code, val]) => {
+        const facet = facets.find((f) => f.code === code);
+        return { key: code, label: `${facet?.name || code}: ${val}` };
+      }),
   ];
 
-  const categoryNames = Array.from(
-    new Set([
-      ...categoryList.map((c) => c.name),
-      ...catalog.map((p) => p.category),
-    ])
-  );
+  function clearFilters() {
+    setCategoryOverride("");
+    setQueryOverride("");
+    setMaxPrice("");
+    setAttrs({});
+    setPage(1);
+  }
 
   return (
     <div className="store-container">
       <div className="crumb">
         <Link href="/store">Home</Link> / {search ? "Search" : "Shop"}
-        {category ? ` / ${category}` : ""}
+        {activeCategory ? ` / ${activeCategoryObj?.name || activeCategory}` : ""}
       </div>
-      <h1>{category || (search ? "Search the catalog" : "Shop all products")}</h1>
+      <h1>
+        {activeCategoryObj?.name ||
+          activeCategory ||
+          (search ? "Search the catalog" : "Shop all products")}
+      </h1>
       <p className="muted">
-        {categoryList.find((c) => c.name === category)?.description ||
+        {activeCategoryObj?.description ||
           "Explore multi-category technical gear, studio laptops, and unlocked phones."}
       </p>
 
@@ -153,10 +121,10 @@ export function Listing({
           <Search size={16} />
           <input
             aria-label="Search products"
-            placeholder="Search by product, brand, CPU, size, material…"
-            value={query}
+            placeholder="Search by product, brand, CPU, waterproof, material…"
+            value={activeQuery}
             onChange={(e) => {
-              setQuery(e.target.value);
+              setQueryOverride(e.target.value);
               setPage(1);
             }}
           />
@@ -164,7 +132,10 @@ export function Listing({
         <select
           aria-label="Sort products"
           value={sort}
-          onChange={(e) => setSort(e.target.value)}
+          onChange={(e) => {
+            setSort(e.target.value);
+            setPage(1);
+          }}
         >
           <option value="featured">Featured</option>
           <option value="low">Price: Low to High</option>
@@ -196,17 +167,17 @@ export function Listing({
           <label>
             Category
             <select
-              value={category}
+              value={activeCategory}
               onChange={(e) => {
-                setCategory(e.target.value);
-                setFilters({});
+                setCategoryOverride(e.target.value);
+                setAttrs({});
                 setPage(1);
               }}
             >
               <option value="">All categories</option>
-              {categoryNames.map((name) => (
-                <option key={name} value={name}>
-                  {name}
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.slug}>
+                  {cat.name}
                 </option>
               ))}
             </select>
@@ -229,45 +200,30 @@ export function Listing({
             </select>
           </label>
 
-          {filterFields.map((fieldName) => {
-            const options = Array.from(
-              new Set(
-                categoryProducts.flatMap((p) =>
-                  p.attributes[fieldName] ? p.attributes[fieldName].split(" / ") : []
-                )
-              )
-            );
-            return (
-              <label key={fieldName}>
-                {fieldName}
-                <select
-                  value={filters[fieldName] || ""}
-                  onChange={(e) => {
-                    setFilters((prev) => ({ ...prev, [fieldName]: e.target.value }));
-                    setPage(1);
-                  }}
-                >
-                  <option value="">Any</option>
-                  {options.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            );
-          })}
+          {facets.map((facet) => (
+            <label key={facet.code}>
+              {facet.name}
+              {facet.unit ? ` (${facet.unit})` : ""}
+              <select
+                value={attrs[facet.code] || ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setAttrs((prev) => ({ ...prev, [facet.code]: val }));
+                  setPage(1);
+                }}
+              >
+                <option value="">Any</option>
+                {facet.values.map((val) => (
+                  <option key={val} value={val}>
+                    {val}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
 
           {activeChips.length > 0 ? (
-            <Button
-              size="sm"
-              onClick={() => {
-                setCategory("");
-                setMaxPrice("");
-                setFilters({});
-                setPage(1);
-              }}
-            >
+            <Button size="sm" onClick={clearFilters}>
               Clear all filters
             </Button>
           ) : null}
@@ -283,12 +239,12 @@ export function Listing({
                   className="filter-chip"
                   onClick={() => {
                     if (chip.key === "__category") {
-                      setCategory("");
-                      setFilters({});
+                      setCategoryOverride("");
+                      setAttrs({});
                     } else if (chip.key === "__price") {
                       setMaxPrice("");
                     } else {
-                      setFilters((prev) => ({ ...prev, [chip.key]: "" }));
+                      setAttrs((prev) => ({ ...prev, [chip.key]: "" }));
                     }
                     setPage(1);
                   }}
@@ -301,23 +257,34 @@ export function Listing({
           ) : null}
 
           <p className="muted" style={{ marginBottom: 12, fontSize: 12.5 }}>
-            {visible.length} {visible.length === 1 ? "product" : "products"}
+            {totalElements} {totalElements === 1 ? "product" : "products"}
           </p>
 
-          {paginated.length ? (
+          {productsQuery.isLoading ? (
+            <Skeleton rows={4} />
+          ) : productsQuery.isError ? (
+            <Empty
+              title="Could not load catalog"
+              text={
+                productsQuery.error instanceof ApiError
+                  ? productsQuery.error.message
+                  : "Unexpected storefront API error."
+              }
+            />
+          ) : items.length ? (
             <>
               <div
                 className={
                   "store-products listing-products " + (listView ? "list-view" : "")
                 }
               >
-                {paginated.map((product) => (
+                {items.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))}
               </div>
               <Pagination
-                page={safePage}
-                totalItems={visible.length}
+                page={page}
+                totalItems={totalElements}
                 pageSize={PAGE_SIZE}
                 onPageChange={setPage}
               />
@@ -326,18 +293,7 @@ export function Listing({
             <Empty
               title="No matching products"
               text="Try adjusting your search query or clearing one of the active attribute filters."
-              action={
-                <Button
-                  onClick={() => {
-                    setQuery("");
-                    setCategory("");
-                    setMaxPrice("");
-                    setFilters({});
-                  }}
-                >
-                  Reset filters
-                </Button>
-              }
+              action={<Button onClick={clearFilters}>Reset filters</Button>}
             />
           )}
         </div>

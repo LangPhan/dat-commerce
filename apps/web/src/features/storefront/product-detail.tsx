@@ -1,66 +1,80 @@
 "use client";
+
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Check, Heart, Minus, Plus, ShoppingBag, Star } from "lucide-react";
 import { useState } from "react";
 import { Button, IconButton } from "@/components/ui/button";
+import { Empty, Skeleton } from "@/components/ui/data-display";
 import { Tabs } from "@/components/ui/overlay";
+import { ApiError } from "@/lib/api-client";
+import { storeApi } from "@/lib/commerce-api";
 import { cn, newId, usd } from "@/lib/format";
-import type { Product, ProductReview } from "@/types/commerce";
+import type { ProductDto, VariantDto } from "@/types/api-commerce";
+import type { ProductReview } from "@/types/commerce";
 
-export function ProductDetail({
+function ProductDetailInner({
   product,
-  add,
+  onAddToCart,
+  adding,
   wished,
   toggleWishlist,
 }: {
-  product: Product;
-  add: (qty: number, variant: string, buyNow?: boolean) => void;
+  product: ProductDto;
+  onAddToCart: (variantId: string, qty: number, buyNow?: boolean) => void;
+  adding: boolean;
   wished: boolean;
   toggleWishlist: () => void;
 }) {
-  const gallery = product.gallery?.length ? product.gallery : [product.image];
-  const variantOptions = product.variants?.length
-    ? product.variants.map((v) => ({ label: v.label, price: v.price, stock: v.stock }))
-    : (product.attributes.Size?.split(" / ") || ["Standard"]).map((label) => ({
-        label,
-        price: product.price,
-        stock: product.stock,
-      }));
+  const gallery = product.images.length
+    ? product.images.map((i) => i.url)
+    : [product.primaryImageUrl || "/media/terrain-fallback.jpg"];
 
   const [activeImage, setActiveImage] = useState(gallery[0]);
   const [zoom, setZoom] = useState(false);
-  const [selectedVariant, setSelectedVariant] = useState(variantOptions[0]);
+  const [selectedVariantId, setSelectedVariantId] = useState<string>(
+    product.variants[0]?.id || ""
+  );
   const [quantity, setQuantity] = useState(1);
   const [tab, setTab] = useState("description");
-  const [localReviews, setLocalReviews] = useState<ProductReview[]>(
-    product.reviews || [
-      {
-        id: "r-default",
-        author: "Morgan T.",
-        rating: 5,
-        date: "2026-11-12",
-        title: "Built to last",
-        comment: "Well made, accurate sizing/specs, and comfortable right out of the box.",
-        verified: true,
-      },
-    ]
-  );
-
+  const [localReviews, setLocalReviews] = useState<ProductReview[]>([
+    {
+      id: "r-default",
+      author: "Morgan T.",
+      rating: 5,
+      date: "2026-11-12",
+      title: "Built to last",
+      comment: "Well made, accurate specs, and reliable right out of the box.",
+      verified: true,
+    },
+  ]);
   const [reviewAuthor, setReviewAuthor] = useState("");
   const [reviewTitle, setReviewTitle] = useState("");
   const [reviewBody, setReviewBody] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
 
-  const effectiveStock = selectedVariant?.stock ?? product.stock;
-  const effectivePrice = selectedVariant?.price ?? product.price;
+  const selectedVariant: VariantDto | undefined =
+    product.variants.find((v) => v.id === selectedVariantId) || product.variants[0];
+  const effectiveStock = selectedVariant?.availableStock ?? 0;
+  const effectivePrice = Number(selectedVariant?.price ?? product.minPrice);
+  const compareAt = selectedVariant?.compareAtPrice
+    ? Number(selectedVariant.compareAtPrice)
+    : product.compareAtPrice
+      ? Number(product.compareAtPrice)
+      : undefined;
+  const primaryCat = product.categories[0];
 
   return (
     <div className="store-container">
       <div className="crumb">
         <Link href="/store">Home</Link> /{" "}
-        <Link href={`/store/shop?category=${encodeURIComponent(product.category)}`}>
-          {product.category}
-        </Link>{" "}
+        {primaryCat ? (
+          <Link href={`/store/shop?category=${encodeURIComponent(primaryCat.slug)}`}>
+            {primaryCat.name}
+          </Link>
+        ) : (
+          <Link href="/store/shop">Shop</Link>
+        )}{" "}
         / <strong>{product.name}</strong>
       </div>
 
@@ -92,31 +106,38 @@ export function ProductDetail({
         </div>
 
         <div>
-          <span className="muted" style={{ fontSize: 12.5, fontWeight: 600 }}>
-            {product.brand} · {product.category}
-          </span>
-          <h1 style={{ marginTop: 4 }}>{product.name}</h1>
+          <p className="detail-kicker">
+            {product.brand || "Terrain"} · {primaryCat?.name || product.productTypeName}
+          </p>
+          <h1>{product.name}</h1>
 
-          <div className="rating">
-            <Star size={15} fill="currentColor" aria-hidden="true" />
-            <strong>{product.rating.toFixed(1)}</strong>
-            <a href="#reviews">
-              ({product.reviewCount || localReviews.length} reviews)
+          <div className="detail-rating">
+            <span className="inline-label">
+              {Array.from({ length: 5 }, (_, i) => (
+                <Star
+                  key={i}
+                  size={13}
+                  fill={i < Math.round(Number(product.rating || 4.8)) ? "currentColor" : "none"}
+                />
+              ))}
+              <strong>{Number(product.rating || 4.8).toFixed(1)}</strong>
+            </span>
+            <a href="#reviews" className="muted">
+              {localReviews.length} {localReviews.length === 1 ? "review" : "reviews"}
             </a>
-          </div>
-
-          <div className="button-row" style={{ margin: "12px 0" }}>
-            <h2 style={{ margin: 0, fontSize: 24 }}>{usd(effectivePrice)}</h2>
-            {product.compareAtPrice && product.compareAtPrice > effectivePrice ? (
-              <span className="muted" style={{ textDecoration: "line-through" }}>
-                {usd(product.compareAtPrice)}
+            {selectedVariant ? (
+              <span className="muted">
+                SKU <code>{selectedVariant.sku}</code>
               </span>
             ) : null}
           </div>
 
-          <p style={{ color: "var(--muted)", marginBottom: 14 }}>
-            {product.description}
-          </p>
+          <div className="detail-price-row">
+            <p className="detail-price">{usd(effectivePrice)}</p>
+            {compareAt && compareAt > effectivePrice ? (
+              <span className="detail-compare">{usd(compareAt)}</span>
+            ) : null}
+          </div>
 
           <p
             className={effectiveStock > 0 ? "success" : "danger"}
@@ -132,20 +153,20 @@ export function ProductDetail({
           <div>
             <span style={{ fontSize: 12, fontWeight: 620 }}>Configuration / Variant</span>
             <div className="variant-pills">
-              {variantOptions.map((opt) => (
+              {product.variants.map((variant) => (
                 <button
-                  key={opt.label}
+                  key={variant.id}
                   type="button"
                   className={cn(
                     "variant-pill",
-                    selectedVariant?.label === opt.label && "active"
+                    selectedVariant?.id === variant.id && "active"
                   )}
                   onClick={() => {
-                    setSelectedVariant(opt);
+                    setSelectedVariantId(variant.id);
                     setQuantity(1);
                   }}
                 >
-                  {opt.label}
+                  {variant.title}
                 </button>
               ))}
             </div>
@@ -177,15 +198,19 @@ export function ProductDetail({
             <Button
               variant="primary"
               size="lg"
-              disabled={!effectiveStock}
-              onClick={() => add(quantity, selectedVariant.label, false)}
+              disabled={!selectedVariant || effectiveStock <= 0 || adding}
+              onClick={() =>
+                selectedVariant && onAddToCart(selectedVariant.id, quantity, false)
+              }
             >
               <ShoppingBag size={16} /> Add to cart
             </Button>
             <Button
               size="lg"
-              disabled={!effectiveStock}
-              onClick={() => add(quantity, selectedVariant.label, true)}
+              disabled={!selectedVariant || effectiveStock <= 0 || adding}
+              onClick={() =>
+                selectedVariant && onAddToCart(selectedVariant.id, quantity, true)
+              }
             >
               Buy now
             </Button>
@@ -218,10 +243,13 @@ export function ProductDetail({
             </div>
           ) : (
             <dl style={{ marginTop: 10 }}>
-              {Object.entries(product.attributes).map(([name, val]) => (
-                <div key={name}>
-                  <dt>{name}</dt>
-                  <dd>{val}</dd>
+              {product.attributes.map((attr) => (
+                <div key={attr.definitionId}>
+                  <dt>{attr.name}</dt>
+                  <dd>
+                    {attr.displayValue}
+                    {attr.unit ? ` ${attr.unit}` : ""}
+                  </dd>
                 </div>
               ))}
             </dl>
@@ -229,7 +257,10 @@ export function ProductDetail({
         </div>
       </div>
 
-      <section id="reviews" style={{ marginTop: 42, paddingTop: 24, borderTop: "1px solid var(--border)" }}>
+      <section
+        id="reviews"
+        style={{ marginTop: 42, paddingTop: 24, borderTop: "1px solid var(--border)" }}
+      >
         <h2>Customer reviews ({localReviews.length})</h2>
         <div className="reviews-grid">
           <div className="panel form-stack">
@@ -262,32 +293,28 @@ export function ProductDetail({
                   required
                   value={reviewAuthor}
                   onChange={(e) => setReviewAuthor(e.target.value)}
-                  placeholder="Alex M."
+                  placeholder="Sam K."
                 />
               </label>
-              <div className="form-pair">
-                <label>
-                  Rating
-                  <select
-                    value={reviewRating}
-                    onChange={(e) => setReviewRating(Number(e.target.value))}
-                  >
-                    {[5, 4, 3, 2, 1].map((n) => (
-                      <option key={n} value={n}>
-                        {n} stars
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Headline
-                  <input
-                    value={reviewTitle}
-                    onChange={(e) => setReviewTitle(e.target.value)}
-                    placeholder="Summary"
-                  />
-                </label>
-              </div>
+              <label>
+                Rating
+                <select
+                  value={reviewRating}
+                  onChange={(e) => setReviewRating(Number(e.target.value))}
+                >
+                  <option value={5}>5 stars — Exceptional</option>
+                  <option value={4}>4 stars — Strong</option>
+                  <option value={3}>3 stars — Solid</option>
+                </select>
+              </label>
+              <label>
+                Headline
+                <input
+                  value={reviewTitle}
+                  onChange={(e) => setReviewTitle(e.target.value)}
+                  placeholder="First impressions"
+                />
+              </label>
               <label>
                 Review
                 <textarea
@@ -295,45 +322,99 @@ export function ProductDetail({
                   rows={3}
                   value={reviewBody}
                   onChange={(e) => setReviewBody(e.target.value)}
-                  placeholder="Share how this performed for you…"
+                  placeholder="Share fit, battery, or material feedback…"
                 />
               </label>
-              <div>
-                <Button type="submit" variant="primary">
-                  Submit review
-                </Button>
-              </div>
+              <Button variant="primary" type="submit">
+                Submit review
+              </Button>
             </form>
           </div>
 
-          <div>
-            {localReviews.map((rev) => (
-              <article key={rev.id} className="review-card">
-                <div className="button-row" style={{ justifyContent: "space-between" }}>
-                  <strong>{rev.title}</strong>
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    {rev.date}
+          <div className="form-stack">
+            {localReviews.map((review) => (
+              <article key={review.id} className="review-card">
+                <div className="review-head">
+                  <strong>{review.title}</strong>
+                  <span className="inline-label">
+                    {Array.from({ length: review.rating }, (_, i) => (
+                      <Star key={i} size={12} fill="currentColor" />
+                    ))}
                   </span>
                 </div>
-                <div className="rating" style={{ margin: "4px 0" }}>
-                  {Array.from({ length: rev.rating }, (_, i) => (
-                    <Star key={i} size={12} fill="currentColor" />
-                  ))}
-                  <span className="muted" style={{ fontSize: 12 }}>
-                    by {rev.author}
-                  </span>
-                  {rev.verified ? (
-                    <span className="badge green">
-                      <Check size={10} /> Verified
+                <p style={{ fontSize: 13.5 }}>{review.comment}</p>
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>
+                  {review.author} · {review.date}
+                  {review.verified ? (
+                    <span className="inline-label" style={{ marginLeft: 8, color: "var(--success)" }}>
+                      <Check size={11} /> Verified purchase
                     </span>
                   ) : null}
                 </div>
-                <p style={{ fontSize: 13.5, color: "var(--muted)" }}>{rev.comment}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
     </div>
+  );
+}
+
+export function ProductDetail({
+  idOrSlug,
+  onAddToCart,
+  adding,
+  wished,
+  toggleWishlist,
+}: {
+  idOrSlug: string;
+  onAddToCart: (variantId: string, qty: number, buyNow?: boolean) => void;
+  adding: boolean;
+  wished: boolean;
+  toggleWishlist: (productId: string) => void;
+}) {
+  const productQuery = useQuery({
+    queryKey: ["store-product", idOrSlug],
+    queryFn: () => storeApi.getProduct(idOrSlug),
+  });
+
+  if (productQuery.isLoading) {
+    return (
+      <div className="store-container">
+        <Skeleton rows={5} />
+      </div>
+    );
+  }
+
+  if (productQuery.isError || !productQuery.data) {
+    return (
+      <div className="store-container">
+        <Empty
+          title="Product not found"
+          text={
+            productQuery.error instanceof ApiError
+              ? productQuery.error.message
+              : "This item may no longer be available."
+          }
+          action={
+            <Link className="btn primary" href="/store/shop">
+              Browse catalog
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  const product = productQuery.data;
+  return (
+    <ProductDetailInner
+      key={product.id}
+      product={product}
+      onAddToCart={onAddToCart}
+      adding={adding}
+      wished={wished}
+      toggleWishlist={() => toggleWishlist(product.id)}
+    />
   );
 }
