@@ -132,7 +132,7 @@ export function Editor() {
   const [libraryQuery, setLibraryQuery] = useState("");
   const [toast, setToast] = useState("");
 
-  const [model, setModel] = useState<AIModelId>("claude-sonnet-4");
+  const [model, setModel] = useState<AIModelId>("gpt-6-luna");
   const [convId, setConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<EditorMessage[]>([]);
   const [pendingPlan, setPendingPlan] = useState<AiChangePlanDto | null>(null);

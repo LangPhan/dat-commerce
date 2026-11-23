@@ -41,6 +41,7 @@ public class NineRouterAiGateway implements AiModelGateway {
         this.appProperties = appProperties;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
     }
@@ -167,8 +168,28 @@ public class NineRouterAiGateway implements AiModelGateway {
     ) throws GatewayCallException {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", modelName);
+        body.put("stream", false);
         body.put("max_tokens", request.maxOutputTokens() > 0 ? request.maxOutputTokens() : ai.getMaxOutputTokens());
         body.put("temperature", 0.2);
+
+        Map<String, String> wireToInternal = new LinkedHashMap<>();
+        if (request.tools() != null && !request.tools().isEmpty()) {
+            List<Map<String, Object>> toolDefs = new ArrayList<>();
+            for (ToolDefinition t : request.tools()) {
+                String wireName = toWireToolName(t.name());
+                wireToInternal.put(wireName, t.name());
+                toolDefs.add(Map.of(
+                        "type", "function",
+                        "function", Map.of(
+                                "name", wireName,
+                                "description", t.description(),
+                                "parameters", t.parametersSchema()
+                        )
+                ));
+            }
+            body.put("tools", toolDefs);
+            body.put("tool_choice", "auto");
+        }
 
         List<Map<String, Object>> msgList = new ArrayList<>();
         for (GatewayMessage m : request.messages()) {
@@ -176,7 +197,7 @@ public class NineRouterAiGateway implements AiModelGateway {
             entry.put("role", m.role());
             if ("tool".equals(m.role())) {
                 entry.put("tool_call_id", m.toolCallId());
-                entry.put("name", m.toolName());
+                entry.put("name", toWireToolName(m.toolName()));
                 entry.put("content", m.content() != null ? m.content() : "{}");
             } else {
                 entry.put("content", m.content() != null ? m.content() : "");
@@ -184,7 +205,7 @@ public class NineRouterAiGateway implements AiModelGateway {
                     List<Map<String, Object>> tcOut = new ArrayList<>();
                     for (GatewayToolCall tc : m.toolCalls()) {
                         Map<String, Object> fn = new LinkedHashMap<>();
-                        fn.put("name", tc.toolName());
+                        fn.put("name", toWireToolName(tc.toolName()));
                         fn.put("arguments", toJsonString(tc.arguments()));
                         tcOut.add(Map.of(
                                 "id", tc.callId(),
@@ -199,21 +220,6 @@ public class NineRouterAiGateway implements AiModelGateway {
         }
         body.put("messages", msgList);
 
-        if (request.tools() != null && !request.tools().isEmpty()) {
-            List<Map<String, Object>> toolDefs = request.tools().stream()
-                    .map(t -> Map.<String, Object>of(
-                            "type", "function",
-                            "function", Map.of(
-                                    "name", t.name(),
-                                    "description", t.description(),
-                                    "parameters", t.parametersSchema()
-                            )
-                    ))
-                    .toList();
-            body.put("tools", toolDefs);
-            body.put("tool_choice", "auto");
-        }
-
         try {
             String payloadJson = objectMapper.writeValueAsString(body);
             HttpRequest httpReq = HttpRequest.newBuilder()
@@ -227,7 +233,11 @@ public class NineRouterAiGateway implements AiModelGateway {
             HttpResponse<String> response = httpClient.send(httpReq, HttpResponse.BodyHandlers.ofString());
             int status = response.statusCode();
             if (status < 200 || status >= 300) {
-                log.warn("9Router HTTP error model={} status={}", modelName, status);
+                String bodyPreview = response.body() != null ? response.body() : "";
+                if (bodyPreview.length() > 300) {
+                    bodyPreview = bodyPreview.substring(0, 300);
+                }
+                log.warn("9Router HTTP error model={} status={} body={}", modelName, status, bodyPreview);
                 boolean retryable = status == 429 || status >= 500;
                 throw new GatewayCallException(status, retryable, "9Router returned status " + status);
             }
@@ -243,11 +253,12 @@ public class NineRouterAiGateway implements AiModelGateway {
             if (tcNode.isArray()) {
                 for (JsonNode item : tcNode) {
                     String callId = item.path("id").asText("call_" + UUID.randomUUID().toString().substring(0, 8));
-                    String fnName = item.path("function").path("name").asText();
+                    String wireName = item.path("function").path("name").asText();
+                    String internalName = wireToInternal.getOrDefault(wireName, wireName.replace("__", "."));
                     String argsRaw = item.path("function").path("arguments").asText("{}");
                     Map<String, Object> args = parseJsonMap(argsRaw);
-                    if (StringUtils.hasText(fnName)) {
-                        calls.add(new GatewayToolCall(callId, fnName, args));
+                    if (StringUtils.hasText(internalName)) {
+                        calls.add(new GatewayToolCall(callId, internalName, args));
                     }
                 }
             }
@@ -267,6 +278,10 @@ public class NineRouterAiGateway implements AiModelGateway {
             log.warn("9Router gateway invocation failed: {}", ex.getMessage());
             throw new GatewayCallException(502, false, "AI gateway request failed: " + ex.getMessage());
         }
+    }
+
+    private static String toWireToolName(String internalName) {
+        return internalName == null ? "" : internalName.replace(".", "__");
     }
 
     private String toJsonString(Map<String, Object> map) {

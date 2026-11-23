@@ -76,7 +76,7 @@ export function Workspace({ notify }: { notify?: (msg: string) => void }) {
     }
     return "";
   });
-  const [model, setModel] = useState<AIModelId>("claude-sonnet-4");
+  const [model, setModel] = useState<AIModelId>("gpt-6-luna");
   const [prompt, setPrompt] = useState<string>(() => {
     if (typeof window !== "undefined") {
       return new URLSearchParams(window.location.search).get("prompt") || "";

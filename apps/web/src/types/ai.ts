@@ -2,10 +2,9 @@ import type { Attribute, Category, Discount, Product } from "./commerce";
 import type { Block } from "./editor";
 
 export type AIModelId =
-  | "claude-sonnet-4"
-  | "gpt-4.1"
-  | "gemini-2.5-pro"
-  | "forma-fast";
+  | "gpt-6-luna"
+  | "cx/gpt-6-luna"
+  | "claude-code";
 
 export type AIModel = {
   id: AIModelId;
@@ -15,10 +14,9 @@ export type AIModel = {
 };
 
 export const AI_MODELS: AIModel[] = [
-  { id: "claude-sonnet-4", label: "Claude Sonnet 4", provider: "9Router · Anthropic", badge: "Balanced" },
-  { id: "gpt-4.1", label: "GPT-4.1", provider: "9Router · OpenAI", badge: "Precise" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", provider: "9Router · Google", badge: "Reasoning" },
-  { id: "forma-fast", label: "Forma Fast", provider: "9Router · Edge", badge: "Low latency" },
+  { id: "gpt-6-luna", label: "GPT-6 Luna", provider: "9Router", badge: "Default" },
+  { id: "cx/gpt-6-luna", label: "GPT-6 Luna (CX)", provider: "9Router · CX", badge: "Fast" },
+  { id: "claude-code", label: "Claude Code", provider: "9Router · Combo", badge: "Combo" },
 ];
 
 export type RecordChange = {

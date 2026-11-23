@@ -236,7 +236,7 @@ export const initialThreads: ConversationThread[] = [
       {
         id: "seed-t1",
         prompt: "Analyze this month's revenue and identify the best-performing categories.",
-        model: "claude-sonnet-4",
+        model: "gpt-6-luna",
         timestamp: "2026-11-23T10:15:00Z",
         status: "Completed",
         result: {
