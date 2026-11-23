@@ -1,0 +1,27 @@
+:80 {
+	handle /api/* {
+		reverse_proxy api:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle /actuator/health* {
+		reverse_proxy api:8080
+	}
+
+	handle /swagger-ui* {
+		reverse_proxy api:8080
+	}
+
+	handle /v3/api-docs* {
+		reverse_proxy api:8080
+	}
+
+	handle_path /storage/* {
+		reverse_proxy silo:9000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

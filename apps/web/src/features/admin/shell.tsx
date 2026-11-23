@@ -4,23 +4,25 @@ import { useRouter } from "next/navigation";
 import {
   ArrowUpRight,
   Box,
-  ChevronRight,
   CircleHelp,
-  Command,
   ExternalLink,
   FolderTree,
   History,
   Image as ImageIcon,
   Layers,
   LayoutDashboard,
+  LogOut,
   Menu,
   Moon,
   Package,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   PanelTop,
   Search,
   Settings2,
+  Shapes,
+  ShieldCheck,
   ShoppingBag,
   Sparkles,
   Sun,
@@ -29,72 +31,99 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { CommandPalette, type CommandItem } from "@/components/ui/command-palette";
 import { Breadcrumbs } from "@/components/ui/data-display";
 import { Toast } from "@/components/ui/toast";
+import { useAuth } from "@/features/auth/auth-context";
 
-export type NavItem = { title: string; path: string; icon: LucideIcon };
-const nav = (title: string, path: string, icon: LucideIcon): NavItem => ({
+export type NavItem = {
+  title: string;
+  path: string;
+  icon: LucideIcon;
+  permission?: string;
+};
+
+const nav = (
+  title: string,
+  path: string,
+  icon: LucideIcon,
+  permission?: string
+): NavItem => ({
   title,
   path,
   icon,
+  permission,
 });
 
 export const navigation: { title: string; items: NavItem[] }[] = [
-  { title: "Overview", items: [nav("Dashboard", "", LayoutDashboard)] },
+  { title: "Overview", items: [nav("Dashboard", "", LayoutDashboard, "dashboard:read")] },
   {
     title: "Catalog",
     items: [
-      nav("Products", "products", Box),
-      nav("Categories", "categories", FolderTree),
-      nav("Collections", "collections", Layers),
-      nav("Attributes", "attributes", Settings2),
-      nav("Inventory", "inventory", Package),
+      nav("Products", "products", Box, "catalog:read"),
+      nav("Categories", "categories", FolderTree, "catalog:read"),
+      nav("Collections", "collections", Layers, "catalog:read"),
+      nav("Product Types", "product-types", Shapes, "catalog:read"),
+      nav("Attributes", "attributes", Settings2, "catalog:read"),
+      nav("Inventory", "inventory", Package, "inventory:read"),
     ],
   },
   {
     title: "Sales",
     items: [
-      nav("Orders", "orders", ShoppingBag),
-      nav("Customers", "customers", Users),
-      nav("Discounts", "discounts", Tag),
-      nav("Promotions", "promotions", Sparkles),
+      nav("Orders", "orders", ShoppingBag, "order:read"),
+      nav("Customers", "customers", Users, "order:read"),
+      nav("Discounts", "discounts", Tag, "promotion:read"),
+      nav("Promotions", "promotions", Sparkles, "promotion:read"),
     ],
   },
   {
     title: "Store Design",
     items: [
-      nav("Pages", "pages", PanelTop),
-      nav("Theme Editor", "editor", Layers),
-      nav("Navigation", "navigation", Menu),
-      nav("Media Library", "media", ImageIcon),
+      nav("Pages", "pages", PanelTop, "content:read"),
+      nav("Theme", "theme", Palette, "content:read"),
+      nav("Theme Editor", "editor", Layers, "content:read"),
+      nav("Navigation", "navigation", Menu, "content:read"),
+      nav("Media Library", "media", ImageIcon, "content:read"),
     ],
   },
   {
     title: "AI Workspace",
     items: [
-      nav("AI Assistant", "assistant", Sparkles),
-      nav("AI Activity", "ai-activity", History),
-      nav("Automation History", "automation", History),
+      nav("AI Assistant", "assistant", Sparkles, "ai:use"),
+      nav("AI Activity", "ai-activity", History, "ai:use"),
+      nav("Automation History", "automation", History, "ai:use"),
+      nav("Audit Logs", "audit-logs", ShieldCheck, "audit:read"),
     ],
   },
   {
     title: "Settings",
     items: [
-      nav("General", "general", Settings2),
-      nav("Store Information", "store-information", CircleHelp),
-      nav("Payment", "payment", ShoppingBag),
-      nav("Shipping", "shipping", Package),
-      nav("Tax", "tax", Tag),
-      nav("Integrations", "integrations", Layers),
-      nav("Users & Permissions", "users", Users),
+      nav("General", "general", Settings2, "store:read"),
+      nav("Store Information", "store-information", CircleHelp, "store:read"),
+      nav("Payment", "payment", ShoppingBag, "store:read"),
+      nav("Shipping", "shipping", Package, "store:read"),
+      nav("Tax", "tax", Tag, "store:read"),
+      nav("Integrations", "integrations", Layers, "store:read"),
+      nav("Users & Permissions", "users", Users, "users:read"),
     ],
   },
 ];
 
 export const adminLink = (path: string) =>
   path === "editor" ? "/" : path ? "/admin/" + path : "/admin";
+
+function initialsFor(name?: string) {
+  if (!name) return "DC";
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() || "")
+    .join("");
+}
 
 export function AdminShell({
   view,
@@ -118,10 +147,18 @@ export function AdminShell({
   children: ReactNode;
 }) {
   const router = useRouter();
+  const { user, logout, hasPermission } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
 
-  const allNavItems = navigation.flatMap((group) =>
+  const visibleNavigation = navigation
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.permission || hasPermission(item.permission)),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  const allNavItems = visibleNavigation.flatMap((group) =>
     group.items.map((item) => ({ ...item, group: group.title }))
   );
   const activeItem = allNavItems.find((item) => item.path === view);
@@ -134,13 +171,17 @@ export function AdminShell({
       icon: <Icon size={15} />,
       run: () => router.push(adminLink(path)),
     })),
-    {
-      id: "action-new-product",
-      label: "Create new product",
-      group: "Quick Actions",
-      icon: <Box size={15} />,
-      run: () => router.push("/admin/products/new"),
-    },
+    ...(hasPermission("catalog:write")
+      ? [
+          {
+            id: "action-new-product",
+            label: "Create new product",
+            group: "Quick Actions",
+            icon: <Box size={15} />,
+            run: () => router.push("/admin/products/new"),
+          },
+        ]
+      : []),
     {
       id: "action-view-store",
       label: "Open Customer Storefront",
@@ -160,7 +201,14 @@ export function AdminShell({
   const crumbs = [
     { label: "Workspace", href: "/admin" },
     { label: activeItem?.title || "Overview", href: view ? adminLink(view) : undefined },
-    ...(id ? [{ label: id === "new" ? "New product" : id, href: subView ? `/admin/${view}/${id}` : undefined }] : []),
+    ...(id
+      ? [
+          {
+            label: id === "new" ? "New product" : id,
+            href: subView ? `/admin/${view}/${id}` : undefined,
+          },
+        ]
+      : []),
     ...(subView ? [{ label: subView === "edit" ? "Edit" : subView }] : []),
   ];
 
@@ -187,13 +235,13 @@ export function AdminShell({
             <Box size={19} />
           </Link>
           <div>
-            <strong>Terrain Supply</strong>
-            <small>Forma Commerce</small>
+            <strong>{user?.storeName || "Terrain Supply"}</strong>
+            <small>Dat Commerce</small>
           </div>
         </div>
 
         <nav>
-          {navigation.map((group) => (
+          {visibleNavigation.map((group) => (
             <div className="admin-nav-group" key={group.title}>
               <h2>{group.title}</h2>
               {group.items.map(({ title, path, icon: Icon }) => (
@@ -254,22 +302,41 @@ export function AdminShell({
               {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
             </IconButton>
 
-            <Link className="btn store-shortcut" href="/">
-              <Sparkles size={14} /> Visual Editor
-            </Link>
+            {hasPermission("content:read") ? (
+              <Link className="btn store-shortcut" href="/">
+                <Sparkles size={14} /> Visual Editor
+              </Link>
+            ) : null}
 
             <Link className="btn store-shortcut" href="/store" target="_blank">
               View store <ExternalLink size={13} />
             </Link>
 
-            <Link
-              href="/admin/users"
-              className="avatar"
-              aria-label="Workspace members"
-              title="Alex Morgan (Owner)"
+            <div className="user-chip">
+              <span
+                className="avatar"
+                title={user ? `${user.fullName} (${user.roles.join(", ")})` : "Account"}
+              >
+                {initialsFor(user?.fullName)}
+              </span>
+              <div className="user-chip-meta">
+                <strong>{user?.fullName || "Admin"}</strong>
+                <small>{user?.roles[0] || "MEMBER"}</small>
+              </div>
+              {user?.roles[0] ? (
+                <Badge tone="accent">{user.roles[0]}</Badge>
+              ) : null}
+            </div>
+
+            <IconButton
+              label="Sign out"
+              onClick={async () => {
+                await logout();
+                router.replace("/login");
+              }}
             >
-              AM
-            </Link>
+              <LogOut size={16} />
+            </IconButton>
           </div>
         </header>
 

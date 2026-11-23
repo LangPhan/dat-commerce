@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${TEST_POSTGRES_HOST:postgres}:${TEST_POSTGRES_PORT:5432}/${TEST_POSTGRES_DB:dat_commerce_test}
+    username: ${TEST_POSTGRES_USER:dat_commerce}
+    password: ${TEST_POSTGRES_PASSWORD:change_me_postgres_password}
+  flyway:
+    clean-disabled: false
+  data:
+    redis:
+      host: ${TEST_REDIS_HOST:redis}
+      port: ${TEST_REDIS_PORT:6379}
+
+app:
+  seed:
+    enabled: true
+  jwt:
+    secret: test-jwt-secret-key-for-integration-tests-minimum-64-chars-long-0001
+    access-ttl-seconds: 900
+    refresh-ttl-seconds: 3600

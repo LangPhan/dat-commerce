@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { AppProviders } from "@/lib/query-provider";
 import "./globals.css";
+import "./auth.css";
 
 export const metadata: Metadata = {
   title: {
@@ -15,7 +17,9 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>{children}</body>
+      <body>
+        <AppProviders>{children}</AppProviders>
+      </body>
     </html>
   );
 }

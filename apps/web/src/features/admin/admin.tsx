@@ -1,9 +1,10 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Skeleton } from "@/components/ui/data-display";
+import { Empty, Skeleton } from "@/components/ui/data-display";
 import { ActivityTable } from "@/features/assistant/activity";
 import { Workspace } from "@/features/assistant/workspace";
+import { AuthGuard } from "@/features/auth/auth-guard";
 import { useStored } from "@/lib/storage";
 import {
   initialAttributes,
@@ -26,15 +27,18 @@ import type {
 } from "@/types/commerce";
 import type { Block } from "@/types/editor";
 import { Attributes } from "./attributes";
+import { AuditLogsView } from "./audit-logs";
 import { CategoryManager } from "./categories";
 import { Dashboard } from "./dashboard";
 import { Orders } from "./orders";
 import { Catalog } from "./products";
 import { Promotions } from "./promotions";
 import { AdminShell, navigation } from "./shell";
+import { StoreSettingsView } from "./store-settings";
+import { UsersManagement } from "./users-management";
 import { UtilityPage } from "./utility";
 
-export function Admin({ route }: { route: string[] }) {
+function AdminWorkspace({ route }: { route: string[] }) {
   const [view = "", id, subView] = route;
   const [catalog, setCatalog, ready] = useStored<Product[]>(
     "catalog",
@@ -131,6 +135,21 @@ export function Admin({ route }: { route: string[] }) {
         notify={setToast}
       />
     );
+  } else if (view === "product-types") {
+    content = (
+      <>
+        <div className="admin-title">
+          <div>
+            <h1>Product Types</h1>
+            <p>Define domain schemas and attribute sets per product family.</p>
+          </div>
+        </div>
+        <Empty
+          title="Product Type API integration scheduled for Phase 2"
+          text="Database schema and ERD for product_types, attribute_definitions, and variant_option_definitions are documented in docs/architecture/erd.md."
+        />
+      </>
+    );
   } else if (view === "attributes") {
     content = (
       <Attributes
@@ -161,23 +180,60 @@ export function Admin({ route }: { route: string[] }) {
         isCampaignView={view === "promotions"}
       />
     );
+  } else if (view === "theme") {
+    content = (
+      <>
+        <div className="admin-title">
+          <div>
+            <h1>Theme Tokens</h1>
+            <p>Manage allowlisted colors, typography, radius, and container tokens.</p>
+          </div>
+        </div>
+        <Empty
+          title="Theme Token Editor scheduled for Phase 4"
+          text="Allowlisted Theme Tokens v1 contract is specified in docs/architecture/block-schema-v1.md."
+        />
+      </>
+    );
   } else if (view === "assistant") {
     content = (
-      <Workspace
-        snapshot={{
-          catalog,
-          categories,
-          discounts: discountList,
-          attributes: attributeList,
-          draftBlocks,
-        }}
-        commit={commitSnapshot}
-        log={(entry) => setActivity((curr) => [entry, ...curr])}
-      />
+      <AuthGuard requiredPermission="ai:use">
+        <Workspace
+          snapshot={{
+            catalog,
+            categories,
+            discounts: discountList,
+            attributes: attributeList,
+            draftBlocks,
+          }}
+          commit={commitSnapshot}
+          log={(entry) => setActivity((curr) => [entry, ...curr])}
+        />
+      </AuthGuard>
     );
   } else if (view === "ai-activity" || view === "automation") {
     content = (
-      <ActivityTable rows={activity} automation={view === "automation"} />
+      <AuthGuard requiredPermission="ai:use">
+        <ActivityTable rows={activity} automation={view === "automation"} />
+      </AuthGuard>
+    );
+  } else if (view === "audit-logs") {
+    content = (
+      <AuthGuard requiredPermission="audit:read">
+        <AuditLogsView />
+      </AuthGuard>
+    );
+  } else if (view === "users") {
+    content = (
+      <AuthGuard requiredPermission="users:read">
+        <UsersManagement notify={setToast} />
+      </AuthGuard>
+    );
+  } else if (view === "general" || view === "store-information") {
+    content = (
+      <AuthGuard requiredPermission="store:read">
+        <StoreSettingsView mode={view} notify={setToast} />
+      </AuthGuard>
     );
   } else if (activeItem) {
     content = (
@@ -217,5 +273,13 @@ export function Admin({ route }: { route: string[] }) {
     >
       {content}
     </AdminShell>
+  );
+}
+
+export function Admin({ route }: { route: string[] }) {
+  return (
+    <AuthGuard>
+      <AdminWorkspace route={route} />
+    </AuthGuard>
   );
 }
