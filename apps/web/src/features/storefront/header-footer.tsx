@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -14,10 +15,9 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { IconButton } from "@/components/ui/button";
-import { initialStoreMenu } from "@/mocks/pages";
+import { cmsStoreApi } from "@/lib/cms-ai-api";
 import { usd } from "@/lib/format";
-import { useStored } from "@/lib/storage";
-import type { StoreMenuLink } from "@/types/commerce";
+import { initialStoreMenu } from "@/mocks/pages";
 
 export function StoreHeader({
   preview = false,
@@ -38,8 +38,14 @@ export function StoreHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [links] = useStored<StoreMenuLink[]>("store-menu", initialStoreMenu);
 
+  const navQuery = useQuery({
+    queryKey: ["store-nav", "main"],
+    queryFn: () => cmsStoreApi.getNavigation("main"),
+    enabled: !preview,
+  });
+
+  const links = navQuery.data?.items?.length ? navQuery.data.items : initialStoreMenu;
   const threshold =
     freeShippingThresholdOverride && Number.isFinite(freeShippingThresholdOverride)
       ? freeShippingThresholdOverride
@@ -70,10 +76,7 @@ export function StoreHeader({
           <span>{storeName}</span>
         </Link>
 
-        <nav
-          className={menuOpen ? "open" : ""}
-          aria-label="Storefront navigation"
-        >
+        <nav className={menuOpen ? "open" : ""} aria-label="Storefront navigation">
           {links.map((link) => {
             const active =
               currentPath === link.url ||

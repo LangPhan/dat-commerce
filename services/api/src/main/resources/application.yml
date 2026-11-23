@@ -70,3 +70,14 @@ app:
     bucket: ${STORAGE_BUCKET:dat-commerce-media}
     region: ${STORAGE_REGION:us-east-1}
     public-url-prefix: ${STORAGE_PUBLIC_PREFIX:/storage}
+  ai:
+    gateway-mode: ${AI_GATEWAY_MODE:mock}
+    base-url: ${AI_GATEWAY_BASE_URL:}
+    api-key: ${AI_GATEWAY_API_KEY:}
+    default-model: ${AI_DEFAULT_MODEL:claude-sonnet-4}
+    complex-task-model: ${AI_COMPLEX_TASK_MODEL:claude-sonnet-4}
+    fast-task-model: ${AI_FAST_TASK_MODEL:forma-fast}
+    request-timeout-seconds: ${AI_REQUEST_TIMEOUT_SECONDS:45}
+    max-tool-rounds: ${AI_MAX_TOOL_ROUNDS:6}
+    max-input-tokens: ${AI_MAX_INPUT_TOKENS:16000}
+    max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:4096}

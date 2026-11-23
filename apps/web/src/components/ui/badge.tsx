@@ -36,21 +36,28 @@ export function StatusBadge({ status }: { status: string }) {
     lower === "active" ||
     lower === "completed" ||
     lower === "published" ||
-    lower === "in stock"
+    lower === "in stock" ||
+    lower === "applied" ||
+    lower === "ready" ||
+    lower === "success"
       ? "green"
       : lower === "pending" ||
+          lower === "pending_approval" ||
           lower === "processing" ||
           lower === "shipped" ||
           lower === "low stock" ||
           lower === "draft" ||
-          lower === "paused"
+          lower === "paused" ||
+          lower === "in_progress"
         ? "amber"
         : lower === "failed" ||
             lower === "refunded" ||
             lower === "canceled" ||
             lower === "cancelled" ||
             lower === "out of stock" ||
-            lower === "unsaved changes"
+            lower === "unsaved changes" ||
+            lower === "rejected" ||
+            lower === "expired"
           ? "red"
           : "neutral";
 

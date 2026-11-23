@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   ArrowUp,
@@ -20,31 +21,33 @@ import { AIAvatarBadge, ModelSelector } from "@/components/shared/ai-components"
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty } from "@/components/ui/data-display";
 import { Tabs } from "@/components/ui/overlay";
+import { ApiError } from "@/lib/api-client";
+import { adminMediaApi } from "@/lib/commerce-api";
 import { newId } from "@/lib/format";
 import type { AIModelId } from "@/types/ai";
 import type { Block, EditorMessage, Proposal } from "@/types/editor";
 import { SectionIcon } from "./structure-panel";
 
 function getContextualPrompts(block: Block | null): string[] {
-  if (!block) return ["Add a Hero section"];
+  if (!block) return ["Add a Best Sellers section below the hero"];
   if (block.type === "Hero") {
     return [
-      "Make this hero more premium: dark background, larger headline, and two-column layout",
-      "Center the hero with a light background",
-      "Add a Promotional Banner below",
+      "Switch selected hero to split two-column layout with dark ink palette",
+      "Make the hero CTA more crisp and centered",
+      "Add a Best Sellers section below the hero",
     ];
   }
   if (block.type === "Best Sellers" || block.type === "Product Grid") {
     return [
-      "Switch to 3 columns",
-      "Use a dark ink background",
-      "Add a Testimonials section",
+      "Update selected section to 3 columns",
+      "Switch selected section to dark ink palette",
+      "Add a Best Sellers section below the hero",
     ];
   }
   return [
-    "Switch to a two-column split layout",
-    "Use a dark ink background",
-    "Make the headline larger",
+    "Switch selected section to split two-column layout",
+    "Update selected section copy to emphasize durability",
+    "Make this section headline larger",
   ];
 }
 
@@ -57,6 +60,10 @@ export function InspectorPanel({
   previewing,
   messages,
   busy,
+  applyBusy = false,
+  statusLine,
+  canWrite = true,
+  canUseAi = true,
   send,
   togglePreview,
   accept,
@@ -73,6 +80,10 @@ export function InspectorPanel({
   previewing: boolean;
   messages: EditorMessage[];
   busy: boolean;
+  applyBusy?: boolean;
+  statusLine?: string;
+  canWrite?: boolean;
+  canUseAi?: boolean;
   send: (text: string) => void;
   togglePreview: () => void;
   accept: () => void;
@@ -81,6 +92,8 @@ export function InspectorPanel({
   model: AIModelId;
   setModel: (m: AIModelId) => void;
 }) {
+  const router = useRouter();
+
   return (
     <aside className="inspector" aria-label="Section inspector">
       <div className="inspector-heading">
@@ -90,14 +103,12 @@ export function InspectorPanel({
         <div>
           <h2>Store assistant</h2>
           <small>
-            <i /> Forma Studio
+            <i /> Dat Commerce Studio
           </small>
         </div>
         <IconButton
           label="AI activity"
-          onClick={() => {
-            window.location.href = "/admin/ai-activity";
-          }}
+          onClick={() => router.push("/admin/ai-activity")}
         >
           <History size={16} />
         </IconButton>
@@ -134,6 +145,9 @@ export function InspectorPanel({
           previewing={previewing}
           messages={messages}
           busy={busy}
+          applyBusy={applyBusy}
+          statusLine={statusLine}
+          canUseAi={canUseAi}
           send={send}
           togglePreview={togglePreview}
           accept={accept}
@@ -142,7 +156,7 @@ export function InspectorPanel({
           setModel={setModel}
         />
       ) : block ? (
-        <PropertiesTab block={block} update={update} />
+        <PropertiesTab block={block} update={update} canWrite={canWrite} />
       ) : (
         <div style={{ padding: 16 }}>
           <Empty
@@ -161,6 +175,9 @@ function AssistantTab({
   previewing,
   messages,
   busy,
+  applyBusy,
+  statusLine,
+  canUseAi,
   send,
   togglePreview,
   accept,
@@ -173,6 +190,9 @@ function AssistantTab({
   previewing: boolean;
   messages: EditorMessage[];
   busy: boolean;
+  applyBusy: boolean;
+  statusLine?: string;
+  canUseAi: boolean;
   send: (text: string) => void;
   togglePreview: () => void;
   accept: () => void;
@@ -186,7 +206,7 @@ function AssistantTab({
   const attachRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (messages.length > 1 || busy) {
+    if (messages.length > 0 || busy) {
       threadRef.current?.scrollTo({
         top: threadRef.current.scrollHeight,
         behavior: "smooth",
@@ -195,7 +215,7 @@ function AssistantTab({
   }, [messages.length, busy]);
 
   const submit = (text: string) => {
-    if (!text.trim() || busy || !block) return;
+    if (!text.trim() || busy || !canUseAi) return;
     send(text.trim() + (file ? ` [Attachment: ${file}]` : ""));
     setInput("");
     setFile("");
@@ -212,6 +232,18 @@ function AssistantTab({
           <span />
         </div>
 
+        {!messages.length && !busy ? (
+          <div className="assistant-message">
+            <AIAvatarBadge />
+            <div>
+              <strong>Dat Commerce AI</strong>
+              <p>
+                Ask me to refine the selected section or add a new block to this page. Changes create a reviewable draft proposal and never auto-publish.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         {messages.map((message, index) => (
           <div className="chat-turn" key={message.id || index}>
             <div className="user-bubble">{message.prompt}</div>
@@ -219,7 +251,7 @@ function AssistantTab({
               <div className="assistant-message">
                 <AIAvatarBadge />
                 <div>
-                  <strong>Forma Studio AI</strong>
+                  <strong>Dat Commerce AI</strong>
                   <p>{message.reply}</p>
                   {message.status ? (
                     <span
@@ -240,7 +272,7 @@ function AssistantTab({
                         <X size={12} />
                       )}
                       {message.status === "error"
-                        ? "No matching action"
+                        ? "Action failed"
                         : message.status === "accepted"
                           ? "Applied to draft"
                           : "Proposal rejected"}
@@ -255,7 +287,7 @@ function AssistantTab({
         {busy ? (
           <div className="streaming">
             <LoaderCircle size={14} className="spin" />
-            <span>Generating block configuration diff…</span>
+            <span>{statusLine || "Streaming section proposal via 9Router…"}</span>
           </div>
         ) : null}
 
@@ -295,13 +327,18 @@ function AssistantTab({
             ) : null}
 
             <div className="proposal-actions">
-              <Button onClick={togglePreview}>
+              <Button onClick={togglePreview} disabled={applyBusy}>
                 <Eye size={13} /> {previewing ? "Exit preview" : "Preview"}
               </Button>
-              <Button variant="primary" onClick={accept}>
-                Accept <ArrowUpRight size={12} />
+              <Button variant="primary" onClick={accept} disabled={applyBusy}>
+                {applyBusy ? "Applying…" : "Accept"}{" "}
+                <ArrowUpRight size={12} />
               </Button>
-              <IconButton label="Reject proposal" onClick={reject}>
+              <IconButton
+                label="Reject proposal"
+                disabled={applyBusy}
+                onClick={reject}
+              >
                 <X size={14} />
               </IconButton>
             </div>
@@ -315,7 +352,7 @@ function AssistantTab({
             <button
               key={p}
               type="button"
-              disabled={!block}
+              disabled={!canUseAi}
               onClick={() => setInput(p)}
             >
               <span>{p}</span>
@@ -355,10 +392,13 @@ function AssistantTab({
           <textarea
             aria-label="Ask AI to edit selected section"
             placeholder={
-              block
-                ? `Edit ${block.label} with natural language…`
-                : "Select a section first…"
+              !canUseAi
+                ? "AI assistant requires ai:use permission."
+                : block
+                  ? `Edit ${block.label} with natural language…`
+                  : "Ask AI to update or add a section…"
             }
+            disabled={!canUseAi}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -382,6 +422,7 @@ function AssistantTab({
             />
             <IconButton
               label="Attach reference"
+              disabled={!canUseAi}
               onClick={() => attachRef.current?.click()}
             >
               <Paperclip size={15} />
@@ -393,14 +434,16 @@ function AssistantTab({
               className="primary send"
               label="Send message"
               type="submit"
-              disabled={!input.trim() || busy || !block}
+              disabled={!input.trim() || busy || !canUseAi}
             >
               <ArrowUp size={15} />
             </IconButton>
           </div>
         </form>
         <p className="composer-note">
-          AI edits modify CMS block data in your draft — never source code.
+          {canUseAi
+            ? "AI proposals edit validated CMS block schemas in draft only — never live until published."
+            : "Read-only viewer role: ask an Admin or Owner to edit pages with AI."}
         </p>
       </div>
     </>
@@ -410,16 +453,36 @@ function AssistantTab({
 function PropertiesTab({
   block,
   update,
+  canWrite,
 }: {
   block: Block;
   update: (change: Partial<Block>) => void;
+  canWrite: boolean;
 }) {
   const [subTab, setSubTab] = useState("content");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const hasItems =
     block.type === "FAQ" ||
     block.type === "Testimonials" ||
     block.type === "Image Gallery" ||
     block.type === "Logo Cloud";
+
+  async function handleImageUpload(file: File | undefined) {
+    if (!file || !canWrite) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      const asset = await adminMediaApi.upload(file, block.label);
+      update({ image: asset.url });
+    } catch (err) {
+      setUploadError(
+        err instanceof ApiError ? err.message : "Image upload failed"
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <div className="properties form-stack">
@@ -431,6 +494,7 @@ function PropertiesTab({
         </div>
         <IconButton
           label={block.visible ? "Hide section" : "Show section"}
+          disabled={!canWrite}
           onClick={() => update({ visible: !block.visible })}
         >
           {block.visible ? <Eye size={15} /> : <EyeOff size={15} />}
@@ -452,6 +516,7 @@ function PropertiesTab({
           <label>
             Layer name
             <input
+              disabled={!canWrite}
               value={block.label}
               onChange={(e) => update({ label: e.target.value })}
             />
@@ -459,6 +524,7 @@ function PropertiesTab({
           <label>
             Kicker / Eyebrow
             <input
+              disabled={!canWrite}
               value={block.kicker || ""}
               onChange={(e) => update({ kicker: e.target.value })}
             />
@@ -466,6 +532,7 @@ function PropertiesTab({
           <label>
             Headline
             <input
+              disabled={!canWrite}
               value={block.heading}
               onChange={(e) => update({ heading: e.target.value })}
             />
@@ -474,6 +541,7 @@ function PropertiesTab({
             Description
             <textarea
               rows={3}
+              disabled={!canWrite}
               value={block.copy}
               onChange={(e) => update({ copy: e.target.value })}
             />
@@ -482,6 +550,7 @@ function PropertiesTab({
             <label>
               Button label
               <input
+                disabled={!canWrite}
                 value={block.action}
                 onChange={(e) => update({ action: e.target.value })}
               />
@@ -489,6 +558,7 @@ function PropertiesTab({
             <label>
               Button link
               <input
+                disabled={!canWrite}
                 value={block.actionUrl || ""}
                 placeholder="/store/shop"
                 onChange={(e) => update({ actionUrl: e.target.value })}
@@ -498,26 +568,32 @@ function PropertiesTab({
           <label>
             Image URL
             <input
+              disabled={!canWrite}
               value={block.image}
               onChange={(e) => update({ image: e.target.value })}
             />
           </label>
           <label>
-            Upload section image
+            Upload section image (Silo S3)
             <input
               type="file"
               accept="image/*"
+              disabled={!canWrite || uploading}
               onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                if (file.size <= 2_000_000) {
-                  const reader = new FileReader();
-                  reader.onload = () => update({ image: String(reader.result) });
-                  reader.readAsDataURL(file);
-                }
+                const selected = e.target.files?.[0];
+                e.target.value = "";
+                void handleImageUpload(selected);
               }}
             />
           </label>
+          {uploading ? (
+            <small className="muted">Uploading image to Silo storage…</small>
+          ) : null}
+          {uploadError ? (
+            <small className="danger" role="alert">
+              {uploadError}
+            </small>
+          ) : null}
 
           {hasItems ? (
             <div className="form-stack">
@@ -527,6 +603,7 @@ function PropertiesTab({
                 </strong>
                 <Button
                   size="sm"
+                  disabled={!canWrite}
                   onClick={() =>
                     update({
                       items: [
@@ -548,10 +625,14 @@ function PropertiesTab({
 
               {(block.items || []).map((entry, index) => (
                 <div key={entry.id} className="property-item-card">
-                  <div className="button-row" style={{ justifyContent: "space-between" }}>
+                  <div
+                    className="button-row"
+                    style={{ justifyContent: "space-between" }}
+                  >
                     <small className="muted">Item #{index + 1}</small>
                     <IconButton
                       label="Remove item"
+                      disabled={!canWrite}
                       onClick={() =>
                         update({
                           items: block.items?.filter((it) => it.id !== entry.id),
@@ -563,11 +644,14 @@ function PropertiesTab({
                   </div>
                   <input
                     aria-label="Item title"
+                    disabled={!canWrite}
                     value={entry.title}
                     onChange={(e) =>
                       update({
                         items: block.items?.map((it) =>
-                          it.id === entry.id ? { ...it, title: e.target.value } : it
+                          it.id === entry.id
+                            ? { ...it, title: e.target.value }
+                            : it
                         ),
                       })
                     }
@@ -575,11 +659,14 @@ function PropertiesTab({
                   <textarea
                     rows={2}
                     aria-label="Item body"
+                    disabled={!canWrite}
                     value={entry.body}
                     onChange={(e) =>
                       update({
                         items: block.items?.map((it) =>
-                          it.id === entry.id ? { ...it, body: e.target.value } : it
+                          it.id === entry.id
+                            ? { ...it, body: e.target.value }
+                            : it
                         ),
                       })
                     }
@@ -596,6 +683,7 @@ function PropertiesTab({
           <label>
             Layout arrangement
             <select
+              disabled={!canWrite}
               value={block.layout}
               onChange={(e) =>
                 update({ layout: e.target.value as Block["layout"] })
@@ -609,6 +697,7 @@ function PropertiesTab({
           <label>
             Section spacing
             <select
+              disabled={!canWrite}
               value={block.spacing || "comfortable"}
               onChange={(e) =>
                 update({ spacing: e.target.value as Block["spacing"] })
@@ -625,6 +714,7 @@ function PropertiesTab({
             <label>
               Grid columns
               <select
+                disabled={!canWrite}
                 value={String(block.columns || 4)}
                 onChange={(e) =>
                   update({ columns: Number(e.target.value) as 2 | 3 | 4 })
@@ -644,6 +734,7 @@ function PropertiesTab({
           <label>
             Color palette
             <select
+              disabled={!canWrite}
               value={block.tone}
               onChange={(e) =>
                 update({ tone: e.target.value as Block["tone"] })
@@ -657,6 +748,7 @@ function PropertiesTab({
           <label>
             Headline typography scale
             <select
+              disabled={!canWrite}
               value={block.scale}
               onChange={(e) =>
                 update({ scale: e.target.value as Block["scale"] })

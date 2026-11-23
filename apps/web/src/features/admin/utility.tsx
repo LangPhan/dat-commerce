@@ -22,12 +22,11 @@ import {
   adminMediaApi,
   adminOrderApi,
 } from "@/lib/commerce-api";
+import { cmsAdminApi } from "@/lib/cms-ai-api";
 import { formatDateTime, newId, slugify, usdExact } from "@/lib/format";
 import { useStored } from "@/lib/storage";
-import { initialBlocks, initialStoreMenu, pagePaths, pageTemplates } from "@/mocks/pages";
+import type { NavigationItemDto } from "@/types/api-cms-ai";
 import type { CollectionDto, OrderDto } from "@/types/api-commerce";
-import type { StoreMenuLink } from "@/types/commerce";
-import type { Block } from "@/types/editor";
 
 type FieldConfig = {
   label: string;
@@ -52,7 +51,7 @@ const settingsConfig: Record<string, FieldConfig[]> = {
   ],
   integrations: [
     { label: "S3 media endpoint", default: "http://silo:9000 (/storage proxy)" },
-    { label: "PostgreSQL & Redis", default: "Connected via Docker network" },
+    { label: "AI Gateway (9Router)", default: "Server-side only (mock / live mode via env)" },
   ],
 };
 
@@ -314,11 +313,7 @@ function CollectionsView({ notify }: { notify: (msg: string) => void }) {
             ) : null}
             <div className="modal-actions">
               <Button onClick={() => setEdit(null)}>Cancel</Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={saveMutation.isPending}
-              >
+              <Button variant="primary" type="submit" disabled={saveMutation.isPending}>
                 Save collection
               </Button>
             </div>
@@ -329,7 +324,7 @@ function CollectionsView({ notify }: { notify: (msg: string) => void }) {
       {deleteTarget ? (
         <ConfirmDialog
           title={`Delete ${deleteTarget.name}?`}
-          description="Removes this collection without affecting the underlying products."
+          description="Removes this collection without affecting underlying products."
           confirmLabel="Delete"
           destructive
           onCancel={() => setDeleteTarget(null)}
@@ -571,6 +566,310 @@ function CustomersView() {
   );
 }
 
+function PagesView({ notify }: { notify: (msg: string) => void }) {
+  const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("content:write");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [error, setError] = useState("");
+
+  const pagesQuery = useQuery({
+    queryKey: ["admin-pages"],
+    queryFn: () => cmsAdminApi.listPages(),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (payload: { slug: string; title: string }) =>
+      cmsAdminApi.createPage({
+        slug: payload.slug,
+        title: payload.title,
+        content: { version: 1, blocks: [] },
+      }),
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-pages"] });
+      setModalOpen(false);
+      notify(`Created page "${created.title}"`);
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : "Failed to create page"),
+  });
+
+  const pages = pagesQuery.data || [];
+
+  return (
+    <>
+      <div className="admin-title">
+        <div>
+          <h1>Pages</h1>
+          <p>
+            Schema-driven CMS pages persisted in PostgreSQL with versioned draft/publish workflows.
+          </p>
+        </div>
+        {canWrite ? (
+          <Button
+            variant="primary"
+            onClick={() => {
+              setError("");
+              setModalOpen(true);
+            }}
+          >
+            <Plus size={15} /> New page
+          </Button>
+        ) : null}
+      </div>
+
+      {pagesQuery.isLoading ? (
+        <Skeleton rows={4} />
+      ) : pages.length ? (
+        <div className="admin-table-panel table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Page</th>
+                <th>Slug</th>
+                <th>Status</th>
+                <th>Version</th>
+                <th>Sections</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pages.map((p) => {
+                const livePath = p.slug === "home" ? "/store" : `/store/${p.slug}`;
+                return (
+                  <tr key={p.id}>
+                    <td>
+                      <strong>{p.title}</strong>
+                    </td>
+                    <td>
+                      <code>{livePath}</code>
+                    </td>
+                    <td>
+                      <StatusBadge
+                        status={p.hasUnpublishedChanges ? "Draft" : p.status}
+                      />
+                    </td>
+                    <td>v{p.latestVersionNumber}</td>
+                    <td>{p.blockCount} sections</td>
+                    <td>
+                      <div className="button-row">
+                        <Link
+                          className="btn btn-sm primary"
+                          href={`/?page=${encodeURIComponent(p.slug)}`}
+                        >
+                          Edit in Visual Editor
+                        </Link>
+                        {p.publishedVersionId ? (
+                          <Link className="btn btn-sm" href={livePath} target="_blank">
+                            View live <ArrowUpRight size={13} />
+                          </Link>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty title="No CMS pages yet" text="Create your first storefront page." />
+      )}
+
+      {modalOpen ? (
+        <Modal
+          title="New CMS page"
+          description="Create a blank draft page ready for the Visual Store Editor."
+          close={() => setModalOpen(false)}
+        >
+          <form
+            className="form-stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setError("");
+              const fd = new FormData(e.currentTarget);
+              const title = String(fd.get("title") || "").trim();
+              const slug = slugify(String(fd.get("slug") || title));
+              if (!title || !slug) {
+                setError("Title and slug are required.");
+                return;
+              }
+              createMutation.mutate({ title, slug });
+            }}
+          >
+            <label>
+              Title
+              <input name="title" required placeholder="Field Guide" />
+            </label>
+            <label>
+              Slug
+              <input name="slug" placeholder="field-guide" />
+            </label>
+            {error ? (
+              <p className="danger" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <div className="modal-actions">
+              <Button onClick={() => setModalOpen(false)}>Cancel</Button>
+              <Button variant="primary" type="submit" disabled={createMutation.isPending}>
+                Create draft page
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
+function NavigationView({ notify }: { notify: (msg: string) => void }) {
+  const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("content:write");
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const navQuery = useQuery({
+    queryKey: ["admin-nav", "main"],
+    queryFn: () => cmsAdminApi.getNavigation("main"),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (items: NavigationItemDto[]) =>
+      cmsAdminApi.updateNavigation("main", items),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-nav", "main"] });
+      queryClient.invalidateQueries({ queryKey: ["store-nav", "main"] });
+      notify("Navigation menu saved");
+    },
+    onError: (err) =>
+      notify(err instanceof ApiError ? err.message : "Failed to update menu"),
+  });
+
+  const items = navQuery.data?.items || [];
+
+  return (
+    <>
+      <div className="admin-title">
+        <div>
+          <h1>Navigation</h1>
+          <p>Reorder, add, or remove links shown in the customer storefront header.</p>
+        </div>
+        {canWrite ? (
+          <Button variant="primary" onClick={() => setModalOpen(true)}>
+            <Plus size={15} /> Add link
+          </Button>
+        ) : null}
+      </div>
+
+      {navQuery.isLoading ? (
+        <Skeleton rows={4} />
+      ) : items.length ? (
+        <div className="admin-table-panel table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Destination</th>
+                <th>Order</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, index) => (
+                <tr key={item.id}>
+                  <td>
+                    <strong>{item.label}</strong>
+                  </td>
+                  <td>
+                    <code>{item.url}</code>
+                  </td>
+                  <td>
+                    {canWrite ? (
+                      <div className="button-row">
+                        <IconButton
+                          label="Move up"
+                          disabled={index === 0 || updateMutation.isPending}
+                          onClick={() => {
+                            const next = [...items];
+                            [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                            updateMutation.mutate(next);
+                          }}
+                        >
+                          <ArrowUp size={14} />
+                        </IconButton>
+                        <IconButton
+                          label="Move down"
+                          disabled={index === items.length - 1 || updateMutation.isPending}
+                          onClick={() => {
+                            const next = [...items];
+                            [next[index + 1], next[index]] = [next[index], next[index + 1]];
+                            updateMutation.mutate(next);
+                          }}
+                        >
+                          <ArrowDown size={14} />
+                        </IconButton>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={updateMutation.isPending}
+                          onClick={() => {
+                            updateMutation.mutate(items.filter((l) => l.id !== item.id));
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="muted">Read-only</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty title="No navigation links" text="Add links to populate the storefront header." />
+      )}
+
+      {modalOpen ? (
+        <Modal
+          title="Add navigation link"
+          description="Uses allowlisted internal / paths or https:// URLs."
+          close={() => setModalOpen(false)}
+        >
+          <form
+            className="form-stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              const label = String(fd.get("label") || "").trim();
+              const url = String(fd.get("url") || "").trim();
+              updateMutation.mutate([...items, { id: newId(), label, url }]);
+              setModalOpen(false);
+            }}
+          >
+            <label>
+              Label
+              <input name="label" required placeholder="New Arrivals" />
+            </label>
+            <label>
+              Destination path
+              <input name="url" required placeholder="/store/shop" />
+            </label>
+            <div className="modal-actions">
+              <Button onClick={() => setModalOpen(false)}>Cancel</Button>
+              <Button variant="primary" type="submit" disabled={updateMutation.isPending}>
+                Add link
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
 export function UtilityPage({
   view,
   title,
@@ -584,21 +883,18 @@ export function UtilityPage({
     "preferences:" + view,
     {}
   );
-  const [menu, setMenu] = useStored<StoreMenuLink[]>("store-menu", initialStoreMenu);
-  const [draft] = useStored<Block[]>("draft", initialBlocks);
-  const [published] = useStored<Block[]>("published", initialBlocks);
-  const [modalOpen, setModalOpen] = useState(false);
 
   if (view === "collections") return <CollectionsView notify={notify} />;
   if (view === "media") return <MediaLibraryView notify={notify} />;
   if (view === "customers") return <CustomersView />;
+  if (view === "pages") return <PagesView notify={notify} />;
+  if (view === "navigation") return <NavigationView notify={notify} />;
 
-  let subtitle = "";
-  let action: React.ReactNode = null;
-  let content: React.ReactNode = null;
+  let content: React.ReactNode = (
+    <Empty title={title} text="Configuration view ready." />
+  );
 
   if (settingsConfig[view]) {
-    subtitle = "Configure store preferences.";
     content = preferencesReady ? (
       <form
         className="panel form-stack utility-form"
@@ -643,137 +939,6 @@ export function UtilityPage({
         </div>
       </form>
     ) : null;
-  } else if (view === "pages") {
-    subtitle = "Manage storefront CMS pages and open the Visual Editor.";
-    const homeSynced = JSON.stringify(draft) === JSON.stringify(published);
-    content = (
-      <div className="admin-table-panel table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Page</th>
-              <th>Route</th>
-              <th>Status</th>
-              <th>Sections</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(pageTemplates).map(([label, tpl]) => {
-              const path = pagePaths[label] || "/store";
-              const isHome = label === "Home page";
-              const sectionCount = isHome ? draft.length : tpl.length;
-              return (
-                <tr key={label}>
-                  <td>
-                    <strong>{label}</strong>
-                  </td>
-                  <td>
-                    <code>{path}</code>
-                  </td>
-                  <td>
-                    <StatusBadge
-                      status={isHome && !homeSynced ? "Draft" : "Published"}
-                    />
-                  </td>
-                  <td>{sectionCount} sections</td>
-                  <td>
-                    <div className="button-row">
-                      <Link
-                        className="btn btn-sm primary"
-                        href={`/?page=${encodeURIComponent(label)}`}
-                      >
-                        Edit in Visual Editor
-                      </Link>
-                      <Link className="btn btn-sm" href={path} target="_blank">
-                        View live <ArrowUpRight size={13} />
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    );
-  } else if (view === "navigation") {
-    subtitle = "Reorder, add, or remove storefront header links.";
-    action = (
-      <Button variant="primary" onClick={() => setModalOpen(true)}>
-        <Plus size={15} /> Add link
-      </Button>
-    );
-    content = menu.length ? (
-      <div className="admin-table-panel table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Label</th>
-              <th>Destination</th>
-              <th>Order</th>
-            </tr>
-          </thead>
-          <tbody>
-            {menu.map((item, index) => (
-              <tr key={item.id}>
-                <td>
-                  <strong>{item.label}</strong>
-                </td>
-                <td>
-                  <code>{item.url}</code>
-                </td>
-                <td>
-                  <div className="button-row">
-                    <IconButton
-                      label="Move up"
-                      disabled={index === 0}
-                      onClick={() => {
-                        const next = [...menu];
-                        [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                        setMenu(next);
-                      }}
-                    >
-                      <ArrowUp size={14} />
-                    </IconButton>
-                    <IconButton
-                      label="Move down"
-                      disabled={index === menu.length - 1}
-                      onClick={() => {
-                        const next = [...menu];
-                        [next[index + 1], next[index]] = [next[index], next[index + 1]];
-                        setMenu(next);
-                      }}
-                    >
-                      <ArrowDown size={14} />
-                    </IconButton>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setMenu(menu.filter((link) => link.id !== item.id));
-                        notify("Link removed");
-                      }}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    ) : (
-      <Empty
-        title="No navigation links"
-        text="Add links to populate the storefront header menu."
-      />
-    );
-  } else {
-    content = (
-      <Empty title={title} text="Configuration view ready for Phase 4 CMS expansion." />
-    );
   }
 
   return (
@@ -781,51 +946,10 @@ export function UtilityPage({
       <div className="admin-title">
         <div>
           <h1>{title}</h1>
-          {subtitle ? <p>{subtitle}</p> : null}
+          <p>Configure store preferences.</p>
         </div>
-        {action}
       </div>
       {content}
-      {modalOpen && view === "navigation" ? (
-        <Modal
-          title="Add navigation link"
-          description="Add a storefront menu item."
-          close={() => setModalOpen(false)}
-        >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              setMenu([
-                ...menu,
-                {
-                  id: newId(),
-                  label: String(fd.get("label") || "").trim(),
-                  url: String(fd.get("url") || "").trim(),
-                },
-              ]);
-              setModalOpen(false);
-              notify("Navigation link added");
-            }}
-          >
-            <label>
-              Label
-              <input name="label" required placeholder="New Arrivals" />
-            </label>
-            <label>
-              Destination path
-              <input name="url" required placeholder="/store/shop" />
-            </label>
-            <div className="modal-actions">
-              <Button onClick={() => setModalOpen(false)}>Cancel</Button>
-              <Button variant="primary" type="submit">
-                Add link
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      ) : null}
     </>
   );
 }

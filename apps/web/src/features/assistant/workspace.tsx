@@ -1,4 +1,6 @@
 "use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   ArrowUp,
@@ -8,10 +10,11 @@ import {
   MessageSquare,
   Paperclip,
   Plus,
+  RotateCcw,
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AIAvatarBadge,
   ChangeDiffTable,
@@ -20,221 +23,350 @@ import {
 } from "@/components/shared/ai-components";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/data-display";
 import { Modal } from "@/components/ui/dialog";
-import { newId } from "@/lib/format";
-import { useStored } from "@/lib/storage";
-import { initialThreads } from "@/mocks/operations";
-import {
-  AI_MODELS,
-  type AIActivityEntry,
-  type AIModelId,
-  type ConversationThread,
-  type ConversationTurn,
-  type Snapshot,
-} from "@/types/ai";
-import { prepare } from "./plans";
+import { ApiError } from "@/lib/api-client";
+import { aiAdminApi } from "@/lib/cms-ai-api";
+import { formatDateTime, newId } from "@/lib/format";
+import { AI_MODELS, type AIModelId, type ToolStep } from "@/types/ai";
+import type {
+  AiChangePlanDto,
+  AiToolCallDto,
+} from "@/types/api-cms-ai";
 
 const suggestedPrompts = [
   "Create a Running Shoes category and add all Nike running products to it",
-  "Increase the price of all Nike products by 5%",
-  "Create a 15% discount for the Footwear category",
-  "Add a Best Sellers section to the homepage",
+  "Increase price of all Nike products in Running Shoes by 5%",
+  "Create a 15% discount for Footwear category",
+  "Add a Best Sellers section below the hero",
   "Create a new product type called Monitor with Panel, Refresh Rate and Resolution attributes",
-  "Analyze this month's revenue and identify the best-performing categories",
+  "Analyze revenue performance by category for the last 30 days",
 ];
 
-export function Workspace({
-  snapshot,
-  commit,
-  log,
-}: {
-  snapshot: Snapshot;
-  commit: (next: Partial<Snapshot>) => void;
-  log: (item: AIActivityEntry) => void;
-}) {
-  const [threads, setThreads, ready] = useStored<ConversationThread[]>(
-    "conversations",
-    initialThreads
+function toolCallToStep(tc: AiToolCallDto): ToolStep {
+  const argsPreview = Object.entries(tc.arguments || {})
+    .slice(0, 3)
+    .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+    .join(", ");
+  const records = Number(
+    tc.resultSummary?.count ??
+      tc.resultSummary?.matchedCount ??
+      tc.resultSummary?.updatedCount ??
+      1
   );
-  const [selectedId, setSelectedId] = useState("");
+  return {
+    id: tc.id,
+    tool: tc.toolName,
+    label: tc.toolName.replace(".", " · "),
+    detail: tc.errorMessage || argsPreview || "Tool executed cleanly",
+    records: Number.isFinite(records) ? records : 0,
+    durationMs: tc.durationMs || 0,
+    status: tc.status === "FAILED" ? "failed" : "completed",
+  };
+}
+
+export function Workspace({ notify }: { notify?: (msg: string) => void }) {
+  const queryClient = useQueryClient();
+
+  const [selectedId, setSelectedId] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      if (new URLSearchParams(window.location.search).get("prompt")) {
+        return "new";
+      }
+    }
+    return "";
+  });
   const [model, setModel] = useState<AIModelId>("claude-sonnet-4");
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return new URLSearchParams(window.location.search).get("prompt") || "";
+    }
+    return "";
+  });
   const [attachment, setAttachment] = useState("");
   const [busy, setBusy] = useState(false);
-  const [activeStepIdx, setActiveStepIdx] = useState(0);
-  const [streamingStepsCount, setStreamingStepsCount] = useState(0);
-  const [review, setReview] = useState<{
-    threadId: string;
-    turn: ConversationTurn;
-  } | null>(null);
+  const [streamingPrompt, setStreamingPrompt] = useState("");
+  const [streamingStatus, setStreamingStatus] = useState("");
+  const [streamingText, setStreamingText] = useState("");
+  const [streamingSteps, setStreamingSteps] = useState<ToolStep[]>([]);
+  const [errorBanner, setErrorBanner] = useState("");
+  const [reviewPlan, setReviewPlan] = useState<AiChangePlanDto | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stepIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const activeThread =
+  const conversationsQuery = useQuery({
+    queryKey: ["ai-conversations"],
+    queryFn: () => aiAdminApi.listConversations(),
+  });
+
+  const conversations = useMemo(
+    () => conversationsQuery.data || [],
+    [conversationsQuery.data]
+  );
+
+  const activeThreadId =
     selectedId === "new"
       ? undefined
-      : threads.find((t) => t.id === selectedId) || threads[0];
+      : conversations.find((c) => c.id === selectedId)?.id ||
+        conversations[0]?.id;
+
+  const detailQuery = useQuery({
+    queryKey: ["ai-conversation", activeThreadId],
+    queryFn: () => aiAdminApi.getConversation(activeThreadId!),
+    enabled: Boolean(activeThreadId),
+  });
+
+  const detail = detailQuery.data;
 
   useEffect(() => {
-    const initial = new URLSearchParams(window.location.search).get("prompt");
-    if (initial) {
-      setPrompt(initial);
-      setSelectedId("new");
-    }
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (activeThread?.turns.length || busy) {
+    if (detail?.messages.length || busy) {
       endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
-  }, [activeThread?.turns.length, busy]);
+  }, [detail?.messages.length, busy]);
 
-  function send(overrideText?: string) {
+  function invalidateAfterMutation() {
+    if (activeThreadId) {
+      queryClient.invalidateQueries({
+        queryKey: ["ai-conversation", activeThreadId],
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
+    queryClient.invalidateQueries({ queryKey: ["ai-activity"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-product-types"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-promotions"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-pages"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
+  }
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => aiAdminApi.deleteConversation(id),
+    onSuccess: (_res, id) => {
+      queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
+      if (activeThreadId === id) {
+        setSelectedId("new");
+      }
+      notify?.("Conversation deleted");
+    },
+    onError: (err) =>
+      setErrorBanner(
+        err instanceof ApiError ? err.message : "Failed to delete conversation"
+      ),
+  });
+
+  const applyMutation = useMutation({
+    mutationFn: (planId: string) =>
+      aiAdminApi.applyChangePlan(planId, `ws-${planId}-${Date.now()}`),
+    onSuccess: (updated) => {
+      invalidateAfterMutation();
+      setReviewPlan(null);
+      setErrorBanner("");
+      notify?.(`Applied change plan (${updated.planType})`);
+    },
+    onError: (err) => {
+      const msg =
+        err instanceof ApiError ? err.message : "Failed to apply change plan";
+      setErrorBanner(msg);
+      notify?.(msg);
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (planId: string) =>
+      aiAdminApi.rejectChangePlan(planId, "Dismissed by operator"),
+    onSuccess: () => {
+      invalidateAfterMutation();
+      setReviewPlan(null);
+      notify?.("Change plan rejected");
+    },
+    onError: (err) =>
+      setErrorBanner(
+        err instanceof ApiError ? err.message : "Failed to reject change plan"
+      ),
+  });
+
+  const rollbackMutation = useMutation({
+    mutationFn: (planId: string) => aiAdminApi.rollbackChangePlan(planId),
+    onSuccess: () => {
+      invalidateAfterMutation();
+      notify?.("Change plan rolled back cleanly");
+    },
+    onError: (err) =>
+      setErrorBanner(
+        err instanceof ApiError ? err.message : "Failed to rollback change plan"
+      ),
+  });
+
+  async function send(overrideText?: string) {
     const raw = (overrideText ?? prompt).trim();
-    if (!raw || busy || !ready) return;
+    if (!raw || busy) return;
 
-    const threadId = activeThread?.id || newId();
-    const turnId = newId();
-    const modelLabel = AI_MODELS.find((m) => m.id === model)?.label || "Forma AI";
-    const turn: ConversationTurn = {
-      id: turnId,
-      prompt: raw,
-      attachment: attachment || undefined,
-      model,
-      timestamp: new Date().toISOString(),
-    };
+    const fullPrompt = attachment
+      ? `${raw}\n\n[Attached reference file: ${attachment}]`
+      : raw;
 
-    setSelectedId(threadId);
+    setErrorBanner("");
     setPrompt("");
     setAttachment("");
     setBusy(true);
-    setActiveStepIdx(0);
+    setStreamingPrompt(fullPrompt);
+    setStreamingStatus("Starting 9Router session…");
+    setStreamingText("");
+    setStreamingSteps([]);
 
-    setThreads((curr) =>
-      activeThread
-        ? curr.map((t) =>
-            t.id === threadId
-              ? { ...t, updatedAt: turn.timestamp, turns: [...t.turns, turn] }
-              : t
-          )
-        : [
-            {
-              id: threadId,
-              title: raw.slice(0, 44),
-              updatedAt: turn.timestamp,
-              turns: [turn],
-            },
-            ...curr,
-          ]
-    );
-
-    const previewPlan = prepare(raw, snapshot);
-    const totalSteps = previewPlan.plan?.steps.length || 2;
-    setStreamingStepsCount(totalSteps);
-
-    if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
-    stepIntervalRef.current = setInterval(() => {
-      setActiveStepIdx((i) => Math.min(totalSteps - 1, i + 1));
-    }, 240);
-
-    timerRef.current = setTimeout(() => {
-      if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
-      if (previewPlan.error) {
-        log({
-          id: newId(),
-          title: raw,
-          category: "Error",
-          timestamp: new Date().toISOString(),
-          status: "Failed",
-          records: 0,
-          model: modelLabel,
-        });
-      } else if (!previewPlan.plan) {
-        log({
-          id: newId(),
-          title: raw.slice(0, 60),
-          category: "Analysis",
-          timestamp: new Date().toISOString(),
-          status: "Completed",
-          records: snapshot.catalog.length,
-          model: modelLabel,
-        });
+    try {
+      let targetConvId = activeThreadId;
+      if (!targetConvId) {
+        const created = await aiAdminApi.createConversation(
+          raw.slice(0, 64),
+          model
+        );
+        targetConvId = created.id;
+        setSelectedId(created.id);
+        queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
       }
 
-      setThreads((curr) =>
-        curr.map((t) =>
-          t.id === threadId
-            ? {
-                ...t,
-                turns: t.turns.map((entry) =>
-                  entry.id === turnId
-                    ? {
-                        ...entry,
-                        result: previewPlan,
-                        status: previewPlan.plan
-                          ? "Pending"
-                          : previewPlan.error
-                            ? "Failed"
-                            : "Completed",
-                      }
-                    : entry
-                ),
-              }
-            : t
-        )
+      await aiAdminApi.streamMessage(
+        targetConvId,
+        { prompt: fullPrompt, model },
+        {
+          onStatus: (s) => {
+            setStreamingStatus(s.message || s.phase);
+          },
+          onToolStarted: (t) => {
+            setStreamingSteps((curr) => [
+              ...curr,
+              {
+                id: t.callId || newId(),
+                tool: t.tool,
+                label: `Running ${t.tool}`,
+                detail: "Executing server-side validated tool…",
+                records: 0,
+                durationMs: 0,
+                status: "running",
+              },
+            ]);
+          },
+          onToolCompleted: (tc) => {
+            const payload = (tc.toolCall || {}) as Partial<AiToolCallDto>;
+            setStreamingSteps((curr) => {
+              const next = [...curr];
+              const idx = next.findIndex(
+                (s) => s.id === payload.id || s.status === "running"
+              );
+              const step: ToolStep = {
+                id: payload.id || newId(),
+                tool: payload.toolName || "tool",
+                label: (payload.toolName || "tool").replace(".", " · "),
+                detail:
+                  tc.status === "FAILED"
+                    ? "Tool returned validation error"
+                    : "Tool completed",
+                records: 1,
+                durationMs: payload.durationMs || 0,
+                status: tc.status === "FAILED" ? "failed" : "completed",
+              };
+              if (idx >= 0) next[idx] = step;
+              else next.push(step);
+              return next;
+            });
+          },
+          onMessageDelta: (delta) => {
+            setStreamingText((prev) => prev + (delta.text || ""));
+          },
+          onPlanCreated: () => {
+            queryClient.invalidateQueries({ queryKey: ["ai-activity"] });
+          },
+          onCompleted: () => {
+            queryClient.invalidateQueries({
+              queryKey: ["ai-conversation", targetConvId],
+            });
+            queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
+            queryClient.invalidateQueries({ queryKey: ["ai-activity"] });
+          },
+          onError: (msg) => {
+            setErrorBanner(msg);
+          },
+        }
       );
+    } catch (err) {
+      setErrorBanner(
+        err instanceof ApiError ? err.message : "AI stream request failed"
+      );
+    } finally {
       setBusy(false);
-    }, Math.max(650, totalSteps * 250));
+      setStreamingPrompt("");
+      setStreamingStatus("");
+      setStreamingText("");
+      setStreamingSteps([]);
+    }
   }
 
-  function finish(status: "Completed" | "Canceled") {
-    if (!review?.turn.result?.plan) return;
-    const oldPlan = review.turn.result.plan;
-    const fresh = prepare(review.turn.prompt, snapshot).plan;
-    const stillMatches =
-      fresh && JSON.stringify(fresh.changes) === JSON.stringify(oldPlan.changes);
+  const messages = detail?.messages || [];
+  const toolCalls = detail?.toolCalls || [];
+  const changePlans = detail?.changePlans || [];
+  const linkedMessageIds = new Set(messages.map((m) => m.id));
+  const orphanPlans = changePlans.filter(
+    (p) => !p.messageId || !linkedMessageIds.has(p.messageId)
+  );
 
-    if (status === "Completed" && stillMatches) {
-      commit(fresh.updates);
-    }
+  function renderPlanCard(plan: AiChangePlanDto) {
+    return (
+      <div className="tool-plan" key={plan.id}>
+        <div className="tool-plan-head">
+          <div>
+            <h3>{plan.requestSummary}</h3>
+            <small className="muted">
+              {plan.planType} · Risk: {plan.riskLevel} · Expires{" "}
+              {formatDateTime(plan.expiresAt)}
+            </small>
+          </div>
+          <StatusBadge status={plan.status} />
+        </div>
 
-    const finalStatus =
-      status === "Completed" && !stillMatches ? "Failed" : status;
-    const modelLabel =
-      AI_MODELS.find((m) => m.id === review.turn.model)?.label || "Forma AI";
+        {plan.preview?.length ? (
+          <ChangeDiffTable changes={plan.preview.slice(0, 6)} />
+        ) : null}
 
-    log({
-      id: newId(),
-      title: oldPlan.summary,
-      category: oldPlan.category,
-      timestamp: new Date().toISOString(),
-      status: finalStatus,
-      records: finalStatus === "Completed" ? oldPlan.changes.length : 0,
-      model: modelLabel,
-      steps: oldPlan.steps,
-      changes: oldPlan.changes,
-    });
+        {plan.errorMessage ? (
+          <p role="alert" className="danger" style={{ fontSize: 12 }}>
+            {plan.errorMessage}
+          </p>
+        ) : null}
 
-    setThreads((all) =>
-      all.map((t) =>
-        t.id === review.threadId
-          ? {
-              ...t,
-              turns: t.turns.map((turn) =>
-                turn.id === review.turn.id ? { ...turn, status: finalStatus } : turn
-              ),
-            }
-          : t
-      )
+        {plan.status === "PENDING_APPROVAL" ? (
+          <div className="button-row">
+            <Button
+              variant="primary"
+              disabled={applyMutation.isPending || rejectMutation.isPending}
+              onClick={() => setReviewPlan(plan)}
+            >
+              Review & approve ({plan.preview?.length || 0})
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={applyMutation.isPending || rejectMutation.isPending}
+              onClick={() => rejectMutation.mutate(plan.id)}
+            >
+              Reject
+            </Button>
+          </div>
+        ) : plan.status === "APPLIED" && plan.reversible ? (
+          <div className="button-row">
+            <Button
+              size="sm"
+              disabled={rollbackMutation.isPending}
+              onClick={() => rollbackMutation.mutate(plan.id)}
+            >
+              <RotateCcw size={13} /> Rollback
+            </Button>
+          </div>
+        ) : null}
+      </div>
     );
-    setReview(null);
   }
 
   return (
@@ -243,13 +375,28 @@ export function Workspace({
         <div>
           <h1>AI Assistant</h1>
           <p>
-            Execute catalog, pricing, promotion, and storefront updates with explicit change previews.
+            Execute catalog, pricing, promotion, and storefront updates with
+            server-validated Change Plans and one-click rollback.
           </p>
         </div>
         <Badge tone="accent">
-          <Sparkles size={13} /> Forma Operator · 9Router
+          <Sparkles size={13} /> Dat Operator · 9Router
         </Badge>
       </div>
+
+      {errorBanner ? (
+        <div
+          className="panel"
+          role="alert"
+          style={{
+            marginBottom: 12,
+            borderColor: "var(--danger)",
+            color: "var(--danger)",
+          }}
+        >
+          {errorBanner}
+        </div>
+      ) : null}
 
       <div className="ai-workspace admin-table-panel">
         <aside className="ai-threads" aria-label="Conversations">
@@ -258,54 +405,59 @@ export function Workspace({
               setSelectedId("new");
               setPrompt("");
               setAttachment("");
+              setErrorBanner("");
             }}
           >
             <Plus size={14} /> New conversation
           </Button>
-          {threads.map((item) => (
-            <div className="ai-thread-row" key={item.id}>
-              <button
-                type="button"
-                className={
-                  "ai-thread-btn " +
-                  (activeThread?.id === item.id ? "active" : "")
-                }
-                onClick={() => setSelectedId(item.id)}
-              >
-                <MessageSquare size={14} />
-                <span>{item.title}</span>
-              </button>
-              <IconButton
-                label={`Delete thread ${item.title}`}
-                onClick={() => {
-                  setThreads((curr) => curr.filter((t) => t.id !== item.id));
-                  if (activeThread?.id === item.id) setSelectedId("new");
-                }}
-              >
-                <Trash2 size={12} />
-              </IconButton>
-            </div>
-          ))}
+          {conversationsQuery.isLoading ? (
+            <Skeleton rows={4} />
+          ) : (
+            conversations.map((item) => (
+              <div className="ai-thread-row" key={item.id}>
+                <button
+                  type="button"
+                  className={
+                    "ai-thread-btn " +
+                    (activeThreadId === item.id ? "active" : "")
+                  }
+                  onClick={() => setSelectedId(item.id)}
+                >
+                  <MessageSquare size={14} />
+                  <span>{item.title}</span>
+                </button>
+                <IconButton
+                  label={`Delete thread ${item.title}`}
+                  disabled={deleteMutation.isPending}
+                  onClick={() => deleteMutation.mutate(item.id)}
+                >
+                  <Trash2 size={12} />
+                </IconButton>
+              </div>
+            ))
+          )}
         </aside>
 
         <div className="ai-workarea">
           <div className="ai-workarea-head">
             <strong style={{ fontSize: 13 }}>
-              {activeThread?.title || "New operator session"}
+              {detail?.conversation.title || "New operator session"}
             </strong>
             <ModelSelector value={model} onChange={setModel} />
           </div>
 
           <div className="ai-history" aria-live="polite">
-            {!activeThread?.turns.length && !busy ? (
+            {detailQuery.isLoading && activeThreadId ? (
+              <Skeleton rows={4} />
+            ) : !messages.length && !busy ? (
               <div className="ai-intro">
                 <span className="studio-symbol">
                   <Sparkles size={20} />
                 </span>
                 <h2>What would you like to operate on?</h2>
                 <p>
-                  Sensitive catalog, pricing, promotion, and theme actions always pause for your
-                  confirmation before mutating records.
+                  Every mutating action creates a signed, time-limited Change
+                  Plan that requires your explicit confirmation before applying.
                 </p>
                 <div>
                   {suggestedPrompts.map((example) => (
@@ -317,32 +469,45 @@ export function Workspace({
                 </div>
               </div>
             ) : (
-              activeThread?.turns.map((turn) => (
-                <div className="operator-turn" key={turn.id}>
-                  <div className="user-bubble">
-                    {turn.prompt}
-                    {turn.attachment ? (
-                      <span className="attachment">
-                        <FileIcon size={13} /> {turn.attachment}
-                      </span>
-                    ) : null}
-                  </div>
+              <>
+                {messages.map((msg) => {
+                  if (msg.role.toLowerCase() === "user") {
+                    return (
+                      <div className="operator-turn" key={msg.id}>
+                        <div className="user-bubble">{msg.content}</div>
+                      </div>
+                    );
+                  }
+                  const msgTools = toolCalls.filter(
+                    (tc) => tc.messageId === msg.id
+                  );
+                  const msgPlans = changePlans.filter(
+                    (p) => p.messageId === msg.id
+                  );
+                  const modelLabel =
+                    AI_MODELS.find((m) => m.id === msg.model)?.label ||
+                    msg.model ||
+                    "Operator";
+                  const hasPagePlan = msgPlans.some(
+                    (p) => p.planType === "PAGE_CHANGE"
+                  );
 
-                  {turn.result ? (
-                    <>
+                  return (
+                    <div className="operator-turn" key={msg.id}>
                       <div className="assistant-message">
                         <AIAvatarBadge />
                         <div>
                           <strong>
-                            Forma AI{" "}
-                            <span className="muted" style={{ fontWeight: 400 }}>
-                              ·{" "}
-                              {AI_MODELS.find((m) => m.id === turn.model)?.label ||
-                                "Operator"}
+                            Dat AI{" "}
+                            <span
+                              className="muted"
+                              style={{ fontWeight: 400 }}
+                            >
+                              · {modelLabel}
                             </span>
                           </strong>
-                          <p>{turn.result.text}</p>
-                          {turn.result.link ? (
+                          <p style={{ whiteSpace: "pre-wrap" }}>{msg.content}</p>
+                          {hasPagePlan ? (
                             <Link href="/" className="btn btn-sm">
                               Open Visual Store Editor <ArrowUpRight size={13} />
                             </Link>
@@ -350,80 +515,51 @@ export function Workspace({
                         </div>
                       </div>
 
-                      {turn.result.plan ? (
+                      {msgTools.length ? (
                         <div className="tool-plan">
-                          <div className="tool-plan-head">
-                            <h3>{turn.result.plan.summary}</h3>
-                            <StatusBadge status={turn.status || "Pending"} />
-                          </div>
-
                           <ToolExecutionTimeline
-                            steps={turn.result.plan.steps}
-                            status={turn.status}
+                            steps={msgTools.map(toolCallToStep)}
+                            status="Completed"
                           />
-
-                          {turn.status === "Pending" ? (
-                            <div className="button-row">
-                              <Button
-                                variant="primary"
-                                onClick={() =>
-                                  setReview({ threadId: activeThread.id, turn })
-                                }
-                              >
-                                Review & approve ({turn.result.plan.changes.length})
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                onClick={() => {
-                                  log({
-                                    id: newId(),
-                                    title: turn.result?.plan?.summary || turn.prompt,
-                                    category: turn.result?.plan?.category,
-                                    timestamp: new Date().toISOString(),
-                                    status: "Canceled",
-                                    records: 0,
-                                  });
-                                  setThreads((all) =>
-                                    all.map((t) =>
-                                      t.id === activeThread.id
-                                        ? {
-                                            ...t,
-                                            turns: t.turns.map((item) =>
-                                              item.id === turn.id
-                                                ? { ...item, status: "Canceled" }
-                                                : item
-                                            ),
-                                          }
-                                        : t
-                                    )
-                                  );
-                                }}
-                              >
-                                Dismiss
-                              </Button>
-                            </div>
-                          ) : null}
-
-                          {turn.status === "Failed" ? (
-                            <p role="alert" className="danger" style={{ fontSize: 12 }}>
-                              Underlying catalog state changed before approval. Re-run the command for a fresh preview.
-                            </p>
-                          ) : null}
                         </div>
                       ) : null}
-                    </>
-                  ) : null}
-                </div>
-              ))
+
+                      {msgPlans.map((plan) => renderPlanCard(plan))}
+                    </div>
+                  );
+                })}
+
+                {orphanPlans.map((plan) => renderPlanCard(plan))}
+              </>
             )}
 
             {busy ? (
-              <div className="streaming">
-                <LoaderCircle size={15} className="spin" />
-                <span>
-                  Executing step {Math.min(activeStepIdx + 1, streamingStepsCount)} of{" "}
-                  {streamingStepsCount}…
-                </span>
+              <div className="operator-turn">
+                {streamingPrompt ? (
+                  <div className="user-bubble">{streamingPrompt}</div>
+                ) : null}
+                {streamingSteps.length ? (
+                  <div className="tool-plan">
+                    <ToolExecutionTimeline
+                      steps={streamingSteps}
+                      status="Running"
+                      activeStepIndex={streamingSteps.length - 1}
+                    />
+                  </div>
+                ) : null}
+                {streamingText ? (
+                  <div className="assistant-message">
+                    <AIAvatarBadge />
+                    <div>
+                      <strong>Dat AI</strong>
+                      <p style={{ whiteSpace: "pre-wrap" }}>{streamingText}</p>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="streaming">
+                  <LoaderCircle size={15} className="spin" />
+                  <span>{streamingStatus || "Streaming from 9Router…"}</span>
+                </div>
               </div>
             ) : null}
             <div ref={endRef} />
@@ -433,7 +569,7 @@ export function Workspace({
             className="operator-composer"
             onSubmit={(e) => {
               e.preventDefault();
-              send();
+              void send();
             }}
           >
             {attachment ? (
@@ -449,15 +585,15 @@ export function Workspace({
               </span>
             ) : null}
             <textarea
-              aria-label="Message Forma Operator"
+              aria-label="Message Dat AI Operator"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={2}
-              placeholder="Ask Forma Operator to update products, categories, discounts, or storefront blocks…"
+              placeholder="Ask Dat AI to update products, categories, discounts, theme tokens, or storefront blocks…"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  send();
+                  void send();
                 }
               }}
             />
@@ -477,12 +613,14 @@ export function Workspace({
               >
                 <Paperclip size={15} />
               </IconButton>
-              <span className="muted">Enter to send · Shift+Enter for newline</span>
+              <span className="muted">
+                Enter to send · Shift+Enter for newline
+              </span>
               <IconButton
                 label="Send message"
                 className="primary"
                 type="submit"
-                disabled={!prompt.trim() || busy || !ready}
+                disabled={!prompt.trim() || busy}
               >
                 <ArrowUp size={16} />
               </IconButton>
@@ -491,18 +629,31 @@ export function Workspace({
         </div>
       </div>
 
-      {review?.turn.result?.plan ? (
+      {reviewPlan ? (
         <Modal
           wide
-          title={review.turn.result.plan.summary}
-          description={`Inspect ${review.turn.result.plan.changes.length} affected records before applying changes.`}
-          close={() => setReview(null)}
+          title={reviewPlan.requestSummary}
+          description={`${reviewPlan.planType} · Risk: ${reviewPlan.riskLevel} · Review ${reviewPlan.preview?.length || 0} affected records before applying.`}
+          close={() => setReviewPlan(null)}
         >
-          <ChangeDiffTable changes={review.turn.result.plan.changes} />
+          {reviewPlan.preview?.length ? (
+            <ChangeDiffTable changes={reviewPlan.preview} />
+          ) : (
+            <p className="muted">No diff preview rows returned.</p>
+          )}
           <div className="modal-actions">
-            <Button onClick={() => finish("Canceled")}>Cancel operation</Button>
-            <Button variant="primary" onClick={() => finish("Completed")}>
-              Confirm & apply
+            <Button
+              disabled={applyMutation.isPending || rejectMutation.isPending}
+              onClick={() => rejectMutation.mutate(reviewPlan.id)}
+            >
+              Reject plan
+            </Button>
+            <Button
+              variant="primary"
+              disabled={applyMutation.isPending || rejectMutation.isPending}
+              onClick={() => applyMutation.mutate(reviewPlan.id)}
+            >
+              {applyMutation.isPending ? "Applying…" : "Confirm & apply"}
             </Button>
           </div>
         </Modal>

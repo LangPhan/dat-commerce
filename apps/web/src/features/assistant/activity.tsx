@@ -1,31 +1,105 @@
 "use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowUpRight, Search } from "lucide-react";
+import { ArrowUpRight, RotateCcw, Search } from "lucide-react";
 import { useState } from "react";
-import {
-  ChangeDiffTable,
-  ToolExecutionTimeline,
-} from "@/components/shared/ai-components";
+import { ChangeDiffTable } from "@/components/shared/ai-components";
 import { Badge, StatusBadge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Empty, Skeleton } from "@/components/ui/data-display";
 import { Drawer } from "@/components/ui/dialog";
-import { Empty } from "@/components/ui/data-display";
+import { ApiError } from "@/lib/api-client";
+import { aiAdminApi } from "@/lib/cms-ai-api";
 import { formatDateTime } from "@/lib/format";
-import type { AIActivityEntry } from "@/types/ai";
+import type { AiChangePlanDto } from "@/types/api-cms-ai";
 
 export function ActivityTable({
-  rows,
   automation,
+  notify,
 }: {
-  rows: AIActivityEntry[];
   automation: boolean;
+  notify?: (msg: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
-  const [selected, setSelected] = useState<AIActivityEntry | null>(null);
+  const [selected, setSelected] = useState<AiChangePlanDto | null>(null);
+  const [actionError, setActionError] = useState("");
 
+  const activityQuery = useQuery({
+    queryKey: ["ai-activity"],
+    queryFn: () => aiAdminApi.getActivity(),
+  });
+
+  function refreshAll() {
+    queryClient.invalidateQueries({ queryKey: ["ai-activity"] });
+    queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-product-types"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-promotions"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-pages"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
+  }
+
+  const applyMutation = useMutation({
+    mutationFn: (planId: string) =>
+      aiAdminApi.applyChangePlan(planId, `act-${planId}-${Date.now()}`),
+    onSuccess: (updated) => {
+      setSelected(updated);
+      setActionError("");
+      refreshAll();
+      notify?.(`Applied change plan (${updated.planType})`);
+    },
+    onError: (err) => {
+      setActionError(
+        err instanceof ApiError ? err.message : "Failed to apply change plan"
+      );
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (planId: string) =>
+      aiAdminApi.rejectChangePlan(planId, "Rejected from AI activity drawer"),
+    onSuccess: (updated) => {
+      setSelected(updated);
+      setActionError("");
+      refreshAll();
+      notify?.("Change plan rejected");
+    },
+    onError: (err) => {
+      setActionError(
+        err instanceof ApiError ? err.message : "Failed to reject change plan"
+      );
+    },
+  });
+
+  const rollbackMutation = useMutation({
+    mutationFn: (planId: string) => aiAdminApi.rollbackChangePlan(planId),
+    onSuccess: (updated) => {
+      setSelected(updated);
+      setActionError("");
+      refreshAll();
+      notify?.("Change plan rolled back");
+    },
+    onError: (err) => {
+      setActionError(
+        err instanceof ApiError ? err.message : "Failed to rollback change plan"
+      );
+    },
+  });
+
+  const rows = activityQuery.data?.changePlans || [];
   const visible = rows.filter((item) => {
     if (status && item.status !== status) return false;
-    if (query.trim() && !item.title.toLowerCase().includes(query.trim().toLowerCase())) {
+    const needle = query.trim().toLowerCase();
+    if (
+      needle &&
+      !item.requestSummary.toLowerCase().includes(needle) &&
+      !item.planType.toLowerCase().includes(needle)
+    ) {
       return false;
     }
     return true;
@@ -37,7 +111,8 @@ export function ActivityTable({
         <div>
           <h1>{automation ? "Automation history" : "AI activity"}</h1>
           <p>
-            Audit every AI-assisted catalog mutation, tool call, and approval decision.
+            Audit every AI Change Plan, approval decision, execution status, and
+            rollback.
           </p>
         </div>
         <Link className="btn primary" href="/admin/assistant">
@@ -62,23 +137,28 @@ export function ActivityTable({
             onChange={(e) => setStatus(e.target.value)}
           >
             <option value="">All statuses</option>
-            <option>Completed</option>
-            <option>Canceled</option>
-            <option>Failed</option>
+            <option value="PENDING_APPROVAL">PENDING_APPROVAL</option>
+            <option value="APPLIED">APPLIED</option>
+            <option value="REJECTED">REJECTED</option>
+            <option value="EXPIRED">EXPIRED</option>
+            <option value="FAILED">FAILED</option>
+            <option value="ROLLED_BACK">ROLLED_BACK</option>
           </select>
         </div>
 
-        {visible.length ? (
+        {activityQuery.isLoading ? (
+          <Skeleton rows={5} />
+        ) : visible.length ? (
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
                   <th>Operation</th>
-                  <th>Category</th>
-                  <th>Model</th>
+                  <th>Plan Type</th>
+                  <th>Risk</th>
                   <th>Status</th>
                   <th>Records</th>
-                  <th>Timestamp</th>
+                  <th>Created</th>
                 </tr>
               </thead>
               <tbody>
@@ -88,20 +168,23 @@ export function ActivityTable({
                       <button
                         type="button"
                         className="text-button"
-                        onClick={() => setSelected(item)}
+                        onClick={() => {
+                          setActionError("");
+                          setSelected(item);
+                        }}
                       >
-                        {item.title}
+                        {item.requestSummary}
                       </button>
                     </td>
                     <td>
-                      <Badge>{item.category || "Operator"}</Badge>
+                      <Badge>{item.planType}</Badge>
                     </td>
-                    <td className="muted">{item.model || "Forma Operator"}</td>
+                    <td className="muted">{item.riskLevel}</td>
                     <td>
                       <StatusBadge status={item.status} />
                     </td>
-                    <td>{item.records}</td>
-                    <td className="muted">{formatDateTime(item.timestamp)}</td>
+                    <td>{item.preview?.length || 0}</td>
+                    <td className="muted">{formatDateTime(item.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -110,38 +193,106 @@ export function ActivityTable({
         ) : (
           <Empty
             title="No matching activity"
-            text="Operations you review and execute in the AI Assistant will be logged here."
+            text="Change Plans proposed in the AI Assistant or Visual Editor will appear here."
           />
         )}
       </div>
 
       {selected ? (
         <Drawer
-          title={selected.title}
-          description={`${selected.status} · ${formatDateTime(selected.timestamp)}`}
+          title={selected.requestSummary}
+          description={`${selected.status} · ${formatDateTime(selected.createdAt)}`}
           close={() => setSelected(null)}
         >
           <div className="form-stack">
             <div className="button-row">
               <StatusBadge status={selected.status} />
-              {selected.model ? <Badge tone="accent">{selected.model}</Badge> : null}
-              <Badge>{selected.records} records</Badge>
+              <Badge tone="accent">{selected.planType}</Badge>
+              <Badge>{selected.riskLevel} risk</Badge>
+              <Badge>{selected.preview?.length || 0} records</Badge>
             </div>
-            {selected.steps?.length ? (
-              <div>
-                <h3 style={{ marginBottom: 8 }}>Tool execution steps</h3>
-                <ToolExecutionTimeline
-                  steps={selected.steps}
-                  status={selected.status}
-                />
+
+            {actionError ? (
+              <p role="alert" className="danger" style={{ fontSize: 13 }}>
+                {actionError}
+              </p>
+            ) : null}
+
+            {selected.errorMessage ? (
+              <p role="alert" className="danger" style={{ fontSize: 13 }}>
+                {selected.errorMessage}
+              </p>
+            ) : null}
+
+            {selected.status === "PENDING_APPROVAL" ? (
+              <div className="button-row">
+                <Button
+                  variant="primary"
+                  disabled={applyMutation.isPending || rejectMutation.isPending}
+                  onClick={() => applyMutation.mutate(selected.id)}
+                >
+                  {applyMutation.isPending ? "Applying…" : "Approve & apply"}
+                </Button>
+                <Button
+                  disabled={applyMutation.isPending || rejectMutation.isPending}
+                  onClick={() => rejectMutation.mutate(selected.id)}
+                >
+                  Reject
+                </Button>
               </div>
             ) : null}
-            {selected.changes?.length ? (
-              <div>
-                <h3 style={{ marginBottom: 8 }}>Applied record diff</h3>
-                <ChangeDiffTable changes={selected.changes} />
+
+            {selected.status === "APPLIED" && selected.reversible ? (
+              <div className="button-row">
+                <Button
+                  disabled={rollbackMutation.isPending}
+                  onClick={() => rollbackMutation.mutate(selected.id)}
+                >
+                  <RotateCcw size={14} />{" "}
+                  {rollbackMutation.isPending
+                    ? "Rolling back…"
+                    : "Rollback changes"}
+                </Button>
               </div>
             ) : null}
+
+            <div>
+              <h3 style={{ marginBottom: 8 }}>Record diff</h3>
+              {selected.preview?.length ? (
+                <ChangeDiffTable changes={selected.preview} />
+              ) : (
+                <p className="muted" style={{ fontSize: 13 }}>
+                  No preview diff rows recorded for this plan.
+                </p>
+              )}
+            </div>
+
+            {selected.affectedResources?.length ? (
+              <div>
+                <h3 style={{ marginBottom: 8 }}>Affected resources</h3>
+                <pre
+                  style={{
+                    fontSize: 11,
+                    overflow: "auto",
+                    padding: 10,
+                    borderRadius: 8,
+                    background: "var(--surface)",
+                  }}
+                >
+                  {JSON.stringify(selected.affectedResources, null, 2)}
+                </pre>
+              </div>
+            ) : null}
+
+            <div className="muted" style={{ fontSize: 12 }}>
+              <div>Expires: {formatDateTime(selected.expiresAt)}</div>
+              {selected.appliedAt ? (
+                <div>Applied: {formatDateTime(selected.appliedAt)}</div>
+              ) : null}
+              {selected.rolledBackAt ? (
+                <div>Rolled back: {formatDateTime(selected.rolledBackAt)}</div>
+              ) : null}
+            </div>
           </div>
         </Drawer>
       ) : null}

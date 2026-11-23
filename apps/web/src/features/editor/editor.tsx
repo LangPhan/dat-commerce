@@ -1,4 +1,6 @@
 "use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -10,6 +12,7 @@ import {
   Cloud,
   Command as CommandIcon,
   Eye,
+  History,
   Layers,
   LayoutDashboard,
   Moon,
@@ -20,23 +23,27 @@ import {
   Sun,
   Undo2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { CommandPalette, type CommandItem } from "@/components/ui/command-palette";
+import { Skeleton } from "@/components/ui/data-display";
 import { ConfirmDialog, Modal } from "@/components/ui/dialog";
 import { Toast } from "@/components/ui/toast";
-import { newId } from "@/lib/format";
-import { useStored } from "@/lib/storage";
-import { initialProducts } from "@/mocks/catalog";
+import { useAuth } from "@/features/auth/auth-context";
+import { ApiError } from "@/lib/api-client";
+import { aiAdminApi, cmsAdminApi } from "@/lib/cms-ai-api";
 import {
-  blockKinds,
-  blockMeta,
-  initialBlocks,
-  makeBlock,
-  pageTemplates,
-} from "@/mocks/pages";
+  apiBlocksToEditorBlocks,
+  editorBlocksToApiBlocks,
+  themeTokensToCssVars,
+} from "@/lib/cms-schema";
+import { storeApi } from "@/lib/commerce-api";
+import { cn, formatDateTime, newId } from "@/lib/format";
+import { useStored } from "@/lib/storage";
+import { blockKinds, blockMeta, makeBlock } from "@/mocks/pages";
 import type { AIModelId } from "@/types/ai";
-import type { Product } from "@/types/commerce";
+import type { AiChangePlanDto, PageContentPayload } from "@/types/api-cms-ai";
 import type {
   Block,
   EditorMessage,
@@ -45,78 +52,182 @@ import type {
 } from "@/types/editor";
 import { EditorCanvas } from "./canvas";
 import { InspectorPanel } from "./inspector-panel";
-import { propose } from "./proposals";
 import { SectionIcon, StructurePanel } from "./structure-panel";
 
-const pages = Object.keys(pageTemplates);
-const openingPrompt = "Make the hero feel more premium and outdoorsy.";
-const openingReply =
-  "I prepared a dark ink hero direction with larger display typography and updated trail-first copy. Preview it on the canvas or apply it to your draft.";
+function planToEditorProposal(
+  plan: AiChangePlanDto,
+  currentBlocks: Block[],
+  selectedBlockId?: string
+): Proposal | null {
+  if (plan.planType !== "PAGE_CHANGE") return null;
+  const content = plan.operations?.content as PageContentPayload | undefined;
+  if (!content || !Array.isArray(content.blocks)) return null;
+
+  const after = apiBlocksToEditorBlocks(content);
+  const currentIds = new Set(currentBlocks.map((b) => b.id));
+  const added = after.find((b) => !currentIds.has(b.id));
+  const changed = after.find((b) => {
+    const prev = currentBlocks.find((c) => c.id === b.id);
+    return !prev || JSON.stringify(prev) !== JSON.stringify(b);
+  });
+
+  const target =
+    added?.id || changed?.id || selectedBlockId || after[0]?.id || "";
+  const diffs = (plan.preview || []).map((row) => ({
+    field: row.name,
+    before: row.before,
+    after: row.after,
+  }));
+  const changes = diffs.length
+    ? diffs.map((d) => `${d.field}: ${d.before} → ${d.after}`)
+    : [plan.requestSummary || "Update page draft"];
+
+  return {
+    before: currentBlocks,
+    after,
+    title: plan.requestSummary || "AI Page Proposal",
+    changes,
+    diffs,
+    target,
+  };
+}
 
 export function Editor() {
   const router = useRouter();
-  const [draft, setDraft, ready] = useStored<Block[]>("draft", initialBlocks);
-  const [otherDrafts, setOtherDrafts] = useStored<Record<string, Block[]>>(
-    "page-drafts",
-    pageTemplates
-  );
-  const [published, setPublished] = useStored<Block[]>("published", initialBlocks);
-  const [publishedPages, setPublishedPages] = useStored<Record<string, Block[]>>(
-    "published-pages",
-    pageTemplates
-  );
-  const [catalog] = useStored<Product[]>("catalog", initialProducts);
-  const [theme, setTheme] = useStored("theme", "light");
+  const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("content:write");
+  const canPublish = hasPermission("content:publish");
+  const canUseAi = hasPermission("ai:use");
 
-  const [page, setPage] = useState(pages[0]);
-  const stored = page === pages[0] ? draft : otherDrafts[page] || pageTemplates[page];
-  const [working, setWorking] = useState<Block[] | null>(null);
-  const blocks = working || stored;
+  const [theme, setTheme, ready] = useStored("theme", "light");
+  const [selectedSlug, setSelectedSlug] = useState<string>(() => {
+    if (typeof window === "undefined") return "home";
+    return new URLSearchParams(window.location.search).get("page") || "home";
+  });
 
+  const [workingState, setWorkingState] = useState<{
+    pageId: string;
+    version: number;
+    blocks: Block[];
+  } | null>(null);
   const [past, setPast] = useState<Block[][]>([]);
   const [future, setFuture] = useState<Block[][]>([]);
-  const [selection, setSelection] = useState("hero");
+  const [selection, setSelection] = useState("");
   const [mode, setMode] = useState<ViewportMode>("desktop");
   const [tab, setTab] = useState<"ai" | "properties">("ai");
   const [panel, setPanel] = useState<"structure" | "inspector" | null>(null);
   const [preview, setPreview] = useState<"page" | "proposal" | null>(null);
   const [dialog, setDialog] = useState<
-    "library" | "publish" | "discard" | "command" | "delete" | "switch" | null
+    | "library"
+    | "publish"
+    | "discard"
+    | "command"
+    | "delete"
+    | "switch"
+    | "history"
+    | null
   >(null);
-  const [nextPage, setNextPage] = useState("");
+  const [nextPageSlug, setNextPageSlug] = useState("");
   const [libraryQuery, setLibraryQuery] = useState("");
   const [toast, setToast] = useState("");
 
   const [model, setModel] = useState<AIModelId>("claude-sonnet-4");
-  const [messages, setMessages] = useState<EditorMessage[]>([
-    { id: "init", prompt: openingPrompt, reply: openingReply },
-  ]);
+  const [convId, setConvId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<EditorMessage[]>([]);
+  const [pendingPlan, setPendingPlan] = useState<AiChangePlanDto | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
-  const [started, setStarted] = useState(false);
   const [busy, setBusy] = useState(false);
-  const promptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [statusLine, setStatusLine] = useState("");
+  const unmountedRef = useRef(false);
 
-  const selectedBlock = blocks.find((item) => item.id === selection) || blocks[0];
-  const dirty =
-    working !== null && JSON.stringify(working) !== JSON.stringify(stored);
-  const live =
-    page === pages[0]
-      ? published
-      : publishedPages[page] || pageTemplates[page];
-  const isPublished = JSON.stringify(blocks) === JSON.stringify(live);
+  const pagesQuery = useQuery({
+    queryKey: ["admin-pages"],
+    queryFn: () => cmsAdminApi.listPages(),
+  });
 
-  const activeProposal = started
-    ? proposal
-    : page === pages[0] && selectedBlock
-      ? propose(
-          openingPrompt,
-          blocks,
-          blocks.find((item) => item.id === "hero") || selectedBlock
-        )
+  const pagesList = useMemo(() => pagesQuery.data || [], [pagesQuery.data]);
+  const pageSlugs = useMemo(
+    () => (pagesList.length ? pagesList.map((p) => p.slug) : ["home"]),
+    [pagesList]
+  );
+
+  const currentSummary = useMemo(() => {
+    if (!pagesList.length) return undefined;
+    return (
+      pagesList.find(
+        (p) => p.slug === selectedSlug || p.title === selectedSlug
+      ) ||
+      pagesList.find((p) => p.slug === "home") ||
+      pagesList[0]
+    );
+  }, [pagesList, selectedSlug]);
+
+  const pageDetailQuery = useQuery({
+    queryKey: ["admin-page", currentSummary?.id],
+    queryFn: () => cmsAdminApi.getPage(currentSummary!.id),
+    enabled: Boolean(currentSummary?.id),
+  });
+
+  const themeQuery = useQuery({
+    queryKey: ["admin-theme"],
+    queryFn: () => cmsAdminApi.getTheme(),
+  });
+
+  const catalogQuery = useQuery({
+    queryKey: ["editor-catalog"],
+    queryFn: () => storeApi.listProducts({ size: 24 }),
+  });
+
+  const detail = pageDetailQuery.data;
+  const activeTokens =
+    themeQuery.data?.latest?.tokens || themeQuery.data?.published?.tokens;
+  const themeStyle = useMemo(
+    () => themeTokensToCssVars(activeTokens),
+    [activeTokens]
+  );
+
+  const storedBlocks = useMemo(
+    () =>
+      apiBlocksToEditorBlocks(
+        detail?.latestVersion?.content || detail?.publishedVersion?.content
+      ),
+    [detail?.latestVersion?.content, detail?.publishedVersion?.content]
+  );
+
+  const liveBlocks = useMemo(
+    () => apiBlocksToEditorBlocks(detail?.publishedVersion?.content),
+    [detail?.publishedVersion?.content]
+  );
+
+  const activeWorking =
+    detail &&
+    workingState?.pageId === detail.id &&
+    workingState.version === detail.version
+      ? workingState.blocks
       : null;
 
+  const blocks = activeWorking ?? storedBlocks;
+  const dirty =
+    activeWorking !== null &&
+    JSON.stringify(activeWorking) !== JSON.stringify(storedBlocks);
+  const isPublished =
+    Boolean(detail?.publishedVersionId) &&
+    !dirty &&
+    JSON.stringify(blocks) === JSON.stringify(liveBlocks);
+
+  const selectedBlock =
+    blocks.find((item) => item.id === selection) || blocks[0];
+
   const showBlocks =
-    preview === "proposal" && activeProposal ? activeProposal.after : blocks;
+    preview === "proposal" && proposal ? proposal.after : blocks;
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -127,22 +238,9 @@ export function Editor() {
 
   useEffect(() => {
     if (!toast) return;
-    const clock = setTimeout(() => setToast(""), 2800);
+    const clock = setTimeout(() => setToast(""), 3000);
     return () => clearTimeout(clock);
   }, [toast]);
-
-  useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("page");
-    if (requested && requested !== pages[0] && requested in pageTemplates) {
-      setPage(requested);
-      setSelection(pageTemplates[requested][0].id);
-      setStarted(true);
-      setMessages([]);
-    }
-    return () => {
-      if (promptTimer.current) clearTimeout(promptTimer.current);
-    };
-  }, []);
 
   useEffect(() => {
     if (!dirty) return;
@@ -153,31 +251,172 @@ export function Editor() {
     return () => window.removeEventListener("beforeunload", guard);
   }, [dirty]);
 
+  const saveDraftMutation = useMutation({
+    mutationFn: async (nextBlocks: Block[]) => {
+      if (!detail) throw new Error("Page is still loading");
+      return cmsAdminApi.createPageVersion(detail.id, {
+        content: editorBlocksToApiBlocks(nextBlocks),
+        expectedVersion: detail.version,
+        changeSummary: "Updated in Visual Store Editor",
+      });
+    },
+    onSuccess: (updated) => {
+      setWorkingState(null);
+      setPast([]);
+      setFuture([]);
+      queryClient.setQueryData(["admin-page", updated.id], updated);
+      queryClient.invalidateQueries({ queryKey: ["admin-pages"] });
+      setToast(`Saved draft v${updated.latestVersionNumber}`);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409 && detail) {
+        queryClient.invalidateQueries({ queryKey: ["admin-page", detail.id] });
+        setToast("Version conflict — reloaded latest draft");
+        return;
+      }
+      setToast(err instanceof ApiError ? err.message : "Failed to save draft");
+    },
+  });
+
+  const publishMutation = useMutation({
+    mutationFn: async () => {
+      if (!detail) throw new Error("Page is still loading");
+      let versionToPublish = detail.latestVersion?.id;
+      let expectedVersion = detail.version;
+      if (dirty) {
+        const saved = await cmsAdminApi.createPageVersion(detail.id, {
+          content: editorBlocksToApiBlocks(blocks),
+          expectedVersion: detail.version,
+          changeSummary: "Saved before publish in Visual Store Editor",
+        });
+        versionToPublish = saved.latestVersion?.id;
+        expectedVersion = saved.version;
+      }
+      return cmsAdminApi.publishPage(detail.id, {
+        versionId: versionToPublish,
+        expectedVersion,
+      });
+    },
+    onSuccess: (updated) => {
+      setWorkingState(null);
+      setPast([]);
+      setFuture([]);
+      queryClient.setQueryData(["admin-page", updated.id], updated);
+      queryClient.invalidateQueries({ queryKey: ["admin-pages"] });
+      queryClient.invalidateQueries({
+        queryKey: ["store-page", updated.slug],
+      });
+      setDialog(null);
+      setToast(`Published "${updated.slug}" v${updated.latestVersionNumber}`);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409 && detail) {
+        queryClient.invalidateQueries({ queryKey: ["admin-page", detail.id] });
+        setToast("Version conflict — please review latest draft");
+        return;
+      }
+      setToast(err instanceof ApiError ? err.message : "Publish failed");
+    },
+  });
+
+  const rollbackMutation = useMutation({
+    mutationFn: async (versionId: string) => {
+      if (!detail) throw new Error("Page is still loading");
+      return cmsAdminApi.rollbackPage(detail.id, versionId);
+    },
+    onSuccess: (updated) => {
+      setWorkingState(null);
+      setPast([]);
+      setFuture([]);
+      queryClient.setQueryData(["admin-page", updated.id], updated);
+      queryClient.invalidateQueries({ queryKey: ["admin-pages"] });
+      queryClient.invalidateQueries({
+        queryKey: ["store-page", updated.slug],
+      });
+      setDialog(null);
+      setToast(`Restored version to draft/live v${updated.latestVersionNumber}`);
+    },
+    onError: (err) =>
+      setToast(err instanceof ApiError ? err.message : "Rollback failed"),
+  });
+
+  const applyPlanMutation = useMutation({
+    mutationFn: async ({
+      planId,
+      accept,
+    }: {
+      planId: string;
+      accept: boolean;
+    }) => {
+      if (accept) {
+        return aiAdminApi.applyChangePlan(
+          planId,
+          `editor-${planId}-${Date.now()}`
+        );
+      }
+      return aiAdminApi.rejectChangePlan(
+        planId,
+        "Rejected from Visual Store Editor"
+      );
+    },
+    onSuccess: (_res, vars) => {
+      setMessages((curr) =>
+        curr.map((m, idx) =>
+          idx === curr.length - 1
+            ? { ...m, status: vars.accept ? "accepted" : "rejected" }
+            : m
+        )
+      );
+      setPendingPlan(null);
+      setProposal(null);
+      setPreview(null);
+      if (vars.accept && detail) {
+        setWorkingState(null);
+        setPast([]);
+        setFuture([]);
+        queryClient.invalidateQueries({ queryKey: ["admin-page", detail.id] });
+        queryClient.invalidateQueries({ queryKey: ["admin-pages"] });
+        setToast("AI proposal applied to draft (publish when ready)");
+      } else {
+        setToast("AI proposal rejected");
+      }
+      queryClient.invalidateQueries({ queryKey: ["ai-activity"] });
+    },
+    onError: (err) => {
+      setToast(
+        err instanceof ApiError ? err.message : "Failed to resolve AI plan"
+      );
+    },
+  });
+
   function commit(next: Block[]) {
+    if (!detail || !canWrite) return;
     setPast((p) => [...p, blocks]);
-    setWorking(next);
+    setWorkingState({ pageId: detail.id, version: detail.version, blocks: next });
     setFuture([]);
     setPreview(null);
   }
 
-  function persistDraft(next: Block[]) {
-    if (page === pages[0]) setDraft(next);
-    else setOtherDrafts({ ...otherDrafts, [page]: next });
-    setWorking(null);
-  }
-
   function undo() {
-    if (!past.length) return;
+    if (!detail || !past.length) return;
     setFuture((f) => [blocks, ...f]);
-    setWorking(past[past.length - 1]);
+    setWorkingState({
+      pageId: detail.id,
+      version: detail.version,
+      blocks: past[past.length - 1],
+    });
     setPast((p) => p.slice(0, -1));
     setPreview(null);
   }
 
   function redo() {
-    if (!future.length) return;
+    if (!detail || !future.length) return;
     setPast((p) => [...p, blocks]);
-    setWorking(future[0]);
+    setWorkingState({
+      pageId: detail.id,
+      version: detail.version,
+      blocks: future[0],
+    });
     setFuture((f) => f.slice(1));
     setPreview(null);
   }
@@ -202,19 +441,18 @@ export function Editor() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  function switchPage(name: string) {
-    if (promptTimer.current) clearTimeout(promptTimer.current);
+  function switchPage(slug: string) {
     setBusy(false);
-    setPage(name);
-    setWorking(null);
+    setStatusLine("");
+    setSelectedSlug(slug);
+    setWorkingState(null);
     setPast([]);
     setFuture([]);
-    const targetBlocks =
-      name === pages[0] ? draft : otherDrafts[name] || pageTemplates[name];
-    setSelection(targetBlocks?.[0]?.id || "");
-    setStarted(true);
+    setSelection("");
+    setPendingPlan(null);
     setProposal(null);
     setPreview(null);
+    setConvId(null);
     setMessages([]);
     setDialog(null);
     setPanel(null);
@@ -258,93 +496,200 @@ export function Editor() {
     setSelection(clone.id);
   }
 
-  function send(prompt: string) {
-    if (!selectedBlock) return;
-    setStarted(true);
+  async function send(prompt: string) {
+    if (!detail || !canUseAi || busy) return;
+    const msgId = newId();
+    setPendingPlan(null);
     setProposal(null);
     setPreview(null);
-    setMessages((curr) => [...curr, { id: newId(), prompt }]);
     setBusy(true);
+    setStatusLine("Connecting to 9Router AI gateway…");
+    setMessages((curr) => [...curr, { id: msgId, prompt }]);
 
-    promptTimer.current = setTimeout(() => {
-      const result = propose(prompt, blocks, selectedBlock);
-      setProposal(result);
-      setBusy(false);
-      setMessages((curr) =>
-        curr.map((m, idx) =>
-          idx === curr.length - 1
-            ? {
-                ...m,
-                reply: result
-                  ? "Prepared a structured update for this section. Preview the changes on the canvas before applying to your draft."
-                  : "I couldn't match that instruction to a section change. Try specifying a layout (two-column, centered), palette (dark, light), headline scale, or adding a named section.",
-                status: result ? undefined : "error",
+    try {
+      let activeConvId = convId;
+      if (!activeConvId) {
+        const created = await aiAdminApi.createConversation(
+          `Editor: ${detail.title}`,
+          model
+        );
+        activeConvId = created.id;
+        if (!unmountedRef.current) {
+          setConvId(created.id);
+        }
+      }
+
+      let latestPlan: AiChangePlanDto | null = null;
+      let streamedText = "";
+
+      await aiAdminApi.streamMessage(
+        activeConvId,
+        {
+          prompt,
+          model,
+          context: {
+            pageId: detail.id,
+            pageSlug: detail.slug,
+            selectedBlockId: selectedBlock?.id,
+            selectedBlockType: selectedBlock?.type,
+          },
+        },
+        {
+          onStatus: (s) => {
+            if (!unmountedRef.current) {
+              setStatusLine(s.message || s.phase);
+            }
+          },
+          onToolStarted: (t) => {
+            if (!unmountedRef.current) {
+              setStatusLine(`Running tool: ${t.tool}…`);
+            }
+          },
+          onToolCompleted: () => {
+            if (!unmountedRef.current) {
+              setStatusLine("Drafting section update…");
+            }
+          },
+          onPlanCreated: (plan) => {
+            latestPlan = plan;
+            if (!unmountedRef.current && plan.status === "PENDING_APPROVAL") {
+              setPendingPlan(plan);
+              const mapped = planToEditorProposal(
+                plan,
+                blocks,
+                selectedBlock?.id
+              );
+              if (mapped) {
+                setProposal(mapped);
               }
-            : m
-        )
+            }
+          },
+          onMessageDelta: (delta) => {
+            streamedText += delta.text || "";
+          },
+          onCompleted: (result) => {
+            if (unmountedRef.current) return;
+            const replyText =
+              result.assistantMessage?.content ||
+              streamedText ||
+              "Completed response.";
+            const plan =
+              result.changePlans?.find(
+                (p) => p.status === "PENDING_APPROVAL"
+              ) || latestPlan;
+            if (plan && plan.status === "PENDING_APPROVAL") {
+              setPendingPlan(plan);
+              const mapped = planToEditorProposal(
+                plan,
+                blocks,
+                selectedBlock?.id
+              );
+              if (mapped) {
+                setProposal(mapped);
+              }
+            }
+            setMessages((curr) =>
+              curr.map((m) =>
+                m.id === msgId ? { ...m, reply: replyText } : m
+              )
+            );
+            queryClient.invalidateQueries({ queryKey: ["ai-activity"] });
+            queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
+          },
+          onError: (errMsg) => {
+            if (unmountedRef.current) return;
+            setMessages((curr) =>
+              curr.map((m) =>
+                m.id === msgId
+                  ? { ...m, reply: errMsg, status: "error" }
+                  : m
+              )
+            );
+          },
+        }
       );
-    }, 550);
+    } catch (err) {
+      if (!unmountedRef.current) {
+        const message =
+          err instanceof ApiError ? err.message : "Failed to run AI request";
+        setMessages((curr) =>
+          curr.map((m) =>
+            m.id === msgId ? { ...m, reply: message, status: "error" } : m
+          )
+        );
+      }
+    } finally {
+      if (!unmountedRef.current) {
+        setBusy(false);
+        setStatusLine("");
+      }
+    }
   }
 
   function resolveProposal(accept: boolean) {
-    if (!activeProposal) return;
-    if (accept) {
-      commit(activeProposal.after);
-      setSelection(activeProposal.target);
-      setToast("AI changes applied to draft");
-    }
-    setStarted(true);
-    setProposal(null);
-    setPreview(null);
-    setMessages((curr) =>
-      curr.map((m, idx) =>
-        idx === curr.length - 1
-          ? { ...m, status: accept ? "accepted" : "rejected" }
-          : m
-      )
-    );
+    if (!pendingPlan) return;
+    applyPlanMutation.mutate({ planId: pendingPlan.id, accept });
   }
 
   const commands: CommandItem[] = [
-    {
-      id: "cmd-add",
-      label: "Add section to page",
-      group: "Editor",
-      run: () => {
-        setLibraryQuery("");
-        setDialog("library");
-      },
-    },
-    {
-      id: "cmd-save",
-      label: "Save draft",
-      group: "Publishing",
-      run: () => {
-        persistDraft(blocks);
-        setToast("Draft saved");
-      },
-    },
+    ...(canWrite
+      ? [
+          {
+            id: "cmd-add",
+            label: "Add section to page",
+            group: "Editor",
+            run: () => {
+              setLibraryQuery("");
+              setDialog("library");
+            },
+          },
+          {
+            id: "cmd-save",
+            label: "Save draft",
+            group: "Publishing",
+            run: () => {
+              if (dirty) {
+                saveDraftMutation.mutate(blocks);
+              } else {
+                setToast("No unsaved changes");
+              }
+            },
+          },
+          {
+            id: "cmd-discard",
+            label: "Discard unsaved changes",
+            group: "Publishing",
+            run: () => setDialog("discard"),
+          },
+        ]
+      : []),
     {
       id: "cmd-preview",
       label: "Toggle clean storefront preview",
       group: "Publishing",
       run: () => setPreview(preview === "page" ? null : "page"),
     },
+    ...(canPublish
+      ? [
+          {
+            id: "cmd-publish",
+            label: "Publish changes live",
+            group: "Publishing",
+            run: () => setDialog("publish"),
+          },
+        ]
+      : []),
     {
-      id: "cmd-publish",
-      label: "Publish changes live",
+      id: "cmd-history",
+      label: "Open page version history",
       group: "Publishing",
-      run: () => setDialog("publish"),
-    },
-    {
-      id: "cmd-discard",
-      label: "Discard unsaved changes",
-      group: "Publishing",
-      run: () => setDialog("discard"),
+      icon: <History size={14} />,
+      run: () => setDialog("history"),
     },
     {
       id: "cmd-theme",
-      label: theme === "light" ? "Switch to dark theme" : "Switch to light theme",
+      label:
+        theme === "light" ? "Switch to dark theme" : "Switch to light theme",
       group: "Preferences",
       icon: theme === "light" ? <Moon size={14} /> : <Sun size={14} />,
       run: () => setTheme(theme === "light" ? "dark" : "light"),
@@ -361,7 +706,12 @@ export function Editor() {
       label: "Open Storefront",
       group: "Navigation",
       icon: <ArrowUpRight size={14} />,
-      run: () => router.push("/store"),
+      run: () =>
+        router.push(
+          detail?.slug === "home" || !detail?.slug
+            ? "/store"
+            : `/store/${encodeURIComponent(detail.slug)}`
+        ),
     },
   ];
 
@@ -371,6 +721,14 @@ export function Editor() {
     "Social & Trust",
     "Utility",
   ] as const;
+
+  if (pagesQuery.isLoading || (currentSummary && pageDetailQuery.isLoading)) {
+    return (
+      <div className="editor-app" style={{ padding: 24 }}>
+        <Skeleton rows={6} />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -397,12 +755,12 @@ export function Editor() {
       }}
     >
       <header className="editor-top">
-        <Link className="forma-mark" href="/admin" aria-label="Forma dashboard">
+        <Link className="forma-mark" href="/admin" aria-label="Admin dashboard">
           <Box size={20} strokeWidth={2.1} />
         </Link>
 
         <div className="editor-breadcrumb">
-          <Link href="/admin">Terrain Supply</Link>
+          <Link href="/admin">Dat Commerce</Link>
           <ChevronRight size={14} />
           <strong>Visual Store Editor</strong>
           <span className="editor-beta">Studio</span>
@@ -414,22 +772,36 @@ export function Editor() {
             {dirty
               ? "Unsaved changes"
               : isPublished
-                ? "Published"
-                : "Draft saved"}
+                ? `Published v${detail?.latestVersionNumber || 1}`
+                : `Draft v${detail?.latestVersionNumber || 1}`}
           </span>
           {dirty ? (
-            <Button size="sm" variant="ghost" onClick={() => setDialog("discard")}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setDialog("discard")}
+            >
               <RotateCcw size={13} /> Discard
             </Button>
           ) : null}
+          <IconButton
+            label="Version history"
+            onClick={() => setDialog("history")}
+          >
+            <History size={16} />
+          </IconButton>
           <span className="top-divider" />
           <div className="history-controls">
-            <IconButton label="Undo (Ctrl+Z)" disabled={!past.length} onClick={undo}>
+            <IconButton
+              label="Undo (Ctrl+Z)"
+              disabled={!past.length || !canWrite}
+              onClick={undo}
+            >
               <Undo2 size={16} />
             </IconButton>
             <IconButton
               label="Redo (Ctrl+Shift+Z)"
-              disabled={!future.length}
+              disabled={!future.length || !canWrite}
               onClick={redo}
             >
               <Redo2 size={16} />
@@ -439,11 +811,14 @@ export function Editor() {
             onClick={() => setPreview(preview === "page" ? null : "page")}
           >
             <Eye size={15} />
-            <span>{preview === "page" ? "Exit preview" : "Preview changes"}</span>
+            <span>
+              {preview === "page" ? "Exit preview" : "Preview changes"}
+            </span>
           </Button>
           <Button
             variant="primary"
             className="publish-button"
+            disabled={!canPublish || publishMutation.isPending}
             onClick={() => setDialog("publish")}
           >
             <span>Publish</span>
@@ -452,15 +827,9 @@ export function Editor() {
         </div>
       </header>
 
-      <div className="editor-body" data-panel={panel || ""}>
+      <div className={cn("editor-body", panel && `panel-${panel}`)}>
         {preview !== "page" ? (
-          <nav className="editor-rail" aria-label="Workspace navigation">
-            <Link href="/admin" title="Merchant Overview" aria-label="Overview">
-              <LayoutDashboard size={18} />
-            </Link>
-            <Link href="/admin/products" title="Products" aria-label="Products">
-              <Box size={18} />
-            </Link>
+          <nav className="editor-rail" aria-label="Editor navigation">
             <IconButton
               label="Page structure"
               className="rail-selected"
@@ -504,7 +873,7 @@ export function Editor() {
                 title="Team members"
                 aria-label="Team members"
               >
-                AM
+                DC
               </Link>
             </div>
           </nav>
@@ -513,14 +882,14 @@ export function Editor() {
         {preview !== "page" ? (
           <StructurePanel
             blocks={blocks}
-            currentPage={page}
-            pages={pages}
-            setPage={(name) => {
+            currentPage={detail?.slug || selectedSlug}
+            pages={pageSlugs}
+            setPage={(slug) => {
               if (dirty) {
-                setNextPage(name);
+                setNextPageSlug(slug);
                 setDialog("switch");
               } else {
-                switchPage(name);
+                switchPage(slug);
               }
             }}
             selectedId={selectedBlock?.id || ""}
@@ -529,14 +898,16 @@ export function Editor() {
               setPanel("inspector");
             }}
             add={() => {
+              if (!canWrite) return;
               setLibraryQuery("");
               setDialog("library");
             }}
             move={moveSelected}
             reorder={reorderBlocks}
             duplicate={duplicateSelected}
-            remove={() => setDialog("delete")}
+            remove={() => canWrite && setDialog("delete")}
             toggleVisibility={() =>
+              canWrite &&
               selectedBlock &&
               updateSelected({ visible: !selectedBlock.visible })
             }
@@ -544,18 +915,21 @@ export function Editor() {
         ) : null}
 
         <EditorCanvas
-          page={page}
+          page={detail?.title || detail?.slug || "Page"}
+          pageSlug={detail?.slug || "home"}
+          themeStyle={themeStyle}
+          canWrite={canWrite}
           mode={mode}
           setMode={setMode}
           preview={preview}
           setPreview={setPreview}
           showBlocks={showBlocks}
           selectedBlock={selectedBlock}
-          activeProposal={activeProposal}
+          activeProposal={proposal}
           isPublished={isPublished}
           dirty={dirty}
-          ready={ready}
-          catalog={catalog}
+          ready={ready && !saveDraftMutation.isPending}
+          catalog={catalogQuery.data?.items || []}
           select={(id) => {
             setSelection(id);
             setPanel("inspector");
@@ -563,17 +937,16 @@ export function Editor() {
           move={moveSelected}
           duplicate={duplicateSelected}
           toggleVisibility={() =>
-            selectedBlock && updateSelected({ visible: !selectedBlock.visible })
+            canWrite &&
+            selectedBlock &&
+            updateSelected({ visible: !selectedBlock.visible })
           }
-          requestDelete={() => setDialog("delete")}
+          requestDelete={() => canWrite && setDialog("delete")}
           focusAI={() => {
             setTab("ai");
             setPanel("inspector");
           }}
-          saveDraft={() => {
-            persistDraft(blocks);
-            setToast("Draft saved");
-          }}
+          saveDraft={() => saveDraftMutation.mutate(blocks)}
           openPanel={(p) => setPanel(panel === p ? null : p)}
           openCommand={() => setDialog("command")}
           acceptProposal={() => resolveProposal(true)}
@@ -586,11 +959,17 @@ export function Editor() {
             setTab={setTab}
             block={selectedBlock || null}
             update={updateSelected}
-            proposal={activeProposal}
+            proposal={proposal}
             previewing={preview === "proposal"}
             messages={messages}
             busy={busy}
-            send={send}
+            applyBusy={applyPlanMutation.isPending}
+            statusLine={statusLine}
+            canWrite={canWrite}
+            canUseAi={canUseAi}
+            send={(text) => {
+              void send(text);
+            }}
             togglePreview={() =>
               setPreview(preview === "proposal" ? null : "proposal")
             }
@@ -607,7 +986,7 @@ export function Editor() {
         <Modal
           wide
           title="Section Library"
-          description="Add a CMS-driven storefront section below your current selection."
+          description="Add a validated CMS section below your current selection."
           close={() => setDialog(null)}
         >
           <label className="search-field">
@@ -673,43 +1052,100 @@ export function Editor() {
         </Modal>
       ) : null}
 
+      {dialog === "history" && detail ? (
+        <Modal
+          wide
+          title={`Version history · ${detail.title}`}
+          description="Inspect saved draft/published versions or roll back cleanly."
+          close={() => setDialog(null)}
+        >
+          <div className="form-stack">
+            {(detail.versions || []).map((v) => {
+              const isLive = v.id === detail.publishedVersionId;
+              return (
+                <div
+                  key={v.id}
+                  className="panel"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div className="button-row">
+                      <strong>Version {v.versionNumber}</strong>
+                      {isLive ? <Badge tone="green">Published</Badge> : null}
+                      {v.id === detail.latestVersion?.id ? (
+                        <Badge tone="accent">Latest</Badge>
+                      ) : null}
+                    </div>
+                    <p className="muted" style={{ fontSize: 12 }}>
+                      {v.changeSummary || "Saved CMS revision"} ·{" "}
+                      {formatDateTime(v.createdAt)}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={
+                      !canPublish || rollbackMutation.isPending || isLive
+                    }
+                    onClick={() => rollbackMutation.mutate(v.id)}
+                  >
+                    Restore version
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </Modal>
+      ) : null}
+
       {dialog === "command" ? (
         <CommandPalette commands={commands} close={() => setDialog(null)} />
       ) : null}
 
       {dialog === "publish" ? (
         <ConfirmDialog
-          title={`Publish "${page}"?`}
+          title={`Publish "${detail?.slug || selectedSlug}"?`}
           description="Publishing replaces the live storefront version of this page with your current draft."
-          confirmLabel="Confirm publish"
+          confirmLabel={
+            publishMutation.isPending ? "Publishing…" : "Confirm publish"
+          }
           summary={
             <div>
-              <span>{live.filter((i) => i.visible).length} live visible sections</span>
+              <span>
+                {liveBlocks.filter((i) => i.visible).length} live visible
+                sections
+              </span>
               <ArrowDown size={14} style={{ margin: "4px 0" }} />
               <strong>
-                {blocks.filter((i) => i.visible).length} visible sections after publishing
+                {blocks.filter((i) => i.visible).length} visible sections after
+                publishing
               </strong>
               <small>
                 {
                   blocks.filter(
                     (i) =>
                       JSON.stringify(i) !==
-                      JSON.stringify(live.find((o) => o.id === i.id))
+                      JSON.stringify(liveBlocks.find((o) => o.id === i.id))
                   ).length
                 }{" "}
                 added or updated ·{" "}
-                {live.filter((i) => !blocks.some((n) => n.id === i.id)).length}{" "}
+                {
+                  liveBlocks.filter((i) => !blocks.some((n) => n.id === i.id))
+                    .length
+                }{" "}
                 removed
               </small>
             </div>
           }
           onCancel={() => setDialog(null)}
           onConfirm={() => {
-            persistDraft(blocks);
-            if (page === pages[0]) setPublished(blocks);
-            else setPublishedPages({ ...publishedPages, [page]: blocks });
-            setDialog(null);
-            setToast("Storefront published");
+            if (!publishMutation.isPending) {
+              publishMutation.mutate();
+            }
           }}
         />
       ) : null}
@@ -726,7 +1162,9 @@ export function Editor() {
               ? "This section will be removed from the current working draft."
               : "Your unsaved edits will be reverted to the last saved draft."
           }
-          confirmLabel={dialog === "delete" ? "Delete section" : "Discard changes"}
+          confirmLabel={
+            dialog === "delete" ? "Delete section" : "Discard changes"
+          }
           destructive
           onCancel={() => setDialog(null)}
           onConfirm={() => {
@@ -734,10 +1172,10 @@ export function Editor() {
               commit(blocks.filter((item) => item.id !== selectedBlock?.id));
               setToast("Section removed");
             } else if (dialog === "switch") {
-              switchPage(nextPage);
-              setToast("Switched page");
+              switchPage(nextPageSlug);
+              setToast(`Switched to ${nextPageSlug}`);
             } else {
-              setWorking(null);
+              setWorkingState(null);
               setPast([]);
               setFuture([]);
               setPreview(null);

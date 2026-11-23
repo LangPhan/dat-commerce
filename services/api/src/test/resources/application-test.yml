@@ -24,3 +24,14 @@ app:
     bucket: ${TEST_STORAGE_BUCKET:dat-commerce-media-test}
     region: us-east-1
     public-url-prefix: /storage
+  ai:
+    gateway-mode: mock
+    base-url: ""
+    api-key: ""
+    default-model: claude-sonnet-4
+    complex-task-model: claude-sonnet-4
+    fast-task-model: forma-fast
+    request-timeout-seconds: 15
+    max-tool-rounds: 6
+    max-input-tokens: 16000
+    max-output-tokens: 4096

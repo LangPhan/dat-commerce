@@ -11,6 +11,7 @@ public class AppProperties {
     private Seed seed = new Seed();
     private Cors cors = new Cors();
     private Storage storage = new Storage();
+    private Ai ai = new Ai();
 
     public Jwt getJwt() {
         return jwt;
@@ -50,6 +51,14 @@ public class AppProperties {
 
     public void setStorage(Storage storage) {
         this.storage = storage;
+    }
+
+    public Ai getAi() {
+        return ai;
+    }
+
+    public void setAi(Ai ai) {
+        this.ai = ai;
     }
 
     public static class Jwt {
@@ -190,6 +199,99 @@ public class AppProperties {
 
         public void setPublicUrlPrefix(String publicUrlPrefix) {
             this.publicUrlPrefix = publicUrlPrefix;
+        }
+    }
+
+    public static class Ai {
+        private String gatewayMode = "mock";
+        private String baseUrl = "";
+        private String apiKey = "";
+        private String defaultModel = "claude-sonnet-4";
+        private String complexTaskModel = "claude-sonnet-4";
+        private String fastTaskModel = "forma-fast";
+        private int requestTimeoutSeconds = 45;
+        private int maxToolRounds = 6;
+        private int maxInputTokens = 16000;
+        private int maxOutputTokens = 4096;
+
+        public String getGatewayMode() {
+            return gatewayMode;
+        }
+
+        public void setGatewayMode(String gatewayMode) {
+            this.gatewayMode = gatewayMode;
+        }
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
+        }
+
+        public String getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey;
+        }
+
+        public String getDefaultModel() {
+            return defaultModel;
+        }
+
+        public void setDefaultModel(String defaultModel) {
+            this.defaultModel = defaultModel;
+        }
+
+        public String getComplexTaskModel() {
+            return complexTaskModel;
+        }
+
+        public void setComplexTaskModel(String complexTaskModel) {
+            this.complexTaskModel = complexTaskModel;
+        }
+
+        public String getFastTaskModel() {
+            return fastTaskModel;
+        }
+
+        public void setFastTaskModel(String fastTaskModel) {
+            this.fastTaskModel = fastTaskModel;
+        }
+
+        public int getRequestTimeoutSeconds() {
+            return requestTimeoutSeconds;
+        }
+
+        public void setRequestTimeoutSeconds(int requestTimeoutSeconds) {
+            this.requestTimeoutSeconds = requestTimeoutSeconds;
+        }
+
+        public int getMaxToolRounds() {
+            return maxToolRounds;
+        }
+
+        public void setMaxToolRounds(int maxToolRounds) {
+            this.maxToolRounds = maxToolRounds;
+        }
+
+        public int getMaxInputTokens() {
+            return maxInputTokens;
+        }
+
+        public void setMaxInputTokens(int maxInputTokens) {
+            this.maxInputTokens = maxInputTokens;
+        }
+
+        public int getMaxOutputTokens() {
+            return maxOutputTokens;
+        }
+
+        public void setMaxOutputTokens(int maxOutputTokens) {
+            this.maxOutputTokens = maxOutputTokens;
         }
     }
 }

@@ -9,13 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import { Toast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/api-client";
+import { cmsStoreApi } from "@/lib/cms-ai-api";
+import { apiBlocksToEditorBlocks, themeTokensToCssVars } from "@/lib/cms-schema";
 import { storeApi } from "@/lib/commerce-api";
 import { formatDate, usdExact } from "@/lib/format";
 import { useStored } from "@/lib/storage";
 import { initialBlocks, pageTemplates } from "@/mocks/pages";
 import type { OrderDto } from "@/types/api-commerce";
 import type { CustomerProfile } from "@/types/commerce";
-import type { Block } from "@/types/editor";
 import { ProductCard, StoreBlock } from "./blocks";
 import { CartPage, CheckoutPage, ConfirmationPage } from "./cart-checkout";
 import { StoreFooter, StoreHeader } from "./header-footer";
@@ -29,15 +30,29 @@ type StoredOrderSummary = {
   date: string;
 };
 
+const BUILTIN_VIEWS = new Set([
+  "",
+  "shop",
+  "search",
+  "category",
+  "product",
+  "cart",
+  "checkout",
+  "confirmation",
+  "categories",
+  "collections",
+  "collection",
+  "wishlist",
+  "account",
+  "history",
+  "about",
+  "contact",
+]);
+
 export function Storefront({ route }: { route: string[] }) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const [blocks] = useStored<Block[]>("published", initialBlocks);
-  const [publishedPages] = useStored<Record<string, Block[]>>(
-    "published-pages",
-    pageTemplates
-  );
   const [wishlist, setWishlist] = useStored<string[]>("wishlist", []);
   const [orderHistory, setOrderHistory] = useStored<StoredOrderSummary[]>(
     "store-order-history",
@@ -49,7 +64,28 @@ export function Storefront({ route }: { route: string[] }) {
   });
   const [toast, setToast] = useState("");
 
-  const [view, id] = route;
+  const [view = "", id] = route;
+  const cmsSlug = !view
+    ? "home"
+    : view === "about"
+      ? "about"
+      : view === "collections"
+        ? "collections"
+        : !BUILTIN_VIEWS.has(view)
+          ? view
+          : null;
+
+  const themeQuery = useQuery({
+    queryKey: ["store-theme"],
+    queryFn: () => cmsStoreApi.getTheme(),
+  });
+
+  const cmsPageQuery = useQuery({
+    queryKey: ["store-cms-page", cmsSlug],
+    queryFn: () => cmsStoreApi.getPage(cmsSlug!),
+    enabled: Boolean(cmsSlug),
+    retry: false,
+  });
 
   const cartQuery = useQuery({
     queryKey: ["store-cart"],
@@ -116,9 +152,13 @@ export function Storefront({ route }: { route: string[] }) {
   const cartCount =
     cart?.items.reduce((sum, line) => sum + line.quantity, 0) || 0;
 
+  const homeBlocks = cmsPageQuery.data
+    ? apiBlocksToEditorBlocks(cmsPageQuery.data.content)
+    : initialBlocks;
+
   let content: React.ReactNode;
   if (!view) {
-    content = blocks
+    content = homeBlocks
       .filter((block) => block.visible)
       .map((block) => (
         <StoreBlock
@@ -230,10 +270,14 @@ export function Storefront({ route }: { route: string[] }) {
       view === "collection" && id
         ? collections.filter((c) => c.slug === id || c.id === id)
         : collections;
+    const colHeaderBlocks =
+      view === "collections" && cmsPageQuery.data
+        ? apiBlocksToEditorBlocks(cmsPageQuery.data.content)
+        : pageTemplates["Collections page"] || [];
     content = (
       <>
         {view === "collections"
-          ? (publishedPages["Collections page"] || [])
+          ? colHeaderBlocks
               .filter((block) => block.visible)
               .map((block) => (
                 <StoreBlock
@@ -393,7 +437,10 @@ export function Storefront({ route }: { route: string[] }) {
       </div>
     );
   } else if (view === "about") {
-    content = (publishedPages["About page"] || [])
+    const aboutBlocks = cmsPageQuery.data
+      ? apiBlocksToEditorBlocks(cmsPageQuery.data.content)
+      : pageTemplates["About page"] || [];
+    content = aboutBlocks
       .filter((block) => block.visible)
       .map((block) => (
         <StoreBlock
@@ -442,6 +489,23 @@ export function Storefront({ route }: { route: string[] }) {
         </form>
       </div>
     );
+  } else if (cmsPageQuery.isLoading) {
+    content = (
+      <div className="store-container">
+        <Skeleton rows={4} />
+      </div>
+    );
+  } else if (cmsPageQuery.data) {
+    content = apiBlocksToEditorBlocks(cmsPageQuery.data.content)
+      .filter((block) => block.visible)
+      .map((block) => (
+        <StoreBlock
+          key={block.id}
+          block={block}
+          catalog={catalog}
+          categories={categories}
+        />
+      ));
   } else {
     content = (
       <div className="store-container">
@@ -457,7 +521,10 @@ export function Storefront({ route }: { route: string[] }) {
   }
 
   return (
-    <div className="store public-store">
+    <div
+      className="store public-store"
+      style={themeTokensToCssVars(themeQuery.data?.tokens)}
+    >
       <StoreHeader
         cart={cartCount}
         wishlistCount={wishlist.length}

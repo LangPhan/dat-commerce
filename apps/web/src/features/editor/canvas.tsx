@@ -18,14 +18,13 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import type { CSSProperties } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty } from "@/components/ui/data-display";
-import { StoreBlock } from "@/features/storefront/blocks";
+import { StoreBlock, type StoreProductItem } from "@/features/storefront/blocks";
 import { StoreHeader } from "@/features/storefront/header-footer";
 import { cn } from "@/lib/format";
-import { pagePaths } from "@/mocks/pages";
-import type { Product } from "@/types/commerce";
 import type { Block, Proposal, ViewportMode } from "@/types/editor";
 import { SectionIcon } from "./structure-panel";
 
@@ -37,6 +36,9 @@ const viewportMeta: Record<ViewportMode, { label: string; width: string }> = {
 
 export function EditorCanvas({
   page,
+  pageSlug,
+  themeStyle,
+  canWrite = true,
   mode,
   setMode,
   preview,
@@ -61,6 +63,9 @@ export function EditorCanvas({
   rejectProposal,
 }: {
   page: string;
+  pageSlug: string;
+  themeStyle?: CSSProperties;
+  canWrite?: boolean;
   mode: ViewportMode;
   setMode: (m: ViewportMode) => void;
   preview: "page" | "proposal" | null;
@@ -71,7 +76,7 @@ export function EditorCanvas({
   isPublished: boolean;
   dirty: boolean;
   ready: boolean;
-  catalog: Product[];
+  catalog: StoreProductItem[];
   select: (id: string) => void;
   move: (offset: number) => void;
   duplicate: () => void;
@@ -101,6 +106,9 @@ export function EditorCanvas({
         : isPublished
           ? "green"
           : "neutral";
+
+  const liveHref =
+    pageSlug === "home" ? "/store" : `/store/${encodeURIComponent(pageSlug)}`;
 
   return (
     <main className="editor-main">
@@ -149,7 +157,7 @@ export function EditorCanvas({
           <Button
             className="save-draft"
             onClick={saveDraft}
-            disabled={!ready || !dirty}
+            disabled={!ready || !dirty || !canWrite}
           >
             Save draft
           </Button>
@@ -190,13 +198,13 @@ export function EditorCanvas({
                 Exit preview <X size={12} />
               </button>
             ) : (
-              <Link href={pagePaths[page] || "/store"} target="_blank">
+              <Link href={liveHref} target="_blank">
                 Open live storefront <ArrowUpRight size={13} />
               </Link>
             )}
           </div>
 
-          <div className="store editor-store">
+          <div className="store editor-store" style={themeStyle}>
             <StoreHeader preview={preview !== "page"} />
             {showBlocks
               .filter((item) =>
@@ -251,7 +259,7 @@ export function EditorCanvas({
                             <button
                               type="button"
                               aria-label="Move section up"
-                              disabled={idx === 0}
+                              disabled={!canWrite || idx === 0}
                               onClick={() => move(-1)}
                             >
                               <ArrowUp size={11} />
@@ -259,7 +267,7 @@ export function EditorCanvas({
                             <button
                               type="button"
                               aria-label="Move section down"
-                              disabled={idx === arr.length - 1}
+                              disabled={!canWrite || idx === arr.length - 1}
                               onClick={() => move(1)}
                             >
                               <ArrowDown size={11} />
@@ -267,6 +275,7 @@ export function EditorCanvas({
                             <button
                               type="button"
                               aria-label="Duplicate section"
+                              disabled={!canWrite}
                               onClick={duplicate}
                             >
                               <Copy size={11} />
@@ -274,6 +283,7 @@ export function EditorCanvas({
                             <button
                               type="button"
                               aria-label="Toggle visibility"
+                              disabled={!canWrite}
                               onClick={toggleVisibility}
                             >
                               {item.visible ? (
@@ -285,6 +295,7 @@ export function EditorCanvas({
                             <button
                               type="button"
                               aria-label="Delete section"
+                              disabled={!canWrite}
                               onClick={requestDelete}
                             >
                               <Trash2 size={11} />

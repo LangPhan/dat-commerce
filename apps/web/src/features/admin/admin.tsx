@@ -2,21 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Empty, Skeleton } from "@/components/ui/data-display";
+import { Skeleton } from "@/components/ui/data-display";
 import { ActivityTable } from "@/features/assistant/activity";
 import { Workspace } from "@/features/assistant/workspace";
 import { AuthGuard } from "@/features/auth/auth-guard";
 import { useStored } from "@/lib/storage";
-import {
-  initialAttributes,
-  initialCategories,
-  initialProducts,
-} from "@/mocks/catalog";
-import { initialActivity, initialDiscounts } from "@/mocks/operations";
-import { initialBlocks } from "@/mocks/pages";
-import type { AIActivityEntry, Snapshot } from "@/types/ai";
-import type { Attribute, Category, Discount, Product } from "@/types/commerce";
-import type { Block } from "@/types/editor";
 import { Attributes } from "./attributes";
 import { AuditLogsView } from "./audit-logs";
 import { CategoryManager } from "./categories";
@@ -27,29 +17,12 @@ import { Catalog } from "./products";
 import { Promotions } from "./promotions";
 import { AdminShell, navigation } from "./shell";
 import { StoreSettingsView } from "./store-settings";
+import { ThemeSettingsView } from "./theme-settings";
 import { UsersManagement } from "./users-management";
 import { UtilityPage } from "./utility";
 
 function AdminWorkspace({ route }: { route: string[] }) {
   const [view = "", id, subView] = route;
-  const [catalog, setCatalog] = useStored<Product[]>("catalog", initialProducts);
-  const [categories, setCategories] = useStored<Category[]>(
-    "categories",
-    initialCategories
-  );
-  const [attributeList, setAttributes] = useStored<Attribute[]>(
-    "attributes",
-    initialAttributes
-  );
-  const [discountList, setDiscounts] = useStored<Discount[]>(
-    "discounts",
-    initialDiscounts
-  );
-  const [draftBlocks, setDraftBlocks] = useStored<Block[]>("draft", initialBlocks);
-  const [activity, setActivity] = useStored<AIActivityEntry[]>(
-    "ai-activity",
-    initialActivity
-  );
   const [theme, setTheme, ready] = useStored("theme", "light");
   const [collapsed, setCollapsed] = useStored("admin-collapsed", false);
   const [toast, setToast] = useState("");
@@ -69,15 +42,6 @@ function AdminWorkspace({ route }: { route: string[] }) {
     const timer = setTimeout(() => setToast(""), 2800);
     return () => clearTimeout(timer);
   }, [toast]);
-
-  function commitSnapshot(next: Partial<Snapshot>) {
-    if (next.catalog) setCatalog(next.catalog);
-    if (next.categories) setCategories(next.categories);
-    if (next.discounts) setDiscounts(next.discounts);
-    if (next.attributes) setAttributes(next.attributes);
-    if (next.draftBlocks) setDraftBlocks(next.draftBlocks);
-    setToast("AI operation applied");
-  }
 
   let content: React.ReactNode;
   if (!ready) {
@@ -142,47 +106,33 @@ function AdminWorkspace({ route }: { route: string[] }) {
         <Promotions notify={setToast} isCampaignView={view === "promotions"} />
       </AuthGuard>
     );
-  } else if (view === "media") {
+  } else if (view === "media" || view === "pages" || view === "navigation") {
     content = (
       <AuthGuard requiredPermission="content:read">
-        <UtilityPage key={view} view={view} title="Media Library" notify={setToast} />
+        <UtilityPage
+          key={view}
+          view={view}
+          title={activeItem?.title || "Store Design"}
+          notify={setToast}
+        />
       </AuthGuard>
     );
   } else if (view === "theme") {
     content = (
-      <>
-        <div className="admin-title">
-          <div>
-            <h1>Theme Tokens</h1>
-            <p>Manage allowlisted colors, typography, radius, and container tokens.</p>
-          </div>
-        </div>
-        <Empty
-          title="Theme Token Editor scheduled for Phase 4"
-          text="Allowlisted Theme Tokens v1 contract is specified in docs/architecture/block-schema-v1.md."
-        />
-      </>
+      <AuthGuard requiredPermission="content:read">
+        <ThemeSettingsView notify={setToast} />
+      </AuthGuard>
     );
   } else if (view === "assistant") {
     content = (
       <AuthGuard requiredPermission="ai:use">
-        <Workspace
-          snapshot={{
-            catalog,
-            categories,
-            discounts: discountList,
-            attributes: attributeList,
-            draftBlocks,
-          }}
-          commit={commitSnapshot}
-          log={(entry) => setActivity((curr) => [entry, ...curr])}
-        />
+        <Workspace notify={setToast} />
       </AuthGuard>
     );
   } else if (view === "ai-activity" || view === "automation") {
     content = (
       <AuthGuard requiredPermission="ai:use">
-        <ActivityTable rows={activity} automation={view === "automation"} />
+        <ActivityTable automation={view === "automation"} notify={setToast} />
       </AuthGuard>
     );
   } else if (view === "audit-logs") {
