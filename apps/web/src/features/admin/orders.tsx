@@ -168,7 +168,7 @@ export function Orders({
           </div>
         </div>
 
-        <div className="detail-grid">
+        <div className="admin-form-grid">
           <div className="form-stack">
             <section className="panel form-stack">
               <h2>Line items</h2>

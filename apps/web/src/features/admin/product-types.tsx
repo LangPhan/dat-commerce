@@ -284,7 +284,7 @@ export function ProductTypesManager({
               }
             }}
           >
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Name
                 <input
@@ -469,7 +469,7 @@ export function ProductTypesManager({
               </div>
               <div className="form-stack" style={{ gap: 8 }}>
                 {draft.variantOptions.map((vo, idx) => (
-                  <div className="field-row" key={idx} style={{ alignItems: "center" }}>
+                  <div className="form-pair" key={idx} style={{ alignItems: "center" }}>
                     <input
                       aria-label={`Variant option code ${idx + 1}`}
                       placeholder="size"

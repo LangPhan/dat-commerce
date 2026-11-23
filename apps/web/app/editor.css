@@ -212,7 +212,13 @@
 }
 
 .page-picker select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
   appearance: none;
+  background-color: transparent;
+  background-image: none;
+  display: inline-block;
+  margin-top: 0;
   font-size: 12.5px;
   width: 100%;
   padding: 6px 26px 6px 29px;
@@ -522,6 +528,10 @@
 
 .editor-main:only-child .editor-store .store-header a {
   pointer-events: auto;
+}
+
+.editor-store .store-hero {
+  padding-top: clamp(46px, 6cqw, 72px);
 }
 
 .editable-block {
@@ -1052,16 +1062,7 @@
   color: var(--muted);
 }
 
-@media (max-width: 1180px) {
-  .editor-body {
-    grid-template-columns: 52px 196px minmax(0, 1fr) 300px;
-  }
-  .proposal-card {
-    margin-left: 0;
-  }
-}
-
-@media (max-width: 960px) {
+@media (max-width: 1120px) {
   .editor-body {
     grid-template-columns: 50px minmax(0, 1fr) 300px;
   }

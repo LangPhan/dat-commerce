@@ -187,13 +187,13 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
           text="Create your first category to structure the storefront catalog."
         />
       ) : (
-        <div className="category-grid">
-          <div className="panel category-tree">{renderTree(null)}</div>
+        <div className="admin-split">
+          <div className="panel">{renderTree(null)}</div>
 
           {selected ? (
             <form
               key={selected.id}
-              className="panel form-stack"
+              className="panel category-detail form-stack"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!canWrite) return;
@@ -217,7 +217,7 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
                 <Badge tone="accent">{selected.productCount} products</Badge>
               </div>
 
-              <div className="field-row">
+              <div className="form-pair">
                 <label>
                   Name
                   <input
@@ -238,7 +238,7 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
                 </label>
               </div>
 
-              <div className="field-row">
+              <div className="form-pair">
                 <label>
                   Parent category
                   <select
@@ -357,7 +357,7 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
               createMutation.mutate(modalDraft);
             }}
           >
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Name
                 <input
@@ -386,7 +386,7 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
               </label>
             </div>
 
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Parent
                 <select

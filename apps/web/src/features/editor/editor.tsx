@@ -827,7 +827,10 @@ export function Editor() {
         </div>
       </header>
 
-      <div className={cn("editor-body", panel && `panel-${panel}`)}>
+      <div
+        className={cn("editor-body", panel && `panel-${panel}`)}
+        data-panel={panel || undefined}
+      >
         {preview !== "page" ? (
           <nav className="editor-rail" aria-label="Editor navigation">
             <IconButton

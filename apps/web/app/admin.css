@@ -1,7 +1,7 @@
 /* Merchant Admin Workspace */
 .admin-app {
   display: grid;
-  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-columns: 220px minmax(0, 1fr);
   min-height: 100dvh;
 }
 
@@ -130,15 +130,21 @@
 .admin-top {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 10px;
   justify-content: space-between;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  min-height: 60px;
-  padding: 0 clamp(14px, 2.5vw, 36px);
+  min-height: 58px;
+  padding: 0 clamp(14px, 2.2vw, 32px);
   position: sticky;
   top: 0;
   z-index: 4;
+}
+
+.admin-top .button-row {
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .admin-top .avatar {
@@ -166,7 +172,7 @@
 .admin-content {
   max-width: 1460px;
   margin: 0 auto;
-  padding: 26px clamp(14px, 3vw, 40px) 48px;
+  padding: 22px clamp(14px, 2.2vw, 32px) 44px;
 }
 
 .admin-title {
@@ -423,14 +429,14 @@
   border-collapse: collapse;
   text-align: left;
   font-size: 12.5px;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .admin-app th,
 .admin-app td,
 .dialog th,
 .dialog td {
-  padding: 10px 14px;
+  padding: 9px 10px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -440,6 +446,14 @@
   color: var(--muted);
   font-weight: 640;
   font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.admin-app td .badge,
+.admin-app td .btn,
+.admin-app td .tabular,
+.admin-app td code {
+  white-space: nowrap;
 }
 
 .admin-app tbody tr:hover {
@@ -479,6 +493,7 @@
 .row-product img {
   height: 36px;
   width: 42px;
+  flex: none;
   object-fit: cover;
   border-radius: 6px;
   background: var(--subtle);
@@ -490,6 +505,7 @@
 }
 
 .admin-form-grid,
+.detail-grid,
 .admin-product-view,
 .admin-split {
   display: grid;
@@ -498,8 +514,41 @@
   align-items: start;
 }
 
+.admin-product-view {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr);
+}
+
+.admin-product-view .table-scroll td code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.audit-actor,
+.audit-summary {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.audit-summary {
+  max-width: 220px;
+}
+
 .admin-split {
   grid-template-columns: minmax(210px, 0.72fr) minmax(0, 1.65fr);
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .admin-product-view dl > div,
@@ -688,7 +737,9 @@
 .ai-workspace {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
-  min-height: 580px;
+  height: calc(100dvh - 190px);
+  min-height: 460px;
+  max-height: 760px;
   overflow: hidden;
 }
 
@@ -700,6 +751,8 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
 }
 
 .ai-thread-row {
@@ -746,6 +799,8 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .ai-workarea-head {
@@ -759,10 +814,9 @@
 
 .ai-history {
   flex: 1;
+  min-height: 0;
   padding: clamp(14px, 3vw, 28px);
-  max-height: 60dvh;
   overflow: auto;
-  min-height: 280px;
 }
 
 .ai-intro {
@@ -943,10 +997,15 @@
 }
 
 .model-selector select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
   appearance: none;
   border: 0;
-  background: transparent;
-  padding: 0 14px 0 0;
+  background-color: transparent;
+  background-image: none;
+  display: inline-block;
+  width: auto;
+  padding: 0 18px 0 0;
   margin: 0;
   font-size: 11.5px;
   font-weight: 560;
@@ -1003,12 +1062,20 @@
   font-size: 11.5px;
 }
 
+@media (max-width: 1180px) {
+  .admin-app {
+    grid-template-columns: 188px minmax(0, 1fr);
+  }
+  .admin-command span,
+  .admin-command kbd,
+  .user-chip-meta {
+    display: none;
+  }
+}
+
 @media (max-width: 990px) {
   .dash-charts {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .admin-app {
-    grid-template-columns: 196px minmax(0, 1fr);
   }
 }
 
@@ -1039,8 +1106,6 @@
     background: rgba(15, 16, 22, 0.45);
     z-index: 4;
   }
-  .admin-command span,
-  .admin-command kbd,
   .store-shortcut {
     display: none;
   }
@@ -1051,8 +1116,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .admin-form-grid,
+  .detail-grid,
   .admin-product-view,
   .admin-split,
+  .field-row,
   .form-pair {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1061,6 +1128,8 @@
 @media (max-width: 560px) {
   .ai-workspace {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    max-height: none;
   }
   .ai-threads {
     max-height: 150px;

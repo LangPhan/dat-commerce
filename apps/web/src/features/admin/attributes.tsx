@@ -325,7 +325,7 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
                           </span>
                         ) : null}
                         {item.archivedAt ? (
-                          <Badge tone="neutral" className="ml-1">
+                          <Badge tone="neutral" className="ml-badge">
                             Archived
                           </Badge>
                         ) : null}
@@ -408,7 +408,7 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
               }
             }}
           >
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Name
                 <input
@@ -452,7 +452,7 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
               </label>
             </div>
 
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Data type
                 <select
@@ -493,7 +493,7 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
               </label>
             </div>
 
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Unit (optional)
                 <input
@@ -505,7 +505,7 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
                 />
               </label>
               {draft.dataType === "NUMBER" ? (
-                <div className="field-row">
+                <div className="form-pair">
                   <label>
                     Min
                     <input
@@ -551,7 +551,7 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
               </label>
             ) : null}
 
-            <div className="check-row">
+            <div className="button-row" style={{ gap: 14 }}>
               <label className="check-label">
                 <input
                   type="checkbox"

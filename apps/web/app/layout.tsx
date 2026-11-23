@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { AppProviders } from "@/lib/query-provider";
 import "./globals.css";
+import "./editor.css";
+import "./storefront.css";
+import "./admin.css";
 import "./auth.css";
 
 export const metadata: Metadata = {

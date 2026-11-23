@@ -31,7 +31,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { CommandPalette, type CommandItem } from "@/components/ui/command-palette";
 import { Breadcrumbs } from "@/components/ui/data-display";
@@ -198,13 +197,25 @@ export function AdminShell({
     },
   ];
 
+  const isUuid = (val: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
   const crumbs = [
     { label: "Workspace", href: "/admin" },
     { label: activeItem?.title || "Overview", href: view ? adminLink(view) : undefined },
     ...(id
       ? [
           {
-            label: id === "new" ? "New product" : id,
+            label:
+              id === "new"
+                ? "New product"
+                : isUuid(id)
+                  ? view === "products"
+                    ? "Product details"
+                    : view === "orders"
+                      ? "Order details"
+                      : "Details"
+                  : id,
             href: subView ? `/admin/${view}/${id}` : undefined,
           },
         ]
@@ -323,9 +334,6 @@ export function AdminShell({
                 <strong>{user?.fullName || "Admin"}</strong>
                 <small>{user?.roles[0] || "MEMBER"}</small>
               </div>
-              {user?.roles[0] ? (
-                <Badge tone="accent">{user.roles[0]}</Badge>
-              ) : null}
             </div>
 
             <IconButton

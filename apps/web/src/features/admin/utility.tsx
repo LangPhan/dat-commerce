@@ -231,7 +231,7 @@ function CollectionsView({ notify }: { notify: (msg: string) => void }) {
               saveMutation.mutate(edit);
             }}
           >
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Name
                 <input
@@ -274,7 +274,7 @@ function CollectionsView({ notify }: { notify: (msg: string) => void }) {
             <div>
               <strong style={{ fontSize: 12.5 }}>Assigned products</strong>
               <div
-                className="check-row"
+                className="button-row"
                 style={{
                   marginTop: 8,
                   maxHeight: 200,
@@ -650,7 +650,7 @@ function PagesView({ notify }: { notify: (msg: string) => void }) {
                       />
                     </td>
                     <td>v{p.latestVersionNumber}</td>
-                    <td>{p.blockCount} sections</td>
+                    <td>{p.blockCount} {p.blockCount === 1 ? "section" : "sections"}</td>
                     <td>
                       <div className="button-row">
                         <Link

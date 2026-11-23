@@ -257,7 +257,7 @@ export function Promotions({
               }
             }}
           >
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Offer name
                 <input
@@ -287,7 +287,7 @@ export function Promotions({
               </label>
             </div>
 
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Discount type
                 <select
@@ -320,7 +320,7 @@ export function Promotions({
               </label>
             </div>
 
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Scope
                 <select
@@ -365,7 +365,7 @@ export function Promotions({
                   Eligible {draft.scopeType === "CATEGORY" ? "categories" : "products"}
                 </strong>
                 <div
-                  className="check-row"
+                  className="button-row"
                   style={{ marginTop: 8, flexWrap: "wrap", gap: 10 }}
                 >
                   {(draft.scopeType === "CATEGORY" ? categories : products).map((entry) => {
@@ -393,7 +393,7 @@ export function Promotions({
               </div>
             ) : null}
 
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Starts on
                 <input

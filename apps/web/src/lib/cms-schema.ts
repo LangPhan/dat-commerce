@@ -179,6 +179,8 @@ export function themeTokensToCssVars(tokens?: ThemeTokens | null): CSSProperties
   if (!tokens) return {};
   return {
     "--accent": tokens.colors.primary,
+    "--accent-hover": `color-mix(in srgb, ${tokens.colors.primary} 84%, #000000)`,
+    "--accent-soft": `color-mix(in srgb, ${tokens.colors.primary} 12%, #ffffff)`,
     "--accent-text": tokens.colors.primary,
     "--brand": tokens.colors.primary,
     "--bg": tokens.colors.background,

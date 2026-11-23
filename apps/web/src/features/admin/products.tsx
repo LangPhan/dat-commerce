@@ -304,7 +304,7 @@ function ProductForm({
       return (
         <div key={attr.attributeDefinitionId} className="panel" style={{ padding: 10 }}>
           <strong style={{ fontSize: 12 }}>{labelText}</strong>
-          <div className="check-row" style={{ marginTop: 6, flexWrap: "wrap" }}>
+          <div className="button-row" style={{ marginTop: 6, flexWrap: "wrap" }}>
             {attr.options.map((opt) => {
               const checked = selectedList.includes(opt.value);
               return (
@@ -429,11 +429,11 @@ function ProductForm({
           }
         }}
       >
-        <div className="detail-grid">
+        <div className="admin-product-view">
           <div className="form-stack">
             <section className="panel form-stack">
               <h2>Basic details</h2>
-              <div className="field-row">
+              <div className="form-pair">
                 <label>
                   Product name
                   <input
@@ -457,7 +457,7 @@ function ProductForm({
                 </label>
               </div>
 
-              <div className="field-row">
+              <div className="form-pair">
                 <label>
                   Product type
                   <select
@@ -502,7 +502,7 @@ function ProductForm({
               <div>
                 <strong style={{ fontSize: 12.5 }}>Categories</strong>
                 <div
-                  className="check-row"
+                  className="button-row"
                   style={{ marginTop: 8, flexWrap: "wrap", gap: 10 }}
                 >
                   {categories.map((cat) => {
@@ -575,7 +575,7 @@ function ProductForm({
                     className="panel"
                     style={{ padding: 12, display: "grid", gap: 10 }}
                   >
-                    <div className="field-row">
+                    <div className="form-pair">
                       <label>
                         SKU
                         <input
@@ -607,7 +607,7 @@ function ProductForm({
                         />
                       </label>
                     </div>
-                    <div className="field-row">
+                    <div className="form-pair">
                       <label>
                         Price (USD)
                         <input
@@ -666,7 +666,7 @@ function ProductForm({
                       </label>
                     </div>
                     {activeProductType?.variantOptions?.length ? (
-                      <div className="field-row">
+                      <div className="form-pair">
                         {activeProductType.variantOptions.map((vo) => (
                           <label key={vo.code}>
                             {vo.name}
@@ -794,7 +794,7 @@ function ProductForm({
                 </label>
               ) : null}
 
-              <div className="field-row" style={{ alignItems: "flex-end" }}>
+              <div className="form-pair" style={{ alignItems: "flex-end" }}>
                 <label style={{ flex: 1 }}>
                   Or add image URL
                   <input
@@ -1004,7 +1004,7 @@ function ProductDetailView({
             <p className="muted" style={{ fontSize: 13 }}>
               {product.description || "No description provided."}
             </p>
-            <div className="field-row">
+            <div className="form-pair">
               <div>
                 <span className="muted" style={{ fontSize: 11.5 }}>
                   Price range
@@ -1056,12 +1056,22 @@ function ProductDetailView({
                         </td>
                         <td>
                           <strong>
-                            {attr.displayValue}
-                            {attr.unit ? ` ${attr.unit}` : ""}
+                            {(() => {
+                              const rawDisplay =
+                                attr.displayValue ||
+                                (attr.value !== null && attr.value !== undefined
+                                  ? String(attr.value)
+                                  : "—");
+                              return attr.unit &&
+                                rawDisplay !== "—" &&
+                                !rawDisplay.toLowerCase().endsWith(attr.unit.toLowerCase())
+                                ? `${rawDisplay} ${attr.unit}`
+                                : rawDisplay;
+                            })()}
                           </strong>
                         </td>
                         <td>
-                          <div className="button-row" style={{ gap: 4 }}>
+                          <div className="button-row" style={{ gap: 4, flexWrap: "wrap" }}>
                             {attr.filterable ? (
                               <Badge tone="green">Filterable</Badge>
                             ) : null}
@@ -1219,7 +1229,7 @@ function ProductDetailView({
               Title
               <input name="title" required defaultValue={editVariant.title} />
             </label>
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Price (USD)
                 <input
@@ -1288,7 +1298,7 @@ function ProductDetailView({
               });
             }}
           >
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 SKU
                 <input name="sku" required placeholder="SKU-NEW-01" />
@@ -1298,7 +1308,7 @@ function ProductDetailView({
                 <input name="title" required placeholder="Large / Black" />
               </label>
             </div>
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Price (USD)
                 <input
@@ -1352,7 +1362,7 @@ function ProductDetailView({
               });
             }}
           >
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Quantity delta (e.g. +10 or -2)
                 <input name="delta" type="number" required defaultValue={10} />
@@ -1597,7 +1607,7 @@ function InventoryView({ notify }: { notify: (msg: string) => void }) {
               });
             }}
           >
-            <div className="field-row">
+            <div className="form-pair">
               <label>
                 Delta
                 <input name="delta" type="number" required defaultValue={10} />
@@ -1788,7 +1798,7 @@ export function Catalog({
                     <td>
                       <Link
                         href={`/admin/products/${product.id}`}
-                        className="product-cell"
+                        className="row-product"
                       >
                         <img
                           src={product.primaryImageUrl || "/media/terrain-fallback.jpg"}

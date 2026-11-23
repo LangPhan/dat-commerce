@@ -112,7 +112,7 @@ function ThemeEditorForm({
         </div>
       </div>
 
-      <div className="detail-grid">
+      <div className="admin-form-grid">
         <form
           className="panel form-stack"
           onSubmit={(e) => {
@@ -133,7 +133,7 @@ function ThemeEditorForm({
           }}
         >
           <h2>Allowlisted color tokens</h2>
-          <div className="field-row">
+          <div className="form-pair">
             {(
               [
                 ["primary", "Primary"],
@@ -167,7 +167,7 @@ function ThemeEditorForm({
           </div>
 
           <h2>Typography & geometry</h2>
-          <div className="field-row">
+          <div className="form-pair">
             <label>
               Heading font
               <select
@@ -211,7 +211,7 @@ function ThemeEditorForm({
             </label>
           </div>
 
-          <div className="field-row">
+          <div className="form-pair">
             <label>
               Card radius (0px–24px)
               <input

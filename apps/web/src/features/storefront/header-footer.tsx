@@ -68,7 +68,7 @@ export function StoreHeader({
           disabled={preview}
           onClick={() => setMenuOpen((open) => !open)}
         >
-          <Menu size={18} />
+          {menuOpen ? <X size={19} /> : <Menu size={19} />}
         </button>
 
         <Link href="/store" className="terrain-logo" tabIndex={preview ? -1 : 0}>
@@ -76,7 +76,10 @@ export function StoreHeader({
           <span>{storeName}</span>
         </Link>
 
-        <nav className={menuOpen ? "open" : ""} aria-label="Storefront navigation">
+        <nav
+          className={menuOpen ? "store-nav open" : "store-nav"}
+          aria-label="Store navigation"
+        >
           {links.map((link) => {
             const active =
               currentPath === link.url ||
@@ -86,6 +89,7 @@ export function StoreHeader({
                 key={link.id}
                 href={link.url}
                 className={active ? "active" : ""}
+                aria-current={active ? "page" : undefined}
                 tabIndex={preview ? -1 : 0}
                 onClick={() => setMenuOpen(false)}
               >
@@ -95,9 +99,11 @@ export function StoreHeader({
           })}
         </nav>
 
-        <div className="store-actions">
+        <div className="store-icons">
           {preview ? (
-            <span>Search</span>
+            <Link href="/store/search" aria-label="Search" tabIndex={-1}>
+              <Search size={17} />
+            </Link>
           ) : (
             <button
               type="button"

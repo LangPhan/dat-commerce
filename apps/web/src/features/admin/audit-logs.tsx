@@ -53,7 +53,7 @@ export function AuditLogsView() {
           icon={<History size={18} />}
         />
       ) : (
-        <div className="admin-table-panel table-scroll">
+        <div className="admin-table-panel">
           <div className="table-toolbar">
             <select
               aria-label="Filter by action"
@@ -87,42 +87,44 @@ export function AuditLogsView() {
             </select>
           </div>
 
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Actor</th>
-                <th>Action</th>
-                <th>Resource</th>
-                <th>Request ID</th>
-                <th>Summary</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(query.data?.items || []).map((row) => (
-                <tr key={row.id}>
-                  <td className="muted">{formatDateTime(row.createdAt)}</td>
-                  <td>{row.actorEmail || "system"}</td>
-                  <td>
-                    <Badge tone="accent">{row.action}</Badge>
-                  </td>
-                  <td>
-                    <code>{row.resourceType}</code>
-                  </td>
-                  <td>
-                    <code>{row.requestId ? row.requestId.slice(0, 8) : "—"}</code>
-                  </td>
-                  <td className="muted">
-                    {row.afterJson
-                      ? JSON.stringify(row.afterJson).slice(0, 72)
-                      : Object.keys(row.metadataJson || {}).length
-                        ? JSON.stringify(row.metadataJson).slice(0, 72)
-                        : "—"}
-                  </td>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Actor</th>
+                  <th>Action</th>
+                  <th>Resource</th>
+                  <th>Request ID</th>
+                  <th>Summary</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(query.data?.items || []).map((row) => (
+                  <tr key={row.id}>
+                    <td className="muted">{formatDateTime(row.createdAt)}</td>
+                    <td className="audit-actor">{row.actorEmail || "system"}</td>
+                    <td>
+                      <Badge tone="accent">{row.action}</Badge>
+                    </td>
+                    <td>
+                      <code>{row.resourceType}</code>
+                    </td>
+                    <td>
+                      <code>{row.requestId ? row.requestId.slice(0, 8) : "—"}</code>
+                    </td>
+                    <td className="muted audit-summary">
+                      {row.afterJson
+                        ? JSON.stringify(row.afterJson).slice(0, 72)
+                        : Object.keys(row.metadataJson || {}).length
+                          ? JSON.stringify(row.metadataJson).slice(0, 72)
+                          : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {query.data ? (
             <div className="table-footer">

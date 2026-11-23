@@ -243,15 +243,25 @@ function ProductDetailInner({
             </div>
           ) : (
             <dl style={{ marginTop: 10 }}>
-              {product.attributes.map((attr) => (
-                <div key={attr.definitionId}>
-                  <dt>{attr.name}</dt>
-                  <dd>
-                    {attr.displayValue}
-                    {attr.unit ? ` ${attr.unit}` : ""}
-                  </dd>
-                </div>
-              ))}
+              {product.attributes.map((attr) => {
+                const rawDisplay =
+                  attr.displayValue ||
+                  (attr.value !== null && attr.value !== undefined
+                    ? String(attr.value)
+                    : "—");
+                const formatted =
+                  attr.unit &&
+                  rawDisplay !== "—" &&
+                  !rawDisplay.toLowerCase().endsWith(attr.unit.toLowerCase())
+                    ? `${rawDisplay} ${attr.unit}`
+                    : rawDisplay;
+                return (
+                  <div key={attr.definitionId}>
+                    <dt>{attr.name}</dt>
+                    <dd>{formatted}</dd>
+                  </div>
+                );
+              })}
             </dl>
           )}
         </div>
