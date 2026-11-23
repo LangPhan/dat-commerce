@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 640" fill="none">
+  <rect width="800" height="640" fill="#F3F4F8"/>
+  <ellipse cx="400" cy="502" rx="252" ry="20" fill="#171923" fill-opacity="0.08"/>
+  <!-- Lid -->
+  <rect x="168" y="136" width="464" height="296" rx="18" fill="#D2D6E0"/>
+  <rect x="174" y="142" width="452" height="284" rx="12" fill="#15171F"/>
+  <defs>
+    <linearGradient id="scr2" x1="184" y1="152" x2="616" y2="416" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E8ECF8"/>
+      <stop offset="50%" stop-color="#D7D2FA"/>
+      <stop offset="100%" stop-color="#C6D4F0"/>
+    </linearGradient>
+  </defs>
+  <rect x="184" y="152" width="432" height="264" rx="6" fill="url(#scr2)"/>
+  <circle cx="320" cy="260" r="88" fill="#6E5AF2" fill-opacity="0.22"/>
+  <circle cx="485" cy="300" r="76" fill="#4676E8" fill-opacity="0.18"/>
+  <rect x="216" y="180" width="120" height="9" rx="4.5" fill="#1E2230" fill-opacity="0.14"/>
+  <rect x="216" y="198" width="76" height="7" rx="3.5" fill="#1E2230" fill-opacity="0.09"/>
+  <!-- Base -->
+  <path d="M116 436C116 432.686 118.686 430 122 430H678C681.314 430 684 432.686 684 436V442C684 449.732 677.732 456 670 456H130C122.268 456 116 449.732 116 442V436Z" fill="#C2C7D4"/>
+  <rect x="116" y="430" width="568" height="6" fill="#E3E7F0"/>
+  <path d="M348 430H452V434C452 435.657 450.657 437 449 437H351C349.343 437 348 435.657 348 434V430Z" fill="#9FA6B8"/>
+</svg>

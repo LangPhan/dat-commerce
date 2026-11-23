@@ -1,0 +1,58 @@
+"use client";
+import type { ReactNode } from "react";
+import { cn } from "@/lib/format";
+
+export type BadgeTone = "neutral" | "accent" | "green" | "amber" | "red";
+
+export function Badge({
+  tone = "neutral",
+  className = "",
+  children,
+}: {
+  tone?: BadgeTone;
+  className?: string;
+  children: ReactNode;
+}) {
+  const toneClass =
+    tone === "accent"
+      ? "violet"
+      : tone === "green"
+        ? "green"
+        : tone === "amber"
+          ? "amber"
+          : tone === "red"
+            ? "red"
+            : "";
+  return <span className={cn("badge", toneClass, className)}>{children}</span>;
+}
+
+export function StatusBadge({ status }: { status: string }) {
+  const lower = status.toLowerCase();
+  const tone: BadgeTone =
+    lower === "paid" ||
+    lower === "delivered" ||
+    lower === "active" ||
+    lower === "completed" ||
+    lower === "published" ||
+    lower === "in stock"
+      ? "green"
+      : lower === "pending" ||
+          lower === "processing" ||
+          lower === "shipped" ||
+          lower === "low stock" ||
+          lower === "draft"
+        ? "amber"
+        : lower === "failed" ||
+            lower === "refunded" ||
+            lower === "out of stock" ||
+            lower === "unsaved changes"
+          ? "red"
+          : "neutral";
+
+  return (
+    <Badge tone={tone}>
+      <span className="status-dot" aria-hidden="true" />
+      {status}
+    </Badge>
+  );
+}

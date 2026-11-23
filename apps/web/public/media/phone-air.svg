@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 640" fill="none">
+  <rect width="800" height="640" fill="#F4F5F8"/>
+  <ellipse cx="400" cy="548" rx="128" ry="16" fill="#111318" fill-opacity="0.09"/>
+  <!-- Phone -->
+  <rect x="298" y="106" width="204" height="428" rx="36" fill="#1B1D24"/>
+  <rect x="305" y="113" width="190" height="414" rx="30" fill="#0D0F14"/>
+  <defs>
+    <linearGradient id="ph2" x1="312" y1="120" x2="488" y2="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F1F3FA"/>
+      <stop offset="52%" stop-color="#DBD6FB"/>
+      <stop offset="100%" stop-color="#C8D6F4"/>
+    </linearGradient>
+  </defs>
+  <rect x="312" y="120" width="176" height="400" rx="24" fill="url(#ph2)"/>
+  <circle cx="385" cy="275" r="76" fill="#5B46E8" fill-opacity="0.22"/>
+  <circle cx="430" cy="365" r="54" fill="#325AE8" fill-opacity="0.16"/>
+  <rect x="372" y="132" width="56" height="13" rx="6.5" fill="#111318"/>
+  <rect x="334" y="182" width="76" height="10" rx="5" fill="#161822" fill-opacity="0.16"/>
+  <rect x="334" y="200" width="52" height="8" rx="4" fill="#161822" fill-opacity="0.1"/>
+  <rect x="358" y="502" width="84" height="4" rx="2" fill="#161822" fill-opacity="0.25"/>
+</svg>

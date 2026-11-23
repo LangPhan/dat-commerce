@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 640" fill="none">
+  <rect width="800" height="640" fill="#F1F2F6"/>
+  <radialGradient id="g1" cx="50%" cy="45%" r="55%">
+    <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9"/>
+    <stop offset="100%" stop-color="#E4E6EE" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="800" height="640" fill="url(#g1)"/>
+  <ellipse cx="400" cy="500" rx="260" ry="22" fill="#171923" fill-opacity="0.09"/>
+  <!-- Laptop Lid -->
+  <rect x="176" y="138" width="448" height="292" rx="16" fill="#1B1E28"/>
+  <rect x="184" y="146" width="432" height="274" rx="10" fill="#0F1118"/>
+  <!-- Screen Wallpaper -->
+  <defs>
+    <linearGradient id="scr1" x1="184" y1="146" x2="616" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E1B3A"/>
+      <stop offset="55%" stop-color="#3B2F8F"/>
+      <stop offset="100%" stop-color="#131728"/>
+    </linearGradient>
+  </defs>
+  <rect x="192" y="154" width="416" height="258" rx="6" fill="url(#scr1)"/>
+  <circle cx="460" cy="250" r="85" fill="#7C6AF6" fill-opacity="0.28"/>
+  <circle cx="330" cy="310" r="70" fill="#4C37CC" fill-opacity="0.35"/>
+  <rect x="220" y="182" width="140" height="10" rx="5" fill="#FFFFFF" fill-opacity="0.18"/>
+  <rect x="220" y="202" width="90" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.12"/>
+  <circle cx="400" cy="150" r="2.5" fill="#3B4256"/>
+  <!-- Laptop Base -->
+  <path d="M122 436C122 432.686 124.686 430 128 430H672C675.314 430 678 432.686 678 436V444C678 451.732 671.732 458 664 458H136C128.268 458 122 451.732 122 444V436Z" fill="#313646"/>
+  <rect x="122" y="430" width="556" height="7" fill="#4A5064"/>
+  <path d="M348 430H452V434C452 436.209 450.209 438 448 438H352C349.791 438 348 436.209 348 434V430Z" fill="#232734"/>
+</svg>
