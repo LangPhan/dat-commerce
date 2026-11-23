@@ -27,6 +27,13 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { IconButton, Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/format";
 import type { Block, BlockKind } from "@/types/editor";
 
@@ -90,6 +97,8 @@ export function StructurePanel({
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
 
+  const pageItems = pages.map((p) => ({ value: p, label: p }));
+
   return (
     <aside className="structure" aria-label="Page structure">
       <div className="panel-heading">
@@ -101,24 +110,34 @@ export function StructurePanel({
 
       <div className="page-picker">
         <label htmlFor="edit-page">PAGE</label>
-        <div>
-          <PanelTop size={14} />
-          <select
-            id="edit-page"
-            value={currentPage}
-            onChange={(e) => {
-              setPage(e.target.value);
+        <Select
+          items={pageItems}
+          value={currentPage}
+          onValueChange={(next) => {
+            if (next) {
+              setPage(next);
               setMenuOpen(false);
-            }}
+            }
+          }}
+        >
+          <SelectTrigger
+            id="edit-page"
+            size="sm"
+            className="page-picker-trigger"
           >
+            <span className="page-picker-trigger-label">
+              <PanelTop size={14} aria-hidden="true" />
+              <SelectValue />
+            </span>
+          </SelectTrigger>
+          <SelectContent>
             {pages.map((p) => (
-              <option key={p} value={p}>
+              <SelectItem key={p} value={p}>
                 {p}
-              </option>
+              </SelectItem>
             ))}
-          </select>
-          <ChevronDown size={14} />
-        </div>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="structure-items">

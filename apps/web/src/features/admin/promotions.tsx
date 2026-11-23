@@ -7,6 +7,13 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import { Modal } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { adminCatalogApi, adminPromotionApi } from "@/lib/commerce-api";
@@ -17,6 +24,24 @@ import type {
   PromotionStatus,
   PromotionType,
 } from "@/types/api-commerce";
+
+const PROMOTION_TYPE_ITEMS = [
+  { value: "PERCENTAGE", label: "Percentage (%)" },
+  { value: "FIXED", label: "Fixed amount ($)" },
+  { value: "FREE_SHIPPING", label: "Free shipping" },
+];
+
+const PROMOTION_SCOPE_ITEMS = [
+  { value: "ORDER", label: "Entire order" },
+  { value: "CATEGORY", label: "Specific categories" },
+  { value: "PRODUCT", label: "Specific products" },
+];
+
+const PROMOTION_STATUS_ITEMS = [
+  { value: "ACTIVE", label: "ACTIVE" },
+  { value: "DRAFT", label: "DRAFT" },
+  { value: "PAUSED", label: "PAUSED" },
+];
 
 type PromoDraft = {
   id?: string;
@@ -290,18 +315,27 @@ export function Promotions({
             <div className="form-pair">
               <label>
                 Discount type
-                <select
+                <Select
+                  items={PROMOTION_TYPE_ITEMS}
                   value={draft.type}
-                  onChange={(e) =>
+                  onValueChange={(next) =>
+                    next &&
                     setDraft((prev) =>
-                      prev ? { ...prev, type: e.target.value as PromotionType } : null
+                      prev ? { ...prev, type: next as PromotionType } : null
                     )
                   }
                 >
-                  <option value="PERCENTAGE">Percentage (%)</option>
-                  <option value="FIXED">Fixed amount ($)</option>
-                  <option value="FREE_SHIPPING">Free shipping</option>
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROMOTION_TYPE_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label>
                 Value
@@ -323,39 +357,57 @@ export function Promotions({
             <div className="form-pair">
               <label>
                 Scope
-                <select
+                <Select
+                  items={PROMOTION_SCOPE_ITEMS}
                   value={draft.scopeType}
-                  onChange={(e) =>
+                  onValueChange={(next) =>
+                    next &&
                     setDraft((prev) =>
                       prev
                         ? {
                             ...prev,
-                            scopeType: e.target.value as PromotionScopeType,
+                            scopeType: next as PromotionScopeType,
                             targetIds: [],
                           }
                         : null
                     )
                   }
                 >
-                  <option value="ORDER">Entire order</option>
-                  <option value="CATEGORY">Specific categories</option>
-                  <option value="PRODUCT">Specific products</option>
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROMOTION_SCOPE_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label>
                 Status
-                <select
+                <Select
+                  items={PROMOTION_STATUS_ITEMS}
                   value={draft.status}
-                  onChange={(e) =>
+                  onValueChange={(next) =>
+                    next &&
                     setDraft((prev) =>
-                      prev ? { ...prev, status: e.target.value as PromotionStatus } : null
+                      prev ? { ...prev, status: next as PromotionStatus } : null
                     )
                   }
                 >
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="DRAFT">DRAFT</option>
-                  <option value="PAUSED">PAUSED</option>
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROMOTION_STATUS_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
             </div>
 

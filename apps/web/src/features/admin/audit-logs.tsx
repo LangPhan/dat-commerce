@@ -5,9 +5,33 @@ import { History } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Empty, Pagination, Skeleton } from "@/components/ui/data-display";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { formatDateTime } from "@/lib/format";
 import type { AuditLogRecord, PageResponse } from "@/types/auth";
+
+const ACTION_FILTER_ITEMS = [
+  { value: "", label: "All actions" },
+  { value: "AUTH_LOGIN", label: "AUTH_LOGIN" },
+  { value: "AUTH_LOGOUT", label: "AUTH_LOGOUT" },
+  { value: "AUTH_REFRESH_REUSE_DETECTED", label: "AUTH_REFRESH_REUSE_DETECTED" },
+  { value: "ADMIN_USER_CREATED", label: "ADMIN_USER_CREATED" },
+  { value: "ADMIN_USER_UPDATED", label: "ADMIN_USER_UPDATED" },
+  { value: "STORE_UPDATED", label: "STORE_UPDATED" },
+];
+
+const RESOURCE_FILTER_ITEMS = [
+  { value: "", label: "All resources" },
+  { value: "SESSION", label: "SESSION" },
+  { value: "ADMIN_USER", label: "ADMIN_USER" },
+  { value: "STORE", label: "STORE" },
+];
 
 export function AuditLogsView() {
   const [page, setPage] = useState(0);
@@ -55,36 +79,45 @@ export function AuditLogsView() {
       ) : (
         <div className="admin-table-panel">
           <div className="table-toolbar">
-            <select
-              aria-label="Filter by action"
+            <Select
+              items={ACTION_FILTER_ITEMS}
               value={actionFilter}
-              onChange={(e) => {
-                setActionFilter(e.target.value);
+              onValueChange={(next) => {
+                setActionFilter(next ?? "");
                 setPage(0);
               }}
             >
-              <option value="">All actions</option>
-              <option value="AUTH_LOGIN">AUTH_LOGIN</option>
-              <option value="AUTH_LOGOUT">AUTH_LOGOUT</option>
-              <option value="AUTH_REFRESH_REUSE_DETECTED">AUTH_REFRESH_REUSE_DETECTED</option>
-              <option value="ADMIN_USER_CREATED">ADMIN_USER_CREATED</option>
-              <option value="ADMIN_USER_UPDATED">ADMIN_USER_UPDATED</option>
-              <option value="STORE_UPDATED">STORE_UPDATED</option>
-            </select>
+              <SelectTrigger aria-label="Filter by action">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ACTION_FILTER_ITEMS.map((item) => (
+                  <SelectItem key={item.value || "all"} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <select
-              aria-label="Filter by resource"
+            <Select
+              items={RESOURCE_FILTER_ITEMS}
               value={resourceFilter}
-              onChange={(e) => {
-                setResourceFilter(e.target.value);
+              onValueChange={(next) => {
+                setResourceFilter(next ?? "");
                 setPage(0);
               }}
             >
-              <option value="">All resources</option>
-              <option value="SESSION">SESSION</option>
-              <option value="ADMIN_USER">ADMIN_USER</option>
-              <option value="STORE">STORE</option>
-            </select>
+              <SelectTrigger aria-label="Filter by resource">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RESOURCE_FILTER_ITEMS.map((item) => (
+                  <SelectItem key={item.value || "all"} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="table-scroll">

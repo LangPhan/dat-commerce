@@ -5,6 +5,13 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/format";
 import { Button, IconButton } from "./button";
 
+function isInsideSelectPopup(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    Boolean(target.closest('[data-slot="select-content"], [data-slot="select-positioner"]'))
+  );
+}
+
 export function Modal({
   title,
   description,
@@ -22,7 +29,19 @@ export function Modal({
     <Dialog.Root open onOpenChange={(open) => !open && close()}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
-        <Dialog.Content className={cn("dialog", wide && "dialog-wide")}>
+        <Dialog.Content
+          className={cn("dialog", wide && "dialog-wide")}
+          onPointerDownOutside={(event) => {
+            if (isInsideSelectPopup(event.target)) {
+              event.preventDefault();
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (isInsideSelectPopup(event.target)) {
+              event.preventDefault();
+            }
+          }}
+        >
           <div className="dialog-heading">
             <Dialog.Title>{title}</Dialog.Title>
             <Dialog.Close asChild>
@@ -54,7 +73,19 @@ export function Drawer({
     <Dialog.Root open onOpenChange={(open) => !open && close()}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
-        <Dialog.Content className="drawer">
+        <Dialog.Content
+          className="drawer"
+          onPointerDownOutside={(event) => {
+            if (isInsideSelectPopup(event.target)) {
+              event.preventDefault();
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (isInsideSelectPopup(event.target)) {
+              event.preventDefault();
+            }
+          }}
+        >
           <div className="drawer-header">
             <div>
               <Dialog.Title>{title}</Dialog.Title>

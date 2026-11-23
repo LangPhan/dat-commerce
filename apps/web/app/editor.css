@@ -193,36 +193,27 @@
   margin-bottom: 6px;
 }
 
-.page-picker > div {
-  position: relative;
-  display: flex;
-  align-items: center;
-  color: var(--muted);
-}
-
-.page-picker > div > svg {
-  position: absolute;
-  left: 9px;
-  pointer-events: none;
-}
-
-.page-picker > div > svg:last-child {
-  left: auto;
-  right: 8px;
-}
-
-.page-picker select {
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  background-color: transparent;
-  background-image: none;
-  display: inline-block;
-  margin-top: 0;
-  font-size: 12.5px;
+.page-picker-trigger {
   width: 100%;
-  padding: 6px 26px 6px 29px;
+  height: 32px;
+  padding: 0 9px;
+  font-size: 12.5px;
   font-weight: 600;
+  color: var(--text);
+  background: var(--surface);
+  justify-content: space-between;
+}
+
+.page-picker-trigger-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.page-picker-trigger-label svg {
+  flex: none;
+  color: var(--muted);
 }
 
 .structure-items {
@@ -949,6 +940,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
+  min-width: 0;
 }
 
 .composer .icon-btn {

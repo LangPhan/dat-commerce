@@ -1,3 +1,6 @@
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
 export const usd = (value: number): string =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -50,6 +53,6 @@ export const newId = (): string => {
   return Math.random().toString(36).slice(2, 11);
 };
 
-export function cn(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(" ");
+export function cn(...inputs: ClassValue[]): string {
+  return twMerge(clsx(inputs));
 }

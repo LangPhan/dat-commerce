@@ -7,6 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import { Modal } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { adminCatalogApi } from "@/lib/commerce-api";
@@ -342,18 +349,29 @@ export function ProductTypesManager({
               <div className="section-title" style={{ marginBottom: 8 }}>
                 <strong>Attribute schema</strong>
                 <div className="button-row">
-                  <select
-                    aria-label="Select attribute to add"
+                  <Select
+                    items={[
+                      { value: "", label: "Choose attribute…" },
+                      ...availableToBind.map((attr) => ({
+                        value: attr.id,
+                        label: `${attr.name} (${attr.dataType})`,
+                      })),
+                    ]}
                     value={attrToBind}
-                    onChange={(e) => setAttrToBind(e.target.value)}
+                    onValueChange={(next) => setAttrToBind(next ?? "")}
                   >
-                    <option value="">Choose attribute…</option>
-                    {availableToBind.map((attr) => (
-                      <option key={attr.id} value={attr.id}>
-                        {attr.name} ({attr.dataType})
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger aria-label="Select attribute to add">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Choose attribute…</SelectItem>
+                      {availableToBind.map((attr) => (
+                        <SelectItem key={attr.id} value={attr.id}>
+                          {attr.name} ({attr.dataType})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Button
                     size="sm"
                     disabled={!attrToBind}

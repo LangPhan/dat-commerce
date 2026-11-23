@@ -40,7 +40,7 @@ import {
 } from "@/lib/cms-schema";
 import { storeApi } from "@/lib/commerce-api";
 import { cn, formatDateTime, newId } from "@/lib/format";
-import { useStored } from "@/lib/storage";
+import { useAppTheme } from "@/lib/theme";
 import { blockKinds, blockMeta, makeBlock } from "@/mocks/pages";
 import type { AIModelId } from "@/types/ai";
 import type { AiChangePlanDto, PageContentPayload } from "@/types/api-cms-ai";
@@ -100,7 +100,7 @@ export function Editor() {
   const canPublish = hasPermission("content:publish");
   const canUseAi = hasPermission("ai:use");
 
-  const [theme, setTheme, ready] = useStored("theme", "light");
+  const [theme, setTheme] = useAppTheme();
   const [selectedSlug, setSelectedSlug] = useState<string>(() => {
     if (typeof window === "undefined") return "home";
     return new URLSearchParams(window.location.search).get("page") || "home";
@@ -228,13 +228,6 @@ export function Editor() {
       unmountedRef.current = true;
     };
   }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    return () => {
-      delete document.documentElement.dataset.theme;
-    };
-  }, [theme]);
 
   useEffect(() => {
     if (!toast) return;
@@ -931,7 +924,7 @@ export function Editor() {
           activeProposal={proposal}
           isPublished={isPublished}
           dirty={dirty}
-          ready={ready && !saveDraftMutation.isPending}
+          ready={Boolean(detail) && !saveDraftMutation.isPending}
           catalog={catalogQuery.data?.items || []}
           select={(id) => {
             setSelection(id);

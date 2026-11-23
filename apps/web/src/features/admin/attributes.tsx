@@ -7,6 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import { ConfirmDialog, Modal } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { adminCatalogApi } from "@/lib/commerce-api";
@@ -25,6 +32,11 @@ const DATA_TYPES: AttributeDataType[] = [
   "MULTI_SELECT",
   "DATE",
 ];
+
+const DATA_TYPE_ITEMS = DATA_TYPES.map((typeOpt) => ({
+  value: typeOpt,
+  label: typeOpt,
+}));
 
 type AttributeFormDraft = {
   id?: string;
@@ -265,18 +277,26 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
               onChange={(e) => setQuery(e.target.value)}
             />
           </label>
-          <select
-            aria-label="Filter by product type"
+          <Select
+            items={[
+              { value: "", label: "All product types" },
+              ...productTypes.map((pt) => ({ value: pt.name, label: pt.name })),
+            ]}
             value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
+            onValueChange={(next) => setTypeFilter(next ?? "")}
           >
-            <option value="">All product types</option>
-            {productTypes.map((pt) => (
-              <option key={pt.id} value={pt.name}>
-                {pt.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger aria-label="Filter by product type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All product types</SelectItem>
+              {productTypes.map((pt) => (
+                <SelectItem key={pt.id} value={pt.name}>
+                  {pt.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <label className="check-label">
             <input
               type="checkbox"
@@ -455,41 +475,57 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
             <div className="form-pair">
               <label>
                 Data type
-                <select
+                <Select
                   disabled={Boolean(draft.id)}
+                  items={DATA_TYPE_ITEMS}
                   value={draft.dataType}
-                  onChange={(e) =>
+                  onValueChange={(next) =>
+                    next &&
                     setDraft((prev) =>
                       prev
-                        ? { ...prev, dataType: e.target.value as AttributeDataType }
+                        ? { ...prev, dataType: next as AttributeDataType }
                         : null
                     )
                   }
                 >
-                  {DATA_TYPES.map((typeOpt) => (
-                    <option key={typeOpt} value={typeOpt}>
-                      {typeOpt}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DATA_TYPE_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label>
                 Bind to product type (optional)
-                <select
+                <Select
+                  items={[
+                    { value: "", label: "None" },
+                    ...productTypes.map((pt) => ({ value: pt.id, label: pt.name })),
+                  ]}
                   value={draft.bindProductTypeId}
-                  onChange={(e) =>
+                  onValueChange={(next) =>
                     setDraft((prev) =>
-                      prev ? { ...prev, bindProductTypeId: e.target.value } : null
+                      prev ? { ...prev, bindProductTypeId: next ?? "" } : null
                     )
                   }
                 >
-                  <option value="">None</option>
-                  {productTypes.map((pt) => (
-                    <option key={pt.id} value={pt.id}>
-                      {pt.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {productTypes.map((pt) => (
+                      <SelectItem key={pt.id} value={pt.id}>
+                        {pt.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
             </div>
 

@@ -5,10 +5,21 @@ export {
   Field,
   Input,
   SearchInput,
-  Select,
   Switch,
   Textarea,
 } from "./ui/input";
+export {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectScrollDownButton,
+  SelectScrollUpButton,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 export { Badge, StatusBadge } from "./ui/badge";
 export { ConfirmDialog, Drawer, Modal } from "./ui/dialog";
 export { DropdownMenu, Popover, Tabs, Tooltip } from "./ui/overlay";

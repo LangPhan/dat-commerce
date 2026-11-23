@@ -17,11 +17,27 @@ import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import { Modal } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { adminOrderApi } from "@/lib/commerce-api";
 import { formatDateTime, usdExact } from "@/lib/format";
 import type { OrderDto } from "@/types/api-commerce";
+
+const ORDER_STATUS_FILTER_ITEMS = [
+  { value: "", label: "All statuses" },
+  { value: "CONFIRMED", label: "Confirmed" },
+  { value: "PROCESSING", label: "Processing" },
+  { value: "SHIPPED", label: "Shipped" },
+  { value: "DELIVERED", label: "Delivered" },
+  { value: "CANCELED", label: "Canceled" },
+];
 
 const NEXT_STATUSES: Record<string, string[]> = {
   CONFIRMED: ["PROCESSING", "SHIPPED"],
@@ -298,13 +314,22 @@ export function Orders({
             >
               <label>
                 Next status
-                <select name="status" defaultValue={validNext[0]}>
-                  {validNext.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  name="status"
+                  items={validNext.map((s) => ({ value: s, label: s }))}
+                  defaultValue={validNext[0]}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {validNext.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label>
                 Tracking number
@@ -410,18 +435,22 @@ export function Orders({
               onChange={(e) => setQuery(e.target.value)}
             />
           </label>
-          <select
-            aria-label="Filter by status"
+          <Select
+            items={ORDER_STATUS_FILTER_ITEMS}
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onValueChange={(next) => setStatusFilter(next ?? "")}
           >
-            <option value="">All statuses</option>
-            <option value="CONFIRMED">Confirmed</option>
-            <option value="PROCESSING">Processing</option>
-            <option value="SHIPPED">Shipped</option>
-            <option value="DELIVERED">Delivered</option>
-            <option value="CANCELED">Canceled</option>
-          </select>
+            <SelectTrigger aria-label="Filter by status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ORDER_STATUS_FILTER_ITEMS.map((item) => (
+                <SelectItem key={item.value || "all"} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {listQuery.isLoading ? (

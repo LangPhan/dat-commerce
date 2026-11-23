@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-muted: var(--subtle);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--subtle);
+  --color-accent-foreground: var(--text);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+  --color-destructive: var(--red);
+  --radius-md: var(--radius);
+}
+
 :root {
   color-scheme: light;
   --bg: #f7f8fa;
@@ -23,6 +41,8 @@
   --shadow-sm: 0 1px 2px rgba(17, 19, 24, 0.05);
   --shadow-md: 0 8px 24px rgba(17, 19, 24, 0.08);
   --shadow-lg: 0 24px 64px rgba(17, 19, 24, 0.16);
+  --scrollbar-thumb: rgba(17, 19, 24, 0.09);
+  --scrollbar-thumb-hover: rgba(17, 19, 24, 0.22);
   --radius: 8px;
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
@@ -50,45 +70,93 @@ html[data-theme="dark"] {
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.5);
+  --scrollbar-thumb: rgba(243, 244, 248, 0.09);
+  --scrollbar-thumb-hover: rgba(243, 244, 248, 0.22);
 }
 
-* {
-  box-sizing: border-box;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    background: var(--bg);
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    margin: 0;
+    color: var(--text);
+    background: var(--bg);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button {
+    cursor: pointer;
+    background: transparent;
+    border: 0;
+    font: inherit;
+    color: inherit;
+  }
+
+  button:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  p,
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin: 0;
+  }
+
+  label {
+    font-weight: 580;
+    font-size: 12px;
+    color: var(--text);
+  }
 }
 
-body {
-  margin: 0;
-  color: var(--text);
-  background: var(--bg);
-  font-size: 14px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
 }
 
-button {
-  cursor: pointer;
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
   background: transparent;
-  border: 0;
-  font: inherit;
-  color: inherit;
 }
 
-button:disabled {
-  cursor: default;
-  opacity: 0.45;
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
-p,
-h1,
-h2,
-h3,
-h4 {
-  margin: 0;
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 table,
@@ -205,7 +273,7 @@ summary:focus-visible {
 }
 
 /* Form controls */
-input,
+input:not([aria-hidden="true"]),
 textarea,
 select {
   min-width: 0;
@@ -219,22 +287,7 @@ select {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-select {
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  padding: 7px 30px 7px 10px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236e7485' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 14px;
-}
-
-select::picker-icon {
-  display: none;
-}
-
-input:focus,
+input:not([aria-hidden="true"]):focus,
 textarea:focus,
 select:focus {
   border-color: var(--accent);
@@ -244,13 +297,7 @@ textarea {
   resize: vertical;
 }
 
-label {
-  font-weight: 580;
-  font-size: 12px;
-  color: var(--text);
-}
-
-label > input:not([type="checkbox"]),
+label > input:not([type="checkbox"]):not([aria-hidden="true"]),
 label > textarea {
   display: block;
   width: 100%;
@@ -258,11 +305,16 @@ label > textarea {
   font-weight: 400;
 }
 
-label > select {
-  display: inline-block;
+label > select,
+label > [data-slot="select-trigger"] {
+  display: flex;
   width: 100%;
   margin-top: 5px;
   font-weight: 400;
+}
+
+.ui-field [data-slot="select-trigger"] {
+  width: 100%;
 }
 
 .ui-field {

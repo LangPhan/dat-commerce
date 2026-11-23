@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Skeleton } from "@/components/ui/data-display";
+import { usePathname } from "next/navigation";
 import { ActivityTable } from "@/features/assistant/activity";
 import { Workspace } from "@/features/assistant/workspace";
 import { AuthGuard } from "@/features/auth/auth-guard";
-import { useStored } from "@/lib/storage";
+import { parseAdminRoute, useAdminNotify } from "./admin-context";
 import { Attributes } from "./attributes";
 import { AuditLogsView } from "./audit-logs";
 import { CategoryManager } from "./categories";
@@ -15,99 +14,93 @@ import { Orders } from "./orders";
 import { ProductTypesManager } from "./product-types";
 import { Catalog } from "./products";
 import { Promotions } from "./promotions";
-import { AdminShell, navigation } from "./shell";
+import { navigation } from "./shell";
 import { StoreSettingsView } from "./store-settings";
 import { ThemeSettingsView } from "./theme-settings";
 import { UsersManagement } from "./users-management";
 import { UtilityPage } from "./utility";
 
-function AdminWorkspace({ route }: { route: string[] }) {
-  const [view = "", id, subView] = route;
-  const [theme, setTheme, ready] = useStored("theme", "light");
-  const [collapsed, setCollapsed] = useStored("admin-collapsed", false);
-  const [toast, setToast] = useState("");
+export function Admin() {
+  const pathname = usePathname();
+  const route = parseAdminRoute(pathname);
+  const [view = "", id] = route;
+  const setToast = useAdminNotify();
 
   const allItems = navigation.flatMap((group) => group.items);
   const activeItem = allItems.find((item) => item.path === view);
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    return () => {
-      delete document.documentElement.dataset.theme;
-    };
-  }, [theme]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(""), 2800);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
-  let content: React.ReactNode;
-  if (!ready) {
-    content = <Skeleton rows={4} />;
-  } else if (view === "") {
-    content = (
+  if (view === "") {
+    return (
       <AuthGuard requiredPermission="dashboard:read">
         <Dashboard notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "products") {
-    content = (
+  }
+  if (view === "products") {
+    return (
       <AuthGuard requiredPermission="catalog:read">
         <Catalog key={route.join("/")} route={route} notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "inventory") {
-    content = (
+  }
+  if (view === "inventory") {
+    return (
       <AuthGuard requiredPermission="inventory:read">
         <Catalog key={route.join("/")} route={route} notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "categories") {
-    content = (
+  }
+  if (view === "categories") {
+    return (
       <AuthGuard requiredPermission="catalog:read">
         <CategoryManager notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "product-types") {
-    content = (
+  }
+  if (view === "product-types") {
+    return (
       <AuthGuard requiredPermission="catalog:read">
         <ProductTypesManager notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "attributes") {
-    content = (
+  }
+  if (view === "attributes") {
+    return (
       <AuthGuard requiredPermission="catalog:read">
         <Attributes notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "collections") {
-    content = (
+  }
+  if (view === "collections") {
+    return (
       <AuthGuard requiredPermission="catalog:read">
         <UtilityPage key={view} view={view} title="Collections" notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "orders") {
-    content = (
+  }
+  if (view === "orders") {
+    return (
       <AuthGuard requiredPermission="order:read">
         <Orders key={id || "orders"} id={id} notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "customers") {
-    content = (
+  }
+  if (view === "customers") {
+    return (
       <AuthGuard requiredPermission="order:read">
         <UtilityPage key={view} view={view} title="Customers" notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "discounts" || view === "promotions") {
-    content = (
+  }
+  if (view === "discounts" || view === "promotions") {
+    return (
       <AuthGuard requiredPermission="promotion:read">
         <Promotions notify={setToast} isCampaignView={view === "promotions"} />
       </AuthGuard>
     );
-  } else if (view === "media" || view === "pages" || view === "navigation") {
-    content = (
+  }
+  if (view === "media" || view === "pages" || view === "navigation") {
+    return (
       <AuthGuard requiredPermission="content:read">
         <UtilityPage
           key={view}
@@ -117,44 +110,51 @@ function AdminWorkspace({ route }: { route: string[] }) {
         />
       </AuthGuard>
     );
-  } else if (view === "theme") {
-    content = (
+  }
+  if (view === "theme") {
+    return (
       <AuthGuard requiredPermission="content:read">
         <ThemeSettingsView notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "assistant") {
-    content = (
+  }
+  if (view === "assistant") {
+    return (
       <AuthGuard requiredPermission="ai:use">
         <Workspace notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "ai-activity" || view === "automation") {
-    content = (
+  }
+  if (view === "ai-activity" || view === "automation") {
+    return (
       <AuthGuard requiredPermission="ai:use">
         <ActivityTable automation={view === "automation"} notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "audit-logs") {
-    content = (
+  }
+  if (view === "audit-logs") {
+    return (
       <AuthGuard requiredPermission="audit:read">
         <AuditLogsView />
       </AuthGuard>
     );
-  } else if (view === "users") {
-    content = (
+  }
+  if (view === "users") {
+    return (
       <AuthGuard requiredPermission="users:read">
         <UsersManagement notify={setToast} />
       </AuthGuard>
     );
-  } else if (view === "general" || view === "store-information") {
-    content = (
+  }
+  if (view === "general" || view === "store-information") {
+    return (
       <AuthGuard requiredPermission="store:read">
         <StoreSettingsView mode={view} notify={setToast} />
       </AuthGuard>
     );
-  } else if (activeItem) {
-    content = (
+  }
+  if (activeItem) {
+    return (
       <UtilityPage
         key={view}
         view={view}
@@ -162,40 +162,16 @@ function AdminWorkspace({ route }: { route: string[] }) {
         notify={setToast}
       />
     );
-  } else {
-    content = (
-      <div className="admin-title">
-        <div>
-          <h1>Page not found</h1>
-          <p>The requested merchant workspace route could not be found.</p>
-        </div>
-        <Link className="btn primary" href="/admin">
-          Back to overview
-        </Link>
-      </div>
-    );
   }
-
   return (
-    <AdminShell
-      view={view}
-      id={id}
-      subView={subView}
-      collapsed={collapsed}
-      setCollapsed={setCollapsed}
-      theme={theme}
-      setTheme={setTheme}
-      toast={toast}
-    >
-      {content}
-    </AdminShell>
-  );
-}
-
-export function Admin({ route }: { route: string[] }) {
-  return (
-    <AuthGuard>
-      <AdminWorkspace route={route} />
-    </AuthGuard>
+    <div className="admin-title">
+      <div>
+        <h1>Page not found</h1>
+        <p>The requested merchant workspace route could not be found.</p>
+      </div>
+      <Link className="btn primary" href="/admin">
+        Back to overview
+      </Link>
+    </div>
   );
 }

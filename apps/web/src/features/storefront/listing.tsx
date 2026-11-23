@@ -7,11 +7,34 @@ import { Grid2X2, List, Search, X } from "lucide-react";
 import { useState } from "react";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Pagination, Skeleton } from "@/components/ui/data-display";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ApiError } from "@/lib/api-client";
 import { storeApi } from "@/lib/commerce-api";
 import { ProductCard } from "./blocks";
 
 const PAGE_SIZE = 6;
+
+const SORT_ITEMS = [
+  { value: "featured", label: "Featured" },
+  { value: "low", label: "Price: Low to High" },
+  { value: "high", label: "Price: High to Low" },
+  { value: "rating", label: "Top Rated" },
+  { value: "newest", label: "Newest" },
+];
+
+const MAX_PRICE_ITEMS = [
+  { value: "", label: "Any price" },
+  { value: "150", label: "Under $150" },
+  { value: "300", label: "Under $300" },
+  { value: "1000", label: "Under $1,000" },
+  { value: "2000", label: "Under $2,000" },
+];
 
 export function Listing({
   search = false,
@@ -129,20 +152,26 @@ export function Listing({
             }}
           />
         </label>
-        <select
-          aria-label="Sort products"
+        <Select
+          items={SORT_ITEMS}
           value={sort}
-          onChange={(e) => {
-            setSort(e.target.value);
+          onValueChange={(next) => {
+            if (!next) return;
+            setSort(next);
             setPage(1);
           }}
         >
-          <option value="featured">Featured</option>
-          <option value="low">Price: Low to High</option>
-          <option value="high">Price: High to Low</option>
-          <option value="rating">Top Rated</option>
-          <option value="newest">Newest</option>
-        </select>
+          <SelectTrigger aria-label="Sort products">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_ITEMS.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <IconButton
           label="Grid view"
           aria-pressed={!listView}
@@ -166,61 +195,87 @@ export function Listing({
           <strong style={{ fontSize: 13 }}>Filters</strong>
           <label>
             Category
-            <select
+            <Select
+              items={[
+                { value: "", label: "All categories" },
+                ...categories.map((cat) => ({ value: cat.slug, label: cat.name })),
+              ]}
               value={activeCategory}
-              onChange={(e) => {
-                setCategoryOverride(e.target.value);
+              onValueChange={(next) => {
+                setCategoryOverride(next ?? "");
                 setAttrs({});
                 setPage(1);
               }}
             >
-              <option value="">All categories</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.slug}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All categories</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.slug}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
 
           <label>
             Max price
-            <select
+            <Select
+              items={MAX_PRICE_ITEMS}
               value={maxPrice}
-              onChange={(e) => {
-                setMaxPrice(e.target.value);
+              onValueChange={(next) => {
+                setMaxPrice(next ?? "");
                 setPage(1);
               }}
             >
-              <option value="">Any price</option>
-              <option value="150">Under $150</option>
-              <option value="300">Under $300</option>
-              <option value="1000">Under $1,000</option>
-              <option value="2000">Under $2,000</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MAX_PRICE_ITEMS.map((item) => (
+                  <SelectItem key={item.value || "any"} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
 
-          {facets.map((facet) => (
-            <label key={facet.code}>
-              {facet.name}
-              {facet.unit ? ` (${facet.unit})` : ""}
-              <select
-                value={attrs[facet.code] || ""}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setAttrs((prev) => ({ ...prev, [facet.code]: val }));
-                  setPage(1);
-                }}
-              >
-                <option value="">Any</option>
-                {facet.values.map((val) => (
-                  <option key={val} value={val}>
-                    {val}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
+          {facets.map((facet) => {
+            const facetItems = [
+              { value: "", label: "Any" },
+              ...facet.values.map((val) => ({ value: val, label: val })),
+            ];
+            return (
+              <label key={facet.code}>
+                {facet.name}
+                {facet.unit ? ` (${facet.unit})` : ""}
+                <Select
+                  items={facetItems}
+                  value={attrs[facet.code] || ""}
+                  onValueChange={(next) => {
+                    const val = next ?? "";
+                    setAttrs((prev) => ({ ...prev, [facet.code]: val }));
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {facetItems.map((item) => (
+                      <SelectItem key={item.value || "any"} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            );
+          })}
 
           {activeChips.length > 0 ? (
             <Button size="sm" onClick={clearFilters}>

@@ -9,10 +9,27 @@ import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import { Drawer } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ApiError } from "@/lib/api-client";
 import { aiAdminApi } from "@/lib/cms-ai-api";
 import { formatDateTime } from "@/lib/format";
 import type { AiChangePlanDto } from "@/types/api-cms-ai";
+
+const ACTIVITY_STATUS_ITEMS = [
+  { value: "", label: "All statuses" },
+  { value: "PENDING_APPROVAL", label: "PENDING_APPROVAL" },
+  { value: "APPLIED", label: "APPLIED" },
+  { value: "REJECTED", label: "REJECTED" },
+  { value: "EXPIRED", label: "EXPIRED" },
+  { value: "FAILED", label: "FAILED" },
+  { value: "ROLLED_BACK", label: "ROLLED_BACK" },
+];
 
 export function ActivityTable({
   automation,
@@ -131,19 +148,22 @@ export function ActivityTable({
               onChange={(e) => setQuery(e.target.value)}
             />
           </label>
-          <select
-            aria-label="Execution status"
+          <Select
+            items={ACTIVITY_STATUS_ITEMS}
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onValueChange={(next) => setStatus(next ?? "")}
           >
-            <option value="">All statuses</option>
-            <option value="PENDING_APPROVAL">PENDING_APPROVAL</option>
-            <option value="APPLIED">APPLIED</option>
-            <option value="REJECTED">REJECTED</option>
-            <option value="EXPIRED">EXPIRED</option>
-            <option value="FAILED">FAILED</option>
-            <option value="ROLLED_BACK">ROLLED_BACK</option>
-          </select>
+            <SelectTrigger aria-label="Execution status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ACTIVITY_STATUS_ITEMS.map((item) => (
+                <SelectItem key={item.value || "all"} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {activityQuery.isLoading ? (

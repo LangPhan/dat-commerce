@@ -6,12 +6,21 @@ import { useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { cmsAdminApi } from "@/lib/cms-ai-api";
 import { ALLOWED_FONTS, themeTokensSchema } from "@/lib/cms-schema";
 import { formatDateTime } from "@/lib/format";
 import type { AdminThemeResponse, ThemeTokens, ThemeVersionDto } from "@/types/api-cms-ai";
+
+const FONT_ITEMS = ALLOWED_FONTS.map((f) => ({ value: f, label: f }));
 
 function ThemeEditorForm({
   data,
@@ -170,44 +179,58 @@ function ThemeEditorForm({
           <div className="form-pair">
             <label>
               Heading font
-              <select
+              <Select
                 disabled={!canWrite}
+                items={FONT_ITEMS}
                 value={tokens.typography.headingFont}
-                onChange={(e) =>
+                onValueChange={(next) =>
+                  next &&
                   setTokens((curr) => ({
                     ...curr,
                     typography: {
                       ...curr.typography,
-                      headingFont: e.target.value,
+                      headingFont: next,
                     },
                   }))
                 }
               >
-                {ALLOWED_FONTS.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FONT_ITEMS.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <label>
               Body font
-              <select
+              <Select
                 disabled={!canWrite}
+                items={FONT_ITEMS}
                 value={tokens.typography.bodyFont}
-                onChange={(e) =>
+                onValueChange={(next) =>
+                  next &&
                   setTokens((curr) => ({
                     ...curr,
-                    typography: { ...curr.typography, bodyFont: e.target.value },
+                    typography: { ...curr.typography, bodyFont: next },
                   }))
                 }
               >
-                {ALLOWED_FONTS.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FONT_ITEMS.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
           </div>
 

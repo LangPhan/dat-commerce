@@ -21,12 +21,48 @@ import { AIAvatarBadge, ModelSelector } from "@/components/shared/ai-components"
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty } from "@/components/ui/data-display";
 import { Tabs } from "@/components/ui/overlay";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ApiError } from "@/lib/api-client";
 import { adminMediaApi } from "@/lib/commerce-api";
 import { newId } from "@/lib/format";
 import type { AIModelId } from "@/types/ai";
 import type { Block, EditorMessage, Proposal } from "@/types/editor";
 import { SectionIcon } from "./structure-panel";
+
+const LAYOUT_ITEMS = [
+  { value: "overlay", label: "Image overlay" },
+  { value: "split", label: "Two-column split" },
+  { value: "centered", label: "Centered" },
+];
+
+const SPACING_ITEMS = [
+  { value: "compact", label: "Compact" },
+  { value: "comfortable", label: "Comfortable" },
+  { value: "spacious", label: "Spacious" },
+];
+
+const COLUMN_ITEMS = [
+  { value: "2", label: "2 columns" },
+  { value: "3", label: "3 columns" },
+  { value: "4", label: "4 columns" },
+];
+
+const TONE_ITEMS = [
+  { value: "forest", label: "Forest (Signature)" },
+  { value: "ink", label: "Ink (Dark premium)" },
+  { value: "light", label: "Light neutral" },
+];
+
+const SCALE_ITEMS = [
+  { value: "regular", label: "Regular" },
+  { value: "large", label: "Large display" },
+];
 
 function getContextualPrompts(block: Block | null): string[] {
   if (!block) return ["Add a Best Sellers section below the hero"];
@@ -427,7 +463,15 @@ function AssistantTab({
             >
               <Paperclip size={15} />
             </IconButton>
-            <div style={{ marginLeft: "auto" }}>
+            <div
+              style={{
+                marginLeft: "auto",
+                minWidth: 0,
+                flex: "1 1 auto",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
               <ModelSelector value={model} onChange={setModel} compact />
             </div>
             <IconButton
@@ -682,48 +726,72 @@ function PropertiesTab({
         <div className="form-stack">
           <label>
             Layout arrangement
-            <select
+            <Select
               disabled={!canWrite}
+              items={LAYOUT_ITEMS}
               value={block.layout}
-              onChange={(e) =>
-                update({ layout: e.target.value as Block["layout"] })
+              onValueChange={(next) =>
+                next && update({ layout: next as Block["layout"] })
               }
             >
-              <option value="overlay">Image overlay</option>
-              <option value="split">Two-column split</option>
-              <option value="centered">Centered</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LAYOUT_ITEMS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <label>
             Section spacing
-            <select
+            <Select
               disabled={!canWrite}
+              items={SPACING_ITEMS}
               value={block.spacing || "comfortable"}
-              onChange={(e) =>
-                update({ spacing: e.target.value as Block["spacing"] })
+              onValueChange={(next) =>
+                next && update({ spacing: next as Block["spacing"] })
               }
             >
-              <option value="compact">Compact</option>
-              <option value="comfortable">Comfortable</option>
-              <option value="spacious">Spacious</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SPACING_ITEMS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           {block.type === "Product Grid" ||
           block.type === "Best Sellers" ||
           block.type === "Featured Categories" ? (
             <label>
               Grid columns
-              <select
+              <Select
                 disabled={!canWrite}
+                items={COLUMN_ITEMS}
                 value={String(block.columns || 4)}
-                onChange={(e) =>
-                  update({ columns: Number(e.target.value) as 2 | 3 | 4 })
+                onValueChange={(next) =>
+                  next && update({ columns: Number(next) as 2 | 3 | 4 })
                 }
               >
-                <option value="2">2 columns</option>
-                <option value="3">3 columns</option>
-                <option value="4">4 columns</option>
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COLUMN_ITEMS.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
           ) : null}
         </div>
@@ -733,30 +801,47 @@ function PropertiesTab({
         <div className="form-stack">
           <label>
             Color palette
-            <select
+            <Select
               disabled={!canWrite}
+              items={TONE_ITEMS}
               value={block.tone}
-              onChange={(e) =>
-                update({ tone: e.target.value as Block["tone"] })
+              onValueChange={(next) =>
+                next && update({ tone: next as Block["tone"] })
               }
             >
-              <option value="forest">Forest (Signature)</option>
-              <option value="ink">Ink (Dark premium)</option>
-              <option value="light">Light neutral</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TONE_ITEMS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <label>
             Headline typography scale
-            <select
+            <Select
               disabled={!canWrite}
+              items={SCALE_ITEMS}
               value={block.scale}
-              onChange={(e) =>
-                update({ scale: e.target.value as Block["scale"] })
+              onValueChange={(next) =>
+                next && update({ scale: next as Block["scale"] })
               }
             >
-              <option value="regular">Regular</option>
-              <option value="large">Large display</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SCALE_ITEMS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
         </div>
       ) : null}

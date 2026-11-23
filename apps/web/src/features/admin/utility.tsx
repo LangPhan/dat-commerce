@@ -15,6 +15,13 @@ import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import { ConfirmDialog, Drawer, Modal } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { ApiError } from "@/lib/api-client";
 import {
@@ -915,14 +922,22 @@ export function UtilityPage({
           <label key={field.label}>
             {field.label}
             {field.options ? (
-              <select
+              <Select
                 name={field.label}
+                items={field.options.map((opt) => ({ value: opt, label: opt }))}
                 defaultValue={preferences[field.label] || field.default}
               >
-                {field.options.map((opt) => (
-                  <option key={opt}>{opt}</option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {field.options.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : (
               <input
                 required

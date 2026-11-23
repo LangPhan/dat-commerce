@@ -39,14 +39,6 @@ export function Textarea({ className = "", ...props }: ComponentProps<"textarea"
   return <textarea className={cn("ui-textarea", className)} {...props} />;
 }
 
-export function Select({ className = "", children, ...props }: ComponentProps<"select">) {
-  return (
-    <select className={cn("ui-select", className)} {...props}>
-      {children}
-    </select>
-  );
-}
-
 export function SearchInput({
   className = "",
   label = "Search",

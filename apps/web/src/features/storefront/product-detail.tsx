@@ -7,11 +7,24 @@ import { useState } from "react";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import { Tabs } from "@/components/ui/overlay";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ApiError } from "@/lib/api-client";
 import { storeApi } from "@/lib/commerce-api";
 import { cn, newId, usd } from "@/lib/format";
 import type { ProductDto, VariantDto } from "@/types/api-commerce";
 import type { ProductReview } from "@/types/commerce";
+
+const RATING_ITEMS = [
+  { value: "5", label: "5 stars — Exceptional" },
+  { value: "4", label: "4 stars — Strong" },
+  { value: "3", label: "3 stars — Solid" },
+];
 
 function ProductDetailInner({
   product,
@@ -308,14 +321,22 @@ function ProductDetailInner({
               </label>
               <label>
                 Rating
-                <select
-                  value={reviewRating}
-                  onChange={(e) => setReviewRating(Number(e.target.value))}
+                <Select
+                  items={RATING_ITEMS}
+                  value={String(reviewRating)}
+                  onValueChange={(next) => next && setReviewRating(Number(next))}
                 >
-                  <option value={5}>5 stars — Exceptional</option>
-                  <option value={4}>4 stars — Strong</option>
-                  <option value={3}>3 stars — Solid</option>
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RATING_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label>
                 Headline

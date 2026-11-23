@@ -7,6 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import { ConfirmDialog, Modal } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { adminCatalogApi } from "@/lib/commerce-api";
@@ -241,35 +248,55 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
               <div className="form-pair">
                 <label>
                   Parent category
-                  <select
+                  <Select
                     name="parentId"
                     disabled={!canWrite}
+                    items={[
+                      { value: "", label: "Top-level root" },
+                      ...categories
+                        .filter((c) => c.id !== selected.id)
+                        .map((c) => ({ value: c.id, label: c.name })),
+                    ]}
                     defaultValue={selected.parentId || ""}
                   >
-                    <option value="">Top-level root</option>
-                    {categories
-                      .filter((c) => c.id !== selected.id)
-                      .map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Top-level root</SelectItem>
+                      {categories
+                        .filter((c) => c.id !== selected.id)
+                        .map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
                 </label>
                 <label>
                   Default product type
-                  <select
+                  <Select
                     name="defaultProductTypeId"
                     disabled={!canWrite}
+                    items={[
+                      { value: "", label: "None" },
+                      ...productTypes.map((pt) => ({ value: pt.id, label: pt.name })),
+                    ]}
                     defaultValue={selected.defaultProductTypeId || ""}
                   >
-                    <option value="">None</option>
-                    {productTypes.map((pt) => (
-                      <option key={pt.id} value={pt.id}>
-                        {pt.name}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {productTypes.map((pt) => (
+                        <SelectItem key={pt.id} value={pt.id}>
+                          {pt.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
               </div>
 
@@ -389,39 +416,57 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
             <div className="form-pair">
               <label>
                 Parent
-                <select
+                <Select
+                  items={[
+                    { value: "", label: "Top-level root" },
+                    ...categories.map((c) => ({ value: c.id, label: c.name })),
+                  ]}
                   value={modalDraft.parentId}
-                  onChange={(e) =>
+                  onValueChange={(next) =>
                     setModalDraft((prev) =>
-                      prev ? { ...prev, parentId: e.target.value } : null
+                      prev ? { ...prev, parentId: next ?? "" } : null
                     )
                   }
                 >
-                  <option value="">Top-level root</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Top-level root</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label>
                 Default product type
-                <select
+                <Select
+                  items={[
+                    { value: "", label: "None" },
+                    ...productTypes.map((pt) => ({ value: pt.id, label: pt.name })),
+                  ]}
                   value={modalDraft.defaultProductTypeId}
-                  onChange={(e) =>
+                  onValueChange={(next) =>
                     setModalDraft((prev) =>
-                      prev ? { ...prev, defaultProductTypeId: e.target.value } : null
+                      prev ? { ...prev, defaultProductTypeId: next ?? "" } : null
                     )
                   }
                 >
-                  <option value="">None</option>
-                  {productTypes.map((pt) => (
-                    <option key={pt.id} value={pt.id}>
-                      {pt.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {productTypes.map((pt) => (
+                      <SelectItem key={pt.id} value={pt.id}>
+                        {pt.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
             </div>
 

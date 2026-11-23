@@ -22,6 +22,13 @@ import {
   Skeleton,
 } from "@/components/ui/data-display";
 import { ConfirmDialog, Modal } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { ApiError } from "@/lib/api-client";
 import {
@@ -38,6 +45,22 @@ import type {
   VariantDto,
   VariantInput,
 } from "@/types/api-commerce";
+
+const PRODUCT_STATUS_ITEMS = [
+  { value: "ACTIVE", label: "ACTIVE" },
+  { value: "DRAFT", label: "DRAFT" },
+  { value: "ARCHIVED", label: "ARCHIVED" },
+];
+
+const VARIANT_STATUS_ITEMS = [
+  { value: "ACTIVE", label: "ACTIVE" },
+  { value: "ARCHIVED", label: "ARCHIVED" },
+];
+
+const PRODUCT_STATUS_FILTER_ITEMS = [
+  { value: "", label: "All statuses" },
+  ...PRODUCT_STATUS_ITEMS,
+];
 
 function formatAttributeInitialValues(product?: ProductDto): Record<string, unknown> {
   if (!product) return {};
@@ -274,23 +297,32 @@ function ProductForm({
     }
 
     if (attr.dataType === "ENUM") {
+      const enumItems = [
+        { value: "", label: `Select ${attr.name}…` },
+        ...attr.options.map((opt) => ({ value: opt.value, label: opt.label })),
+      ];
       return (
         <label key={attr.attributeDefinitionId}>
           {labelText}
-          <select
+          <Select
             required={attr.required}
+            items={enumItems}
             value={rawVal !== undefined && rawVal !== null ? String(rawVal) : ""}
-            onChange={(e) =>
-              setAttrValues((prev) => ({ ...prev, [attr.code]: e.target.value }))
+            onValueChange={(next) =>
+              setAttrValues((prev) => ({ ...prev, [attr.code]: next ?? "" }))
             }
           >
-            <option value="">Select {attr.name}…</option>
-            {attr.options.map((opt) => (
-              <option key={opt.id} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {enumItems.map((item) => (
+                <SelectItem key={item.value || "empty"} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
       );
     }
@@ -460,17 +492,26 @@ function ProductForm({
               <div className="form-pair">
                 <label>
                   Product type
-                  <select
+                  <Select
                     required
+                    items={productTypes.map((pt) => ({
+                      value: pt.id,
+                      label: `${pt.name} (${pt.code})`,
+                    }))}
                     value={effectiveTypeId}
-                    onChange={(e) => setSelectedTypeId(e.target.value)}
+                    onValueChange={(next) => setSelectedTypeId(next ?? "")}
                   >
-                    {productTypes.map((pt) => (
-                      <option key={pt.id} value={pt.id}>
-                        {pt.name} ({pt.code})
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {productTypes.map((pt) => (
+                        <SelectItem key={pt.id} value={pt.id}>
+                          {pt.name} ({pt.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
                 <label>
                   Brand
@@ -482,11 +523,22 @@ function ProductForm({
                 </label>
                 <label>
                   Status
-                  <select value={status} onChange={(e) => setStatus(e.target.value)}>
-                    <option value="ACTIVE">ACTIVE</option>
-                    <option value="DRAFT">DRAFT</option>
-                    <option value="ARCHIVED">ARCHIVED</option>
-                  </select>
+                  <Select
+                    items={PRODUCT_STATUS_ITEMS}
+                    value={status}
+                    onValueChange={(next) => next && setStatus(next)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRODUCT_STATUS_ITEMS.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
               </div>
 
@@ -769,10 +821,17 @@ function ProductForm({
               {mediaAssets.length ? (
                 <label>
                   Attach from Media Library
-                  <select
+                  <Select
+                    items={[
+                      { value: "", label: "Choose uploaded asset…" },
+                      ...mediaAssets.map((a) => ({
+                        value: a.id,
+                        label: a.originalFilename,
+                      })),
+                    ]}
                     value=""
-                    onChange={(e) => {
-                      const asset = mediaAssets.find((a) => a.id === e.target.value);
+                    onValueChange={(next) => {
+                      const asset = mediaAssets.find((a) => a.id === next);
                       if (!asset) return;
                       setImages((curr) => [
                         ...curr.filter((i) => i.url !== "/media/terrain-fallback.jpg"),
@@ -784,13 +843,18 @@ function ProductForm({
                       ]);
                     }}
                   >
-                    <option value="">Choose uploaded asset…</option>
-                    {mediaAssets.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.originalFilename}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Choose uploaded asset…</SelectItem>
+                      {mediaAssets.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.originalFilename}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
               ) : null}
 
@@ -1253,10 +1317,22 @@ function ProductDetailView({
               </label>
               <label>
                 Status
-                <select name="status" defaultValue={editVariant.status}>
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="ARCHIVED">ARCHIVED</option>
-                </select>
+                <Select
+                  name="status"
+                  items={VARIANT_STATUS_ITEMS}
+                  defaultValue={editVariant.status}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VARIANT_STATUS_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
             </div>
             {modalError ? (
@@ -1753,28 +1829,42 @@ export function Catalog({
               onChange={(e) => setQuery(e.target.value)}
             />
           </label>
-          <select
-            aria-label="Filter by category"
+          <Select
+            items={[
+              { value: "", label: "All categories" },
+              ...categories.map((cat) => ({ value: cat.id, label: cat.name })),
+            ]}
             value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
+            onValueChange={(next) => setCategoryId(next ?? "")}
           >
-            <option value="">All categories</option>
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter by status"
+            <SelectTrigger aria-label="Filter by category">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All categories</SelectItem>
+              {categories.map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  {cat.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            items={PRODUCT_STATUS_FILTER_ITEMS}
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onValueChange={(next) => setStatusFilter(next ?? "")}
           >
-            <option value="">All statuses</option>
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="DRAFT">DRAFT</option>
-            <option value="ARCHIVED">ARCHIVED</option>
-          </select>
+            <SelectTrigger aria-label="Filter by status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PRODUCT_STATUS_FILTER_ITEMS.map((item) => (
+                <SelectItem key={item.value || "all"} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {productsQuery.isLoading ? (

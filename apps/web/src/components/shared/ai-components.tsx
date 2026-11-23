@@ -1,7 +1,6 @@
 "use client";
 import {
   Check,
-  ChevronDown,
   CircleAlert,
   Clock3,
   Cpu,
@@ -18,6 +17,18 @@ import {
   type TurnStatus,
 } from "@/types/ai";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const modelItems = AI_MODELS.map((model) => ({
+  value: model.id,
+  label: `${model.label} (${model.provider})`,
+}));
 
 export function ModelSelector({
   value,
@@ -30,21 +41,31 @@ export function ModelSelector({
 }) {
   const current = AI_MODELS.find((m) => m.id === value) || AI_MODELS[0];
   return (
-    <label className={cn("model-selector", compact && "compact")}>
+    <div className={cn("model-selector", compact && "compact")}>
       <Cpu size={13} aria-hidden="true" />
-      <select
-        aria-label="Select AI model"
+      <Select
+        items={modelItems}
         value={current.id}
-        onChange={(e) => onChange(e.target.value as AIModelId)}
+        onValueChange={(next) => {
+          if (next) onChange(next as AIModelId);
+        }}
       >
-        {AI_MODELS.map((model) => (
-          <option key={model.id} value={model.id}>
-            {model.label} ({model.provider})
-          </option>
-        ))}
-      </select>
-      <ChevronDown size={12} className="model-chevron" aria-hidden="true" />
-    </label>
+        <SelectTrigger
+          aria-label="Select AI model"
+          size="sm"
+          className="model-selector-trigger"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {modelItems.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 

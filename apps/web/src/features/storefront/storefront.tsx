@@ -7,6 +7,13 @@ import { ArrowRight } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Toast } from "@/components/ui/toast";
 import { ApiError } from "@/lib/api-client";
 import { cmsStoreApi } from "@/lib/cms-ai-api";
@@ -29,6 +36,12 @@ type StoredOrderSummary = {
   total: number;
   date: string;
 };
+
+const CONTACT_TOPIC_ITEMS = [
+  { value: "shipping", label: "Order & shipping" },
+  { value: "specs", label: "Product specifications" },
+  { value: "returns", label: "Returns & warranty" },
+];
 
 const BUILTIN_VIEWS = new Set([
   "",
@@ -471,11 +484,21 @@ export function Storefront({ route }: { route: string[] }) {
           </label>
           <label>
             Topic
-            <select>
-              <option>Order & shipping</option>
-              <option>Product specifications</option>
-              <option>Returns & warranty</option>
-            </select>
+            <Select
+              items={CONTACT_TOPIC_ITEMS}
+              defaultValue={CONTACT_TOPIC_ITEMS[0].value}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CONTACT_TOPIC_ITEMS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <label>
             Message

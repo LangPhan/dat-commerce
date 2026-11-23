@@ -8,10 +8,24 @@ import { useState } from "react";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ApiError } from "@/lib/api-client";
 import { storeApi } from "@/lib/commerce-api";
 import { formatDateTime, newId, usd, usdExact } from "@/lib/format";
 import type { CartResponse, OrderDto } from "@/types/api-commerce";
+
+const PAYMENT_METHOD_ITEMS = [
+  {
+    value: "sandbox-card",
+    label: "Sandbox Payment Gateway · Authorized card •••• 4242",
+  },
+];
 
 export function CartPage({
   cart,
@@ -417,9 +431,21 @@ export function CheckoutPage({
           <h2>Payment</h2>
           <label>
             Method
-            <select>
-              <option>Sandbox Payment Gateway · Authorized card •••• 4242</option>
-            </select>
+            <Select
+              items={PAYMENT_METHOD_ITEMS}
+              defaultValue={PAYMENT_METHOD_ITEMS[0].value}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAYMENT_METHOD_ITEMS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
 
           {checkoutError ? (

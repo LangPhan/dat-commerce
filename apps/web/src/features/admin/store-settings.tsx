@@ -3,13 +3,27 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import type { StoreInfo } from "@/types/auth";
+
+const CURRENCY_ITEMS = [
+  { value: "USD", label: "USD" },
+  { value: "EUR", label: "EUR" },
+  { value: "GBP", label: "GBP" },
+  { value: "VND", label: "VND" },
+];
 
 const storeSchema = z.object({
   name: z.string().trim().min(1, "Store name is required").max(160),
@@ -40,6 +54,7 @@ export function StoreSettingsView({
   });
 
   const {
+    control,
     register,
     handleSubmit,
     reset,
@@ -119,12 +134,29 @@ export function StoreSettingsView({
                 <label className="ui-field-label" htmlFor="store-currency">
                   Currency
                 </label>
-                <select id="store-currency" disabled={!canWrite} {...register("defaultCurrency")}>
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="GBP">GBP</option>
-                  <option value="VND">VND</option>
-                </select>
+                <Controller
+                  control={control}
+                  name="defaultCurrency"
+                  render={({ field }) => (
+                    <Select
+                      items={CURRENCY_ITEMS}
+                      disabled={!canWrite}
+                      value={field.value}
+                      onValueChange={(next) => next && field.onChange(next)}
+                    >
+                      <SelectTrigger id="store-currency">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CURRENCY_ITEMS.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
               </div>
 
               <div className="ui-field">

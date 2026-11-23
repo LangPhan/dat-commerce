@@ -4,12 +4,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Shield } from "lucide-react";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Pagination, Skeleton } from "@/components/ui/data-display";
 import { Modal } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/features/auth/auth-context";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { formatDateTime } from "@/lib/format";
@@ -88,6 +95,7 @@ export function UsersManagement({ notify }: { notify: (msg: string) => void }) {
   });
 
   const {
+    control,
     register,
     handleSubmit,
     reset,
@@ -98,6 +106,23 @@ export function UsersManagement({ notify }: { notify: (msg: string) => void }) {
   });
 
   const roles = rolesQuery.data || [];
+  const rowRoleItems = roles.map((role) => ({
+    value: role.code,
+    label: role.code,
+  }));
+  const modalRoleOptions = roles.length
+    ? roles
+    : [
+        { code: "ADMIN", name: "Admin" },
+        { code: "CATALOG_MANAGER", name: "Catalog Manager" },
+        { code: "CONTENT_EDITOR", name: "Content Editor" },
+        { code: "ORDER_MANAGER", name: "Order Manager" },
+        { code: "VIEWER", name: "Viewer" },
+      ];
+  const modalRoleItems = modalRoleOptions.map((role) => ({
+    value: role.code,
+    label: `${role.code} — ${role.name}`,
+  }));
 
   return (
     <>
@@ -161,23 +186,32 @@ export function UsersManagement({ notify }: { notify: (msg: string) => void }) {
                     <td>{member.email}</td>
                     <td>
                       {canWrite && !isSelf && roles.length > 0 ? (
-                        <select
-                          aria-label={`Role for ${member.fullName}`}
+                        <Select
+                          items={rowRoleItems}
                           value={primaryRole}
                           disabled={updateMutation.isPending}
-                          onChange={(e) =>
+                          onValueChange={(next) => {
+                            if (!next || next === primaryRole) return;
                             updateMutation.mutate({
                               userId: member.id,
-                              patch: { roles: [e.target.value] },
-                            })
-                          }
+                              patch: { roles: [next] },
+                            });
+                          }}
                         >
-                          {roles.map((role) => (
-                            <option key={role.code} value={role.code}>
-                              {role.code}
-                            </option>
-                          ))}
-                        </select>
+                          <SelectTrigger
+                            size="sm"
+                            aria-label={`Role for ${member.fullName}`}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {rowRoleItems.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       ) : (
                         <Badge tone="accent">{primaryRole}</Badge>
                       )}
@@ -281,22 +315,28 @@ export function UsersManagement({ notify }: { notify: (msg: string) => void }) {
               <label className="ui-field-label" htmlFor="new-user-role">
                 Role
               </label>
-              <select id="new-user-role" {...register("role")}>
-                {(roles.length
-                  ? roles
-                  : [
-                      { code: "ADMIN", name: "Admin" },
-                      { code: "CATALOG_MANAGER", name: "Catalog Manager" },
-                      { code: "CONTENT_EDITOR", name: "Content Editor" },
-                      { code: "ORDER_MANAGER", name: "Order Manager" },
-                      { code: "VIEWER", name: "Viewer" },
-                    ]
-                ).map((role) => (
-                  <option key={role.code} value={role.code}>
-                    {role.code} — {role.name}
-                  </option>
-                ))}
-              </select>
+              <Controller
+                control={control}
+                name="role"
+                render={({ field }) => (
+                  <Select
+                    items={modalRoleItems}
+                    value={field.value}
+                    onValueChange={(next) => next && field.onChange(next)}
+                  >
+                    <SelectTrigger id="new-user-role">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {modalRoleItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
 
             {submitError ? (
