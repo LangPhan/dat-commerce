@@ -101,7 +101,7 @@ export function StoreSettingsView({
   });
 
   return (
-    <>
+    <div className="admin-page-scroll">
       <div className="admin-title">
         <div>
           <h1>{mode === "general" ? "General" : "Store Information"}</h1>
@@ -234,6 +234,6 @@ export function StoreSettingsView({
           )}
         </form>
       )}
-    </>
+    </div>
   );
 }

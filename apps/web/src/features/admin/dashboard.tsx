@@ -12,6 +12,7 @@ import { useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { useAuth } from "@/features/auth/auth-context";
 import { ApiError } from "@/lib/api-client";
 import {
@@ -20,6 +21,7 @@ import {
   adminOrderApi,
 } from "@/lib/commerce-api";
 import { usd, usdExact } from "@/lib/format";
+import type { OrderDto } from "@/types/api-commerce";
 
 export function Dashboard({ notify }: { notify: (msg: string) => void }) {
   const queryClient = useQueryClient();
@@ -78,13 +80,13 @@ export function Dashboard({ notify }: { notify: (msg: string) => void }) {
   const series = summary.revenueSeries.length
     ? summary.revenueSeries
     : [{ label: "Today", amount: 0, orders: 0 }];
-  const recentOrders = ordersQuery.data?.slice(0, 5) || [];
+  const allOrders = ordersQuery.data || [];
 
   const maxAmount = Math.max(...series.map((s) => Number(s.amount)), 1);
   const chartW = 540;
-  const chartH = 180;
+  const chartH = 160;
   const padX = 28;
-  const padY = 18;
+  const padY = 16;
   const usableW = chartW - padX * 2;
   const usableH = chartH - padY * 2;
 
@@ -108,8 +110,32 @@ export function Dashboard({ notify }: { notify: (msg: string) => void }) {
   const activePoint =
     hoveredIdx !== null ? points[hoveredIdx] : points[points.length - 1];
 
+  const recentOrderColumns: DataTableColumn<OrderDto>[] = [
+    {
+      id: "order",
+      header: "Order",
+      cell: (order) => (
+        <Link href={`/admin/orders/${order.id}`}>
+          <strong>{order.orderNumber}</strong>
+        </Link>
+      ),
+    },
+    { id: "customer", header: "Customer", cell: (order) => order.customerName },
+    {
+      id: "payment",
+      header: "Payment",
+      cell: (order) => <StatusBadge status={order.paymentStatus} />,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (order) => <StatusBadge status={order.status} />,
+    },
+    { id: "total", header: "Total", cell: (order) => usdExact(order.grandTotal) },
+  ];
+
   return (
-    <>
+    <div className="admin-page-scroll">
       <div className="admin-title">
         <div>
           <h1>Overview</h1>
@@ -171,6 +197,7 @@ export function Dashboard({ notify }: { notify: (msg: string) => void }) {
               viewBox={`0 0 ${chartW} ${chartH + 22}`}
               role="img"
               aria-label="Revenue chart"
+              style={{ height: 180 }}
             >
               <defs>
                 <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
@@ -265,52 +292,23 @@ export function Dashboard({ notify }: { notify: (msg: string) => void }) {
       </div>
 
       <div className="dash-charts">
-        <section className="admin-table-panel">
-          <div className="section-title">
-            <h2>Recent orders</h2>
-            <Link href="/admin/orders">
+        <DataTable
+          title="Recent orders"
+          headerActions={
+            <Link href="/admin/orders" className="inline-label" style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-text)" }}>
               View all orders <ArrowRight size={14} />
             </Link>
-          </div>
-          {recentOrders.length ? (
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Order</th>
-                    <th>Customer</th>
-                    <th>Payment</th>
-                    <th>Status</th>
-                    <th>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentOrders.map((order) => (
-                    <tr key={order.id}>
-                      <td>
-                        <Link href={`/admin/orders/${order.id}`}>
-                          <strong>{order.orderNumber}</strong>
-                        </Link>
-                      </td>
-                      <td>{order.customerName}</td>
-                      <td>
-                        <StatusBadge status={order.paymentStatus} />
-                      </td>
-                      <td>
-                        <StatusBadge status={order.status} />
-                      </td>
-                      <td>{usdExact(order.grandTotal)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
+          }
+          columns={recentOrderColumns}
+          data={allOrders}
+          getRowKey={(order) => order.id}
+          pageSize={5}
+          emptyState={
             <p className="muted" style={{ padding: "8px 0" }}>
               No recent orders available for this role.
             </p>
-          )}
-        </section>
+          }
+        />
 
         <section className="panel">
           <div className="section-title">
@@ -367,6 +365,6 @@ export function Dashboard({ notify }: { notify: (msg: string) => void }) {
           )}
         </section>
       </div>
-    </>
+    </div>
   );
 }

@@ -2,12 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowUpRight, RotateCcw, Search } from "lucide-react";
+import { ArrowUpRight, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { ChangeDiffTable } from "@/components/shared/ai-components";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Empty, Skeleton } from "@/components/ui/data-display";
+import { Empty } from "@/components/ui/data-display";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Drawer } from "@/components/ui/dialog";
 import {
   Select,
@@ -41,6 +42,7 @@ export function ActivityTable({
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<AiChangePlanDto | null>(null);
   const [actionError, setActionError] = useState("");
 
@@ -122,6 +124,50 @@ export function ActivityTable({
     return true;
   });
 
+  const columns: DataTableColumn<AiChangePlanDto>[] = [
+    {
+      id: "operation",
+      header: "Operation",
+      cell: (item) => (
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => {
+            setActionError("");
+            setSelected(item);
+          }}
+        >
+          {item.requestSummary}
+        </button>
+      ),
+    },
+    {
+      id: "planType",
+      header: "Plan Type",
+      cell: (item) => <Badge>{item.planType}</Badge>,
+    },
+    {
+      id: "risk",
+      header: "Risk",
+      cell: (item) => <span className="muted">{item.riskLevel}</span>,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (item) => <StatusBadge status={item.status} />,
+    },
+    {
+      id: "records",
+      header: "Records",
+      cell: (item) => item.preview?.length || 0,
+    },
+    {
+      id: "created",
+      header: "Created",
+      cell: (item) => <span className="muted">{formatDateTime(item.createdAt)}</span>,
+    },
+  ];
+
   return (
     <>
       <div className="admin-title">
@@ -137,21 +183,29 @@ export function ActivityTable({
         </Link>
       </div>
 
-      <div className="admin-table-panel">
-        <div className="table-toolbar">
-          <label className="search-field">
-            <Search size={15} />
-            <input
-              aria-label="Search AI operations"
-              placeholder="Filter activity log…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
+      <DataTable
+        columns={columns}
+        data={visible}
+        getRowKey={(item) => item.id}
+        isLoading={activityQuery.isLoading}
+        page={page}
+        onPageChange={setPage}
+        pageSize={10}
+        searchValue={query}
+        onSearchChange={(next) => {
+          setQuery(next);
+          setPage(1);
+        }}
+        searchPlaceholder="Filter activity log…"
+        searchAriaLabel="Search AI operations"
+        toolbar={
           <Select
             items={ACTIVITY_STATUS_ITEMS}
             value={status}
-            onValueChange={(next) => setStatus(next ?? "")}
+            onValueChange={(next) => {
+              setStatus(next ?? "");
+              setPage(1);
+            }}
           >
             <SelectTrigger aria-label="Execution status">
               <SelectValue />
@@ -164,59 +218,14 @@ export function ActivityTable({
               ))}
             </SelectContent>
           </Select>
-        </div>
-
-        {activityQuery.isLoading ? (
-          <Skeleton rows={5} />
-        ) : visible.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Operation</th>
-                  <th>Plan Type</th>
-                  <th>Risk</th>
-                  <th>Status</th>
-                  <th>Records</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => {
-                          setActionError("");
-                          setSelected(item);
-                        }}
-                      >
-                        {item.requestSummary}
-                      </button>
-                    </td>
-                    <td>
-                      <Badge>{item.planType}</Badge>
-                    </td>
-                    <td className="muted">{item.riskLevel}</td>
-                    <td>
-                      <StatusBadge status={item.status} />
-                    </td>
-                    <td>{item.preview?.length || 0}</td>
-                    <td className="muted">{formatDateTime(item.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
+        }
+        emptyState={
           <Empty
             title="No matching activity"
             text="Change Plans proposed in the AI Assistant or Visual Editor will appear here."
           />
-        )}
-      </div>
+        }
+      />
 
       {selected ? (
         <Drawer

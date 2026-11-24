@@ -1,15 +1,16 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Shield } from "lucide-react";
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Empty, Pagination, Skeleton } from "@/components/ui/data-display";
-import { Modal } from "@/components/ui/dialog";
+import { Empty } from "@/components/ui/data-display";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { FormDialog, FormDialogField } from "@/components/ui/form-dialog";
 import {
   Select,
   SelectContent,
@@ -44,6 +45,7 @@ export function UsersManagement({ notify }: { notify: (msg: string) => void }) {
     queryKey: ["admin-users", page],
     queryFn: () =>
       apiFetch<PageResponse<AdminUserRecord>>(`/api/v1/admin/users?page=${page}&size=20`),
+    placeholderData: keepPreviousData,
   });
 
   const rolesQuery = useQuery({
@@ -124,6 +126,106 @@ export function UsersManagement({ notify }: { notify: (msg: string) => void }) {
     label: `${role.code} — ${role.name}`,
   }));
 
+  const columns: DataTableColumn<AdminUserRecord>[] = [
+    {
+      id: "name",
+      header: "Name",
+      cell: (member) => (
+        <>
+          <strong>{member.fullName}</strong>
+          {member.id === currentUser?.id ? (
+            <Badge tone="accent" className="ml-badge">
+              You
+            </Badge>
+          ) : null}
+        </>
+      ),
+    },
+    { id: "email", header: "Email", cell: (member) => member.email },
+    {
+      id: "role",
+      header: "Role",
+      cell: (member) => {
+        const isSelf = member.id === currentUser?.id;
+        const primaryRole = member.roles[0] || "VIEWER";
+        return canWrite && !isSelf && roles.length > 0 ? (
+          <Select
+            items={rowRoleItems}
+            value={primaryRole}
+            disabled={updateMutation.isPending}
+            onValueChange={(next) => {
+              if (!next || next === primaryRole) return;
+              updateMutation.mutate({
+                userId: member.id,
+                patch: { roles: [next] },
+              });
+            }}
+          >
+            <SelectTrigger size="sm" aria-label={`Role for ${member.fullName}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {rowRoleItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge tone="accent">{primaryRole}</Badge>
+        );
+      },
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (member) => (
+        <StatusBadge
+          status={member.status === "ACTIVE" ? "Active" : "Disabled"}
+        />
+      ),
+    },
+    {
+      id: "lastLogin",
+      header: "Last login",
+      cell: (member) => (
+        <span className="muted">
+          {member.lastLoginAt ? formatDateTime(member.lastLoginAt) : "Never"}
+        </span>
+      ),
+    },
+    ...(canWrite
+      ? [
+          {
+            id: "access",
+            header: "Access",
+            align: "right" as const,
+            cell: (member: AdminUserRecord) =>
+              member.id !== currentUser?.id ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={updateMutation.isPending}
+                  onClick={() =>
+                    updateMutation.mutate({
+                      userId: member.id,
+                      patch: {
+                        status: member.status === "ACTIVE" ? "DISABLED" : "ACTIVE",
+                      },
+                    })
+                  }
+                >
+                  {member.status === "ACTIVE" ? "Disable" : "Activate"}
+                </Button>
+              ) : (
+                <span className="muted">—</span>
+              ),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <>
       <div className="admin-title">
@@ -144,9 +246,7 @@ export function UsersManagement({ notify }: { notify: (msg: string) => void }) {
         ) : null}
       </div>
 
-      {usersQuery.isLoading ? (
-        <Skeleton rows={4} />
-      ) : usersQuery.isError ? (
+      {usersQuery.isError ? (
         <Empty
           title="Unable to load users"
           text={
@@ -157,206 +257,91 @@ export function UsersManagement({ notify }: { notify: (msg: string) => void }) {
           icon={<Shield size={18} />}
         />
       ) : (
-        <div className="admin-table-panel table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Last login</th>
-                {canWrite ? <th>Access</th> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {(usersQuery.data?.items || []).map((member) => {
-                const isSelf = member.id === currentUser?.id;
-                const primaryRole = member.roles[0] || "VIEWER";
-                return (
-                  <tr key={member.id}>
-                    <td>
-                      <strong>{member.fullName}</strong>
-                      {isSelf ? (
-                        <Badge tone="accent" className="ml-badge">
-                          You
-                        </Badge>
-                      ) : null}
-                    </td>
-                    <td>{member.email}</td>
-                    <td>
-                      {canWrite && !isSelf && roles.length > 0 ? (
-                        <Select
-                          items={rowRoleItems}
-                          value={primaryRole}
-                          disabled={updateMutation.isPending}
-                          onValueChange={(next) => {
-                            if (!next || next === primaryRole) return;
-                            updateMutation.mutate({
-                              userId: member.id,
-                              patch: { roles: [next] },
-                            });
-                          }}
-                        >
-                          <SelectTrigger
-                            size="sm"
-                            aria-label={`Role for ${member.fullName}`}
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {rowRoleItems.map((item) => (
-                              <SelectItem key={item.value} value={item.value}>
-                                {item.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Badge tone="accent">{primaryRole}</Badge>
-                      )}
-                    </td>
-                    <td>
-                      <StatusBadge
-                        status={member.status === "ACTIVE" ? "Active" : "Disabled"}
-                      />
-                    </td>
-                    <td className="muted">
-                      {member.lastLoginAt ? formatDateTime(member.lastLoginAt) : "Never"}
-                    </td>
-                    {canWrite ? (
-                      <td>
-                        {!isSelf ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={updateMutation.isPending}
-                            onClick={() =>
-                              updateMutation.mutate({
-                                userId: member.id,
-                                patch: {
-                                  status:
-                                    member.status === "ACTIVE" ? "DISABLED" : "ACTIVE",
-                                },
-                              })
-                            }
-                          >
-                            {member.status === "ACTIVE" ? "Disable" : "Activate"}
-                          </Button>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </td>
-                    ) : null}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {usersQuery.data ? (
-            <div className="table-footer">
-              <Pagination
-                page={page + 1}
-                totalItems={usersQuery.data.totalElements}
-                pageSize={usersQuery.data.size}
-                onPageChange={(next) => setPage(next - 1)}
-              />
-            </div>
-          ) : null}
-        </div>
+        <DataTable
+          columns={columns}
+          data={usersQuery.data?.items || []}
+          getRowKey={(member) => member.id}
+          isLoading={usersQuery.isLoading}
+          isFetching={usersQuery.isPlaceholderData}
+          paginateClientSide={false}
+          page={page + 1}
+          pageSize={usersQuery.data?.size || 20}
+          totalItems={usersQuery.data?.totalElements || 0}
+          onPageChange={(next) => setPage(next - 1)}
+          emptyState={
+            <Empty
+              title="No admin users found"
+              text="Invite a collaborator to manage the workspace."
+              icon={<Shield size={18} />}
+            />
+          }
+        />
       )}
 
       {inviteOpen ? (
-        <Modal
+        <FormDialog
+          open
+          onOpenChange={setInviteOpen}
           title="Create admin user"
           description="Assign an RBAC role and initial password for the collaborator."
-          close={() => setInviteOpen(false)}
+          submitLabel={createMutation.isPending ? "Creating..." : "Create user"}
+          isSubmitting={createMutation.isPending}
+          error={submitError}
+          noValidate
+          onSubmit={handleSubmit((vals) => {
+            setSubmitError("");
+            createMutation.mutate(vals);
+          })}
         >
-          <form
-            className="form-stack"
-            onSubmit={handleSubmit((vals) => {
-              setSubmitError("");
-              createMutation.mutate(vals);
-            })}
-            noValidate
+          <FormDialogField
+            label="Full name"
+            htmlFor="new-user-name"
+            error={errors.fullName?.message}
           >
-            <div className="ui-field">
-              <label className="ui-field-label" htmlFor="new-user-name">
-                Full name
-              </label>
-              <input id="new-user-name" {...register("fullName")} />
-              {errors.fullName ? (
-                <span className="ui-field-error">{errors.fullName.message}</span>
-              ) : null}
-            </div>
+            <input id="new-user-name" {...register("fullName")} />
+          </FormDialogField>
 
-            <div className="ui-field">
-              <label className="ui-field-label" htmlFor="new-user-email">
-                Email address
-              </label>
-              <input id="new-user-email" type="email" {...register("email")} />
-              {errors.email ? (
-                <span className="ui-field-error">{errors.email.message}</span>
-              ) : null}
-            </div>
+          <FormDialogField
+            label="Email address"
+            htmlFor="new-user-email"
+            error={errors.email?.message}
+          >
+            <input id="new-user-email" type="email" {...register("email")} />
+          </FormDialogField>
 
-            <div className="ui-field">
-              <label className="ui-field-label" htmlFor="new-user-pass">
-                Initial password
-              </label>
-              <input id="new-user-pass" type="password" {...register("password")} />
-              {errors.password ? (
-                <span className="ui-field-error">{errors.password.message}</span>
-              ) : null}
-            </div>
+          <FormDialogField
+            label="Initial password"
+            htmlFor="new-user-pass"
+            error={errors.password?.message}
+          >
+            <input id="new-user-pass" type="password" {...register("password")} />
+          </FormDialogField>
 
-            <div className="ui-field">
-              <label className="ui-field-label" htmlFor="new-user-role">
-                Role
-              </label>
-              <Controller
-                control={control}
-                name="role"
-                render={({ field }) => (
-                  <Select
-                    items={modalRoleItems}
-                    value={field.value}
-                    onValueChange={(next) => next && field.onChange(next)}
-                  >
-                    <SelectTrigger id="new-user-role">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {modalRoleItems.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
-
-            {submitError ? (
-              <p className="danger" role="alert">
-                {submitError}
-              </p>
-            ) : null}
-
-            <div className="modal-actions">
-              <Button onClick={() => setInviteOpen(false)}>Cancel</Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={createMutation.isPending}
-              >
-                {createMutation.isPending ? "Creating..." : "Create user"}
-              </Button>
-            </div>
-          </form>
-        </Modal>
+          <FormDialogField label="Role" htmlFor="new-user-role">
+            <Controller
+              control={control}
+              name="role"
+              render={({ field }) => (
+                <Select
+                  items={modalRoleItems}
+                  value={field.value}
+                  onValueChange={(next) => next && field.onChange(next)}
+                >
+                  <SelectTrigger id="new-user-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modalRoleItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </FormDialogField>
+        </FormDialog>
       ) : null}
     </>
   );

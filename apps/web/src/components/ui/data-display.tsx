@@ -74,23 +74,15 @@ export function Pagination({
 }) {
   const safePageSize = Math.max(1, pageSize);
   const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize));
-  if (totalPages <= 1) {
-    return (
-      <span className="muted">
-        Showing {totalItems} {totalItems === 1 ? "item" : "items"}
-      </span>
-    );
-  }
   const safePage = Math.min(Math.max(1, page), totalPages);
-  const start = (safePage - 1) * safePageSize + 1;
+  const start = totalItems === 0 ? 0 : (safePage - 1) * safePageSize + 1;
   const end = Math.min(totalItems, safePage * safePageSize);
+  const summaryText = totalItems === 0 ? "0 items" : `${start}–${end} of ${totalItems}`;
   const items = buildPaginationItems(safePage, totalPages);
 
   return (
     <nav className="ui-pagination" aria-label="Pagination">
-      <span className="muted ui-pagination-summary">
-        {start}–{end} of {totalItems}
-      </span>
+      <span className="muted ui-pagination-summary">{summaryText}</span>
       <div className="ui-pagination-pages">
         <IconButton
           label="Previous page"

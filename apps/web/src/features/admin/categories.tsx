@@ -1,12 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Folder, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Folder, Pencil, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Empty, Skeleton } from "@/components/ui/data-display";
-import { ConfirmDialog, Modal } from "@/components/ui/dialog";
+import { Button, IconButton } from "@/components/ui/button";
+import { Empty } from "@/components/ui/data-display";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { ConfirmDialog } from "@/components/ui/dialog";
+import { FormDialog, FormDialogRow } from "@/components/ui/form-dialog";
 import {
   Select,
   SelectContent,
@@ -31,13 +33,18 @@ type CategoryForm = {
   defaultProductTypeId: string;
 };
 
+type CategoryRow = CategoryDto & {
+  depth: number;
+  parentName: string;
+  defaultTypeName: string;
+};
+
 export function CategoryManager({ notify }: { notify: (message: string) => void }) {
   const queryClient = useQueryClient();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("catalog:write");
 
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
+  const [query, setQuery] = useState("");
   const [modalDraft, setModalDraft] = useState<CategoryForm | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<CategoryDto | null>(null);
   const [error, setError] = useState("");
@@ -63,10 +70,9 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
         imageUrl: form.imageUrl.trim() || undefined,
         defaultProductTypeId: form.defaultProductTypeId || null,
       }),
-    onSuccess: (created) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
       setModalDraft(null);
-      setSelectedId(created.id);
       notify("Category created");
     },
     onError: (err) =>
@@ -99,7 +105,6 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
       setConfirmDelete(null);
-      setSelectedId("");
       notify("Category removed");
     },
     onError: (err) => {
@@ -108,53 +113,169 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
     },
   });
 
-  const categories: CategoryDto[] = categoriesQuery.data || [];
-  const productTypes: ProductTypeDto[] = typesQuery.data || [];
-  const selected = categories.find((c) => c.id === selectedId) || categories[0];
+  const categories: CategoryDto[] = useMemo(
+    () => categoriesQuery.data || [],
+    [categoriesQuery.data]
+  );
+  const productTypes: ProductTypeDto[] = useMemo(
+    () => typesQuery.data || [],
+    [typesQuery.data]
+  );
 
-  const defaultTypeForSelected = selected?.defaultProductTypeId
-    ? productTypes.find((pt) => pt.id === selected.defaultProductTypeId)
+  const rows: CategoryRow[] = useMemo(() => {
+    const byId = new Map(categories.map((c) => [c.id, c]));
+    const typeById = new Map(productTypes.map((pt) => [pt.id, pt.name]));
+    const ordered: CategoryRow[] = [];
+    const seen = new Set<string>();
+
+    function visit(parentId: string | null, depth: number) {
+      for (const item of categories) {
+        if ((item.parentId || null) !== parentId || seen.has(item.id)) continue;
+        seen.add(item.id);
+        ordered.push({
+          ...item,
+          depth,
+          parentName: item.parentId ? byId.get(item.parentId)?.name || "—" : "Top-level",
+          defaultTypeName: item.defaultProductTypeId
+            ? typeById.get(item.defaultProductTypeId) || "—"
+            : "—",
+        });
+        visit(item.id, depth + 1);
+      }
+    }
+
+    visit(null, 0);
+    for (const item of categories) {
+      if (!seen.has(item.id)) {
+        ordered.push({
+          ...item,
+          depth: 0,
+          parentName: item.parentId ? byId.get(item.parentId)?.name || "—" : "Top-level",
+          defaultTypeName: item.defaultProductTypeId
+            ? typeById.get(item.defaultProductTypeId) || "—"
+            : "—",
+        });
+      }
+    }
+
+    const q = query.trim().toLowerCase();
+    if (!q) return ordered;
+    return ordered.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.slug.toLowerCase().includes(q) ||
+        c.defaultTypeName.toLowerCase().includes(q)
+    );
+  }, [categories, productTypes, query]);
+
+  const parentOptions = categories.filter((c) => c.id !== modalDraft?.id);
+  const selectedDefaultType = modalDraft?.defaultProductTypeId
+    ? productTypes.find((pt) => pt.id === modalDraft.defaultProductTypeId)
     : undefined;
 
-  function renderTree(parentId: string | null, depth = 0): React.ReactNode {
-    if (depth > categories.length + 1) return null;
-    return categories
-      .filter((item) => (item.parentId || null) === parentId)
-      .map((item) => {
-        const children = categories.filter((c) => (c.parentId || null) === item.id);
-        const isCollapsed = collapsedIds.includes(item.id);
-        return (
-          <div key={item.id}>
-            <button
-              type="button"
-              className={"category-node " + (selected?.id === item.id ? "active" : "")}
-              style={{ paddingLeft: 10 + depth * 18 }}
-              onClick={() => setSelectedId(item.id)}
-            >
-              {children.length ? (
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCollapsedIds((prev) =>
-                      isCollapsed
-                        ? prev.filter((v) => v !== item.id)
-                        : [...prev, item.id]
-                    );
-                  }}
-                >
-                  {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                </span>
-              ) : (
-                <Folder size={13} />
-              )}
-              <span>{item.name}</span>
-              <small>{item.productCount}</small>
-            </button>
-            {!isCollapsed ? renderTree(item.id, depth + 1) : null}
-          </div>
-        );
-      });
+  function openCreate() {
+    setError("");
+    setModalDraft({
+      name: "",
+      slug: "",
+      parentId: "",
+      description: "",
+      seoDescription: "",
+      imageUrl: "/media/terrain-fallback.jpg",
+      defaultProductTypeId: productTypes[0]?.id || "",
+    });
   }
+
+  function openEdit(cat: CategoryDto) {
+    setError("");
+    setModalDraft({
+      id: cat.id,
+      name: cat.name,
+      slug: cat.slug,
+      parentId: cat.parentId || "",
+      description: cat.description || "",
+      seoDescription: cat.seoDescription || "",
+      imageUrl: cat.imageUrl || "/media/terrain-fallback.jpg",
+      defaultProductTypeId: cat.defaultProductTypeId || "",
+    });
+  }
+
+  const columns: DataTableColumn<CategoryRow>[] = [
+    {
+      id: "name",
+      header: "Category",
+      cell: (cat) => (
+        <div className="inline-label" style={{ paddingLeft: `${cat.depth * 18}px` }}>
+          <Folder size={14} className="muted" />
+          <div>
+            {canWrite ? (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => openEdit(cat)}
+              >
+                {cat.name}
+              </button>
+            ) : (
+              <strong>{cat.name}</strong>
+            )}
+            {cat.description ? (
+              <span className="muted" style={{ display: "block", fontSize: 11.5 }}>
+                {cat.description}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "slug",
+      header: "Slug",
+      cell: (cat) => <code>{cat.slug}</code>,
+    },
+    {
+      id: "parent",
+      header: "Hierarchy",
+      cell: (cat) => <span className="muted">{cat.parentName}</span>,
+    },
+    {
+      id: "defaultType",
+      header: "Default type",
+      cell: (cat) =>
+        cat.defaultTypeName !== "—" ? (
+          <Badge tone="accent">{cat.defaultTypeName}</Badge>
+        ) : (
+          <span className="muted">—</span>
+        ),
+    },
+    {
+      id: "count",
+      header: "Products",
+      cell: (cat) => <Badge>{cat.productCount}</Badge>,
+    },
+    ...(canWrite
+      ? [
+          {
+            id: "actions",
+            header: "Actions",
+            align: "right" as const,
+            cell: (cat: CategoryRow) => (
+              <div className="button-row" style={{ justifyContent: "flex-end" }}>
+                <IconButton label={`Edit ${cat.name}`} onClick={() => openEdit(cat)}>
+                  <Pencil size={14} />
+                </IconButton>
+                <IconButton
+                  label={`Delete ${cat.name}`}
+                  onClick={() => setConfirmDelete(cat)}
+                >
+                  <Trash2 size={14} />
+                </IconButton>
+              </div>
+            ),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <>
@@ -166,341 +287,197 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
           </p>
         </div>
         {canWrite ? (
-          <Button
-            variant="primary"
-            onClick={() => {
-              setError("");
-              setModalDraft({
-                name: "",
-                slug: "",
-                parentId: selected?.id || "",
-                description: "",
-                seoDescription: "",
-                imageUrl: "/media/terrain-fallback.jpg",
-                defaultProductTypeId: productTypes[0]?.id || "",
-              });
-            }}
-          >
+          <Button variant="primary" onClick={openCreate}>
             <Plus size={15} /> Add category
           </Button>
         ) : null}
       </div>
 
-      {categoriesQuery.isLoading ? (
-        <Skeleton rows={4} />
-      ) : !categories.length ? (
-        <Empty
-          title="No categories yet"
-          text="Create your first category to structure the storefront catalog."
-        />
-      ) : (
-        <div className="admin-split">
-          <div className="panel">{renderTree(null)}</div>
-
-          {selected ? (
-            <form
-              key={selected.id}
-              className="panel category-detail form-stack"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!canWrite) return;
-                const fd = new FormData(e.currentTarget);
-                updateMutation.mutate({
-                  id: selected.id,
-                  form: {
-                    name: String(fd.get("name") || ""),
-                    slug: String(fd.get("slug") || ""),
-                    parentId: String(fd.get("parentId") || ""),
-                    description: String(fd.get("description") || ""),
-                    seoDescription: String(fd.get("seoDescription") || ""),
-                    imageUrl: String(fd.get("imageUrl") || ""),
-                    defaultProductTypeId: String(fd.get("defaultProductTypeId") || ""),
-                  },
-                });
-              }}
-            >
-              <div className="section-title">
-                <h2>{selected.name}</h2>
-                <Badge tone="accent">{selected.productCount} products</Badge>
-              </div>
-
-              <div className="form-pair">
-                <label>
-                  Name
-                  <input
-                    name="name"
-                    required
-                    disabled={!canWrite}
-                    defaultValue={selected.name}
-                  />
-                </label>
-                <label>
-                  Slug
-                  <input
-                    name="slug"
-                    required
-                    disabled={!canWrite}
-                    defaultValue={selected.slug}
-                  />
-                </label>
-              </div>
-
-              <div className="form-pair">
-                <label>
-                  Parent category
-                  <Select
-                    name="parentId"
-                    disabled={!canWrite}
-                    items={[
-                      { value: "", label: "Top-level root" },
-                      ...categories
-                        .filter((c) => c.id !== selected.id)
-                        .map((c) => ({ value: c.id, label: c.name })),
-                    ]}
-                    defaultValue={selected.parentId || ""}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">Top-level root</SelectItem>
-                      {categories
-                        .filter((c) => c.id !== selected.id)
-                        .map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-                <label>
-                  Default product type
-                  <Select
-                    name="defaultProductTypeId"
-                    disabled={!canWrite}
-                    items={[
-                      { value: "", label: "None" },
-                      ...productTypes.map((pt) => ({ value: pt.id, label: pt.name })),
-                    ]}
-                    defaultValue={selected.defaultProductTypeId || ""}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      {productTypes.map((pt) => (
-                        <SelectItem key={pt.id} value={pt.id}>
-                          {pt.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-              </div>
-
-              <label>
-                Category image URL
-                <input
-                  name="imageUrl"
-                  disabled={!canWrite}
-                  defaultValue={selected.imageUrl || ""}
-                />
-              </label>
-
-              <label>
-                Description
-                <textarea
-                  name="description"
-                  rows={2}
-                  disabled={!canWrite}
-                  defaultValue={selected.description || ""}
-                />
-              </label>
-
-              <label>
-                SEO meta description
-                <textarea
-                  name="seoDescription"
-                  rows={2}
-                  disabled={!canWrite}
-                  defaultValue={selected.seoDescription || ""}
-                />
-              </label>
-
-              {defaultTypeForSelected ? (
-                <div className="panel" style={{ padding: 12 }}>
-                  <strong style={{ fontSize: 12.5 }}>
-                    Bound attributes via {defaultTypeForSelected.name}
-                  </strong>
-                  <div className="button-row" style={{ marginTop: 8 }}>
-                    {defaultTypeForSelected.attributes.map((attr) => (
-                      <Badge key={attr.attributeDefinitionId} tone="accent">
-                        {attr.name}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {canWrite ? (
-                <div className="button-row">
-                  <Button
-                    variant="primary"
-                    type="submit"
-                    disabled={updateMutation.isPending}
-                  >
-                    Save category
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => setConfirmDelete(selected)}
-                  >
-                    <Trash2 size={14} /> Delete
-                  </Button>
-                </div>
-              ) : null}
-            </form>
-          ) : null}
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={rows}
+        getRowKey={(cat) => cat.id}
+        isLoading={categoriesQuery.isLoading}
+        pageSize={10}
+        searchValue={query}
+        onSearchChange={setQuery}
+        searchPlaceholder="Search category name, slug, or product type…"
+        searchAriaLabel="Search categories"
+        emptyState={
+          <Empty
+            title="No categories match"
+            text="Create a category or clear your search query."
+          />
+        }
+      />
 
       {modalDraft ? (
-        <Modal
-          title="New category"
-          description="Create a storefront category node and optionally link a default product type."
-          close={() => setModalDraft(null)}
-        >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setError("");
-              if (!modalDraft.name.trim()) {
-                setError("Category name is required.");
-                return;
-              }
+        <FormDialog
+          open
+          onOpenChange={(nextOpen) => !nextOpen && setModalDraft(null)}
+          size="lg"
+          title={modalDraft.id ? `Edit ${modalDraft.name}` : "New category"}
+          description="Configure category metadata, hierarchy parent, and default product type binding."
+          submitLabel={modalDraft.id ? "Save category" : "Create category"}
+          isSubmitting={createMutation.isPending || updateMutation.isPending}
+          error={error}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            if (!modalDraft.name.trim()) {
+              setError("Category name is required.");
+              return;
+            }
+            if (modalDraft.id) {
+              updateMutation.mutate({ id: modalDraft.id, form: modalDraft });
+            } else {
               createMutation.mutate(modalDraft);
-            }}
-          >
-            <div className="form-pair">
-              <label>
-                Name
-                <input
-                  required
-                  value={modalDraft.name}
-                  placeholder="Trail Packs"
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setModalDraft((prev) =>
-                      prev ? { ...prev, name, slug: slugify(name) } : null
-                    );
-                  }}
-                />
-              </label>
-              <label>
-                Slug
-                <input
-                  value={modalDraft.slug}
-                  placeholder="trail-packs"
-                  onChange={(e) =>
-                    setModalDraft((prev) =>
-                      prev ? { ...prev, slug: slugify(e.target.value) } : null
-                    )
-                  }
-                />
-              </label>
-            </div>
-
-            <div className="form-pair">
-              <label>
-                Parent
-                <Select
-                  items={[
-                    { value: "", label: "Top-level root" },
-                    ...categories.map((c) => ({ value: c.id, label: c.name })),
-                  ]}
-                  value={modalDraft.parentId}
-                  onValueChange={(next) =>
-                    setModalDraft((prev) =>
-                      prev ? { ...prev, parentId: next ?? "" } : null
-                    )
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Top-level root</SelectItem>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label>
-                Default product type
-                <Select
-                  items={[
-                    { value: "", label: "None" },
-                    ...productTypes.map((pt) => ({ value: pt.id, label: pt.name })),
-                  ]}
-                  value={modalDraft.defaultProductTypeId}
-                  onValueChange={(next) =>
-                    setModalDraft((prev) =>
-                      prev ? { ...prev, defaultProductTypeId: next ?? "" } : null
-                    )
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">None</SelectItem>
-                    {productTypes.map((pt) => (
-                      <SelectItem key={pt.id} value={pt.id}>
-                        {pt.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-            </div>
-
+            }
+          }}
+        >
+          <FormDialogRow>
             <label>
-              Description
-              <textarea
-                rows={2}
-                value={modalDraft.description}
+              Name
+              <input
+                required
+                value={modalDraft.name}
+                placeholder="Trail Packs"
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setModalDraft((prev) =>
+                    prev
+                      ? { ...prev, name, slug: prev.id ? prev.slug : slugify(name) }
+                      : null
+                  );
+                }}
+              />
+            </label>
+            <label>
+              Slug
+              <input
+                required={Boolean(modalDraft.id)}
+                value={modalDraft.slug}
+                placeholder="trail-packs"
                 onChange={(e) =>
                   setModalDraft((prev) =>
-                    prev ? { ...prev, description: e.target.value } : null
+                    prev ? { ...prev, slug: slugify(e.target.value) } : null
                   )
                 }
               />
             </label>
+          </FormDialogRow>
 
-            {error ? (
-              <p className="danger" role="alert">
-                {error}
-              </p>
-            ) : null}
-
-            <div className="modal-actions">
-              <Button onClick={() => setModalDraft(null)}>Cancel</Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={createMutation.isPending}
+          <FormDialogRow>
+            <label>
+              Parent category
+              <Select
+                items={[
+                  { value: "", label: "Top-level root" },
+                  ...parentOptions.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+                value={modalDraft.parentId}
+                onValueChange={(next) =>
+                  setModalDraft((prev) =>
+                    prev ? { ...prev, parentId: next ?? "" } : null
+                  )
+                }
               >
-                Create category
-              </Button>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Top-level root</SelectItem>
+                  {parentOptions.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label>
+              Default product type
+              <Select
+                items={[
+                  { value: "", label: "None" },
+                  ...productTypes.map((pt) => ({ value: pt.id, label: pt.name })),
+                ]}
+                value={modalDraft.defaultProductTypeId}
+                onValueChange={(next) =>
+                  setModalDraft((prev) =>
+                    prev ? { ...prev, defaultProductTypeId: next ?? "" } : null
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None</SelectItem>
+                  {productTypes.map((pt) => (
+                    <SelectItem key={pt.id} value={pt.id}>
+                      {pt.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </FormDialogRow>
+
+          <label>
+            Category image URL
+            <input
+              value={modalDraft.imageUrl}
+              placeholder="/media/terrain-fallback.jpg"
+              onChange={(e) =>
+                setModalDraft((prev) =>
+                  prev ? { ...prev, imageUrl: e.target.value } : null
+                )
+              }
+            />
+          </label>
+
+          <label>
+            Description
+            <textarea
+              rows={2}
+              value={modalDraft.description}
+              onChange={(e) =>
+                setModalDraft((prev) =>
+                  prev ? { ...prev, description: e.target.value } : null
+                )
+              }
+            />
+          </label>
+
+          <label>
+            SEO meta description
+            <textarea
+              rows={2}
+              value={modalDraft.seoDescription}
+              onChange={(e) =>
+                setModalDraft((prev) =>
+                  prev ? { ...prev, seoDescription: e.target.value } : null
+                )
+              }
+            />
+          </label>
+
+          {selectedDefaultType?.attributes?.length ? (
+            <div className="panel" style={{ padding: 12, boxShadow: "none" }}>
+              <strong style={{ fontSize: 12.5 }}>
+                Bound attributes via {selectedDefaultType.name}
+              </strong>
+              <div className="button-row" style={{ marginTop: 8 }}>
+                {selectedDefaultType.attributes.map((attr) => (
+                  <Badge key={attr.attributeDefinitionId} tone="accent">
+                    {attr.name}
+                  </Badge>
+                ))}
+              </div>
             </div>
-          </form>
-        </Modal>
+          ) : null}
+        </FormDialog>
       ) : null}
 
       {confirmDelete ? (

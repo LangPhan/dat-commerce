@@ -1,10 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { History } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Empty, Pagination, Skeleton } from "@/components/ui/data-display";
+import { Empty } from "@/components/ui/data-display";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import {
   Select,
   SelectContent,
@@ -51,7 +52,48 @@ export function AuditLogsView() {
         `/api/v1/admin/audit-logs?${params.toString()}`
       );
     },
+    placeholderData: keepPreviousData,
   });
+
+  const columns: DataTableColumn<AuditLogRecord>[] = [
+    {
+      id: "time",
+      header: "Time",
+      cell: (row) => <span className="muted">{formatDateTime(row.createdAt)}</span>,
+    },
+    {
+      id: "actor",
+      header: "Actor",
+      cellClassName: "audit-actor",
+      cell: (row) => row.actorEmail || "system",
+    },
+    {
+      id: "action",
+      header: "Action",
+      cell: (row) => <Badge tone="accent">{row.action}</Badge>,
+    },
+    {
+      id: "resource",
+      header: "Resource",
+      cell: (row) => <code>{row.resourceType}</code>,
+    },
+    {
+      id: "requestId",
+      header: "Request ID",
+      cell: (row) => <code>{row.requestId ? row.requestId.slice(0, 8) : "—"}</code>,
+    },
+    {
+      id: "summary",
+      header: "Summary",
+      cellClassName: "muted audit-summary",
+      cell: (row) =>
+        row.afterJson
+          ? JSON.stringify(row.afterJson).slice(0, 72)
+          : Object.keys(row.metadataJson || {}).length
+            ? JSON.stringify(row.metadataJson).slice(0, 72)
+            : "—",
+    },
+  ];
 
   return (
     <>
@@ -64,9 +106,7 @@ export function AuditLogsView() {
         </div>
       </div>
 
-      {query.isLoading ? (
-        <Skeleton rows={4} />
-      ) : query.isError ? (
+      {query.isError ? (
         <Empty
           title="Unable to load audit logs"
           text={
@@ -77,99 +117,68 @@ export function AuditLogsView() {
           icon={<History size={18} />}
         />
       ) : (
-        <div className="admin-table-panel">
-          <div className="table-toolbar">
-            <Select
-              items={ACTION_FILTER_ITEMS}
-              value={actionFilter}
-              onValueChange={(next) => {
-                setActionFilter(next ?? "");
-                setPage(0);
-              }}
-            >
-              <SelectTrigger aria-label="Filter by action">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ACTION_FILTER_ITEMS.map((item) => (
-                  <SelectItem key={item.value || "all"} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <DataTable
+          columns={columns}
+          data={query.data?.items || []}
+          getRowKey={(row) => row.id}
+          isLoading={query.isLoading}
+          isFetching={query.isPlaceholderData}
+          paginateClientSide={false}
+          page={page + 1}
+          pageSize={query.data?.size || 20}
+          totalItems={query.data?.totalElements || 0}
+          onPageChange={(next) => setPage(next - 1)}
+          toolbar={
+            <>
+              <Select
+                items={ACTION_FILTER_ITEMS}
+                value={actionFilter}
+                onValueChange={(next) => {
+                  setActionFilter(next ?? "");
+                  setPage(0);
+                }}
+              >
+                <SelectTrigger aria-label="Filter by action">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTION_FILTER_ITEMS.map((item) => (
+                    <SelectItem key={item.value || "all"} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            <Select
-              items={RESOURCE_FILTER_ITEMS}
-              value={resourceFilter}
-              onValueChange={(next) => {
-                setResourceFilter(next ?? "");
-                setPage(0);
-              }}
-            >
-              <SelectTrigger aria-label="Filter by resource">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {RESOURCE_FILTER_ITEMS.map((item) => (
-                  <SelectItem key={item.value || "all"} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Actor</th>
-                  <th>Action</th>
-                  <th>Resource</th>
-                  <th>Request ID</th>
-                  <th>Summary</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(query.data?.items || []).map((row) => (
-                  <tr key={row.id}>
-                    <td className="muted">{formatDateTime(row.createdAt)}</td>
-                    <td className="audit-actor">{row.actorEmail || "system"}</td>
-                    <td>
-                      <Badge tone="accent">{row.action}</Badge>
-                    </td>
-                    <td>
-                      <code>{row.resourceType}</code>
-                    </td>
-                    <td>
-                      <code>{row.requestId ? row.requestId.slice(0, 8) : "—"}</code>
-                    </td>
-                    <td className="muted audit-summary">
-                      {row.afterJson
-                        ? JSON.stringify(row.afterJson).slice(0, 72)
-                        : Object.keys(row.metadataJson || {}).length
-                          ? JSON.stringify(row.metadataJson).slice(0, 72)
-                          : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {query.data ? (
-            <div className="table-footer">
-              <Pagination
-                page={page + 1}
-                totalItems={query.data.totalElements}
-                pageSize={query.data.size}
-                onPageChange={(next) => setPage(next - 1)}
-              />
-            </div>
-          ) : null}
-        </div>
+              <Select
+                items={RESOURCE_FILTER_ITEMS}
+                value={resourceFilter}
+                onValueChange={(next) => {
+                  setResourceFilter(next ?? "");
+                  setPage(0);
+                }}
+              >
+                <SelectTrigger aria-label="Filter by resource">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {RESOURCE_FILTER_ITEMS.map((item) => (
+                    <SelectItem key={item.value || "all"} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
+          }
+          emptyState={
+            <Empty
+              title="No audit entries match"
+              text="Try clearing the action or resource filters."
+              icon={<History size={18} />}
+            />
+          }
+        />
       )}
     </>
   );

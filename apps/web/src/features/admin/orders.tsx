@@ -7,7 +7,6 @@ import {
   CreditCard,
   MapPin,
   PackageCheck,
-  Search,
   ShoppingBag,
   Truck,
   XCircle,
@@ -16,7 +15,8 @@ import { useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
-import { Modal } from "@/components/ui/dialog";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { FormDialog } from "@/components/ui/form-dialog";
 import {
   Select,
   SelectContent,
@@ -61,6 +61,7 @@ export function Orders({
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
   const [shippingModal, setShippingModal] = useState(false);
   const [cancelModal, setCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
@@ -144,261 +145,244 @@ export function Orders({
       order.status.toUpperCase() !== "DELIVERED" &&
       order.status.toUpperCase() !== "CANCELED";
 
+    const lineItemColumns: DataTableColumn<(typeof order.items)[number]>[] = [
+      {
+        id: "item",
+        header: "Item",
+        cell: (item) => (
+          <>
+            <strong>{item.productName}</strong> · {item.variantTitle}
+          </>
+        ),
+      },
+      { id: "sku", header: "SKU", cell: (item) => <code>{item.sku}</code> },
+      { id: "qty", header: "Qty", align: "right", cell: (item) => item.quantity },
+      {
+        id: "total",
+        header: "Line total",
+        align: "right",
+        cell: (item) => <strong>{usdExact(item.lineTotal)}</strong>,
+      },
+    ];
+
     return (
       <>
-        <div className="admin-title">
-          <div>
-            <div className="button-row" style={{ marginBottom: 6 }}>
-              <Link href="/admin/orders" className="muted" style={{ fontSize: 12 }}>
-                ← All orders
-              </Link>
-              <StatusBadge status={order.paymentStatus} />
-              <StatusBadge status={order.status} />
+        <div className="admin-page-scroll">
+          <div className="admin-title">
+            <div>
+              <div className="button-row" style={{ marginBottom: 6 }}>
+                <Link href="/admin/orders" className="muted" style={{ fontSize: 12 }}>
+                  ← All orders
+                </Link>
+                <StatusBadge status={order.paymentStatus} />
+                <StatusBadge status={order.status} />
+              </div>
+              <h1>Order {order.orderNumber}</h1>
+              <p>{formatDateTime(order.createdAt)}</p>
             </div>
-            <h1>Order {order.orderNumber}</h1>
-            <p>{formatDateTime(order.createdAt)}</p>
-          </div>
-          <div className="button-row">
-            {canWrite && validNext.length > 0 ? (
-              <Button
-                variant="primary"
-                onClick={() => {
-                  setActionError("");
-                  setShippingModal(true);
-                }}
-              >
-                <Truck size={15} /> Update fulfillment
-              </Button>
-            ) : null}
-            {allowCancel ? (
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  setActionError("");
-                  setCancelModal(true);
-                }}
-              >
-                <XCircle size={15} /> Cancel order
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="admin-form-grid">
-          <div className="form-stack">
-            <section className="panel form-stack">
-              <h2>Line items</h2>
-              {order.items.map((item) => (
-                <div className="line-item" key={item.id}>
-                  <span>
-                    <strong>{item.productName}</strong> · {item.variantTitle}
-                    <code style={{ marginLeft: 8 }}>{item.sku}</code>
-                    <small className="muted" style={{ marginLeft: 6 }}>
-                      × {item.quantity}
-                    </small>
-                  </span>
-                  <strong>{usdExact(item.lineTotal)}</strong>
-                </div>
-              ))}
-              {order.discountTotal > 0 ? (
-                <div className="line-item success">
-                  <span>
-                    Discount {order.promotionCode ? `(${order.promotionCode})` : ""}
-                  </span>
-                  <span>−{usdExact(order.discountTotal)}</span>
-                </div>
-              ) : null}
-              <div className="line-item">
-                <span className="muted">Subtotal</span>
-                <span>{usdExact(order.subtotal)}</span>
-              </div>
-              <div className="line-item">
-                <span className="muted">Shipping</span>
-                <span>
-                  {order.shippingTotal > 0 ? usdExact(order.shippingTotal) : "Free"}
-                </span>
-              </div>
-              <div className="line-item">
-                <strong>Total</strong>
-                <strong style={{ fontSize: 16 }}>{usdExact(order.grandTotal)}</strong>
-              </div>
-            </section>
-
-            <section className="panel form-stack">
-              <h2>Order timeline</h2>
-              <ol className="order-timeline">
-                {order.events.map((evt, idx) => (
-                  <li key={idx}>
-                    <span className="order-timeline-dot">
-                      {evt.kind === "payment" ? (
-                        <CreditCard size={12} />
-                      ) : evt.kind === "fulfillment" ? (
-                        <PackageCheck size={12} />
-                      ) : (
-                        <CheckCircle2 size={12} />
-                      )}
-                    </span>
-                    <div>
-                      <strong>{evt.label}</strong>
-                      <div className="muted" style={{ fontSize: 12 }}>
-                        {evt.detail} · {formatDateTime(evt.createdAt)}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          </div>
-
-          <aside className="form-stack">
-            <section className="panel form-stack">
-              <h2>Customer</h2>
-              <div>
-                <strong style={{ display: "block" }}>{order.customerName}</strong>
-                <a
-                  href={`mailto:${order.customerEmail}`}
-                  className="muted"
-                  style={{ fontSize: 12.5 }}
+            <div className="button-row">
+              {canWrite && validNext.length > 0 ? (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setActionError("");
+                    setShippingModal(true);
+                  }}
                 >
-                  {order.customerEmail}
-                </a>
-              </div>
-              {order.shippingAddress ? (
-                <div style={{ fontSize: 12.5 }}>
-                  <strong className="inline-label" style={{ marginBottom: 3 }}>
-                    <MapPin size={13} /> Shipping address
-                  </strong>
-                  <p className="muted">
-                    {order.shippingAddress.line1}, {order.shippingAddress.city}
-                    {order.shippingAddress.state ? `, ${order.shippingAddress.state}` : ""}{" "}
-                    {order.shippingAddress.postalCode} {order.shippingAddress.country}
-                  </p>
-                </div>
+                  <Truck size={15} /> Update fulfillment
+                </Button>
               ) : null}
-            </section>
+              {allowCancel ? (
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    setActionError("");
+                    setCancelModal(true);
+                  }}
+                >
+                  <XCircle size={15} /> Cancel order
+                </Button>
+              ) : null}
+            </div>
+          </div>
 
-            <section className="panel form-stack">
-              <h2>Shipment</h2>
-              <div>
-                <StatusBadge status={order.fulfillmentStatus} />
-              </div>
-              <p className="muted" style={{ fontSize: 12.5 }}>
-                Tracking:{" "}
-                {order.trackingNumber ? (
-                  <code>{order.trackingNumber}</code>
-                ) : (
-                  "Not assigned yet"
-                )}
-              </p>
-            </section>
-          </aside>
+          <div className="admin-form-grid">
+            <div className="form-stack">
+              <DataTable
+                title="Line items"
+                columns={lineItemColumns}
+                data={order.items}
+                getRowKey={(item) => item.id}
+                pageSize={5}
+                footerExtra={
+                  <div className="button-row" style={{ gap: 14, fontSize: 12.5 }}>
+                    <span className="muted">Subtotal: {usdExact(order.subtotal)}</span>
+                    {order.discountTotal > 0 ? (
+                      <span className="success">
+                        Discount: −{usdExact(order.discountTotal)}
+                      </span>
+                    ) : null}
+                    <span className="muted">
+                      Shipping:{" "}
+                      {order.shippingTotal > 0 ? usdExact(order.shippingTotal) : "Free"}
+                    </span>
+                    <strong>Total: {usdExact(order.grandTotal)}</strong>
+                  </div>
+                }
+              />
+
+              <section className="panel form-stack">
+                <h2>Order timeline</h2>
+                <ol className="order-timeline">
+                  {order.events.map((evt, idx) => (
+                    <li key={idx}>
+                      <span className="order-timeline-dot">
+                        {evt.kind === "payment" ? (
+                          <CreditCard size={12} />
+                        ) : evt.kind === "fulfillment" ? (
+                          <PackageCheck size={12} />
+                        ) : (
+                          <CheckCircle2 size={12} />
+                        )}
+                      </span>
+                      <div>
+                        <strong>{evt.label}</strong>
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          {evt.detail} · {formatDateTime(evt.createdAt)}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </div>
+
+            <aside className="form-stack">
+              <section className="panel form-stack">
+                <h2>Customer</h2>
+                <div>
+                  <strong style={{ display: "block" }}>{order.customerName}</strong>
+                  <a
+                    href={`mailto:${order.customerEmail}`}
+                    className="muted"
+                    style={{ fontSize: 12.5 }}
+                  >
+                    {order.customerEmail}
+                  </a>
+                </div>
+                {order.shippingAddress ? (
+                  <div style={{ fontSize: 12.5 }}>
+                    <strong className="inline-label" style={{ marginBottom: 3 }}>
+                      <MapPin size={13} /> Shipping address
+                    </strong>
+                    <p className="muted">
+                      {order.shippingAddress.line1}, {order.shippingAddress.city}
+                      {order.shippingAddress.state
+                        ? `, ${order.shippingAddress.state}`
+                        : ""}{" "}
+                      {order.shippingAddress.postalCode} {order.shippingAddress.country}
+                    </p>
+                  </div>
+                ) : null}
+              </section>
+
+              <section className="panel form-stack">
+                <h2>Shipment</h2>
+                <div>
+                  <StatusBadge status={order.fulfillmentStatus} />
+                </div>
+                <p className="muted" style={{ fontSize: 12.5 }}>
+                  Tracking:{" "}
+                  {order.trackingNumber ? (
+                    <code>{order.trackingNumber}</code>
+                  ) : (
+                    "Not assigned yet"
+                  )}
+                </p>
+              </section>
+            </aside>
+          </div>
         </div>
 
         {shippingModal ? (
-          <Modal
+          <FormDialog
+            open
+            onOpenChange={setShippingModal}
+            size="sm"
             title="Update fulfillment & tracking"
             description="Advance order status along validated fulfillment transitions."
-            close={() => setShippingModal(false)}
+            submitLabel="Save fulfillment"
+            isSubmitting={updateStatusMutation.isPending}
+            error={actionError}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              updateStatusMutation.mutate({
+                orderId: order.id,
+                status: String(fd.get("status") || validNext[0]),
+                trackingNumber: String(fd.get("trackingNumber") || "").trim(),
+              });
+            }}
           >
-            <form
-              className="form-stack"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                updateStatusMutation.mutate({
-                  orderId: order.id,
-                  status: String(fd.get("status") || validNext[0]),
-                  trackingNumber: String(fd.get("trackingNumber") || "").trim(),
-                });
-              }}
-            >
-              <label>
-                Next status
-                <Select
-                  name="status"
-                  items={validNext.map((s) => ({ value: s, label: s }))}
-                  defaultValue={validNext[0]}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {validNext.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label>
-                Tracking number
-                <input
-                  name="trackingNumber"
-                  defaultValue={order.trackingNumber || ""}
-                  placeholder="1Z999AA10123456784"
-                />
-              </label>
-              {actionError ? (
-                <p className="danger" role="alert">
-                  {actionError}
-                </p>
-              ) : null}
-              <div className="modal-actions">
-                <Button onClick={() => setShippingModal(false)}>Cancel</Button>
-                <Button
-                  variant="primary"
-                  type="submit"
-                  disabled={updateStatusMutation.isPending}
-                >
-                  Save fulfillment
-                </Button>
-              </div>
-            </form>
-          </Modal>
+            <label>
+              Next status
+              <Select
+                name="status"
+                items={validNext.map((s) => ({ value: s, label: s }))}
+                defaultValue={validNext[0]}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {validNext.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label>
+              Tracking number
+              <input
+                name="trackingNumber"
+                defaultValue={order.trackingNumber || ""}
+                placeholder="1Z999AA10123456784"
+              />
+            </label>
+          </FormDialog>
         ) : null}
 
         {cancelModal ? (
-          <Modal
+          <FormDialog
+            open
+            onOpenChange={setCancelModal}
+            size="sm"
             title={`Cancel ${order.orderNumber}?`}
             description="Canceling marks payment as REFUNDED and immediately restores reserved stock."
-            close={() => setCancelModal(false)}
+            cancelLabel="Keep order"
+            submitLabel="Confirm cancel & refund"
+            submitVariant="destructive"
+            isSubmitting={cancelMutation.isPending}
+            error={actionError}
+            onSubmit={(e) => {
+              e.preventDefault();
+              cancelMutation.mutate({
+                orderId: order.id,
+                reason: cancelReason.trim() || undefined,
+              });
+            }}
           >
-            <form
-              className="form-stack"
-              onSubmit={(e) => {
-                e.preventDefault();
-                cancelMutation.mutate({
-                  orderId: order.id,
-                  reason: cancelReason.trim() || undefined,
-                });
-              }}
-            >
-              <label>
-                Cancellation reason
-                <input
-                  value={cancelReason}
-                  placeholder="Customer requested cancel"
-                  onChange={(e) => setCancelReason(e.target.value)}
-                />
-              </label>
-              {actionError ? (
-                <p className="danger" role="alert">
-                  {actionError}
-                </p>
-              ) : null}
-              <div className="modal-actions">
-                <Button onClick={() => setCancelModal(false)}>Keep order</Button>
-                <Button
-                  variant="destructive"
-                  type="submit"
-                  disabled={cancelMutation.isPending}
-                >
-                  Confirm cancel & refund
-                </Button>
-              </div>
-            </form>
-          </Modal>
+            <label>
+              Cancellation reason
+              <input
+                value={cancelReason}
+                placeholder="Customer requested cancel"
+                onChange={(e) => setCancelReason(e.target.value)}
+              />
+            </label>
+          </FormDialog>
         ) : null}
       </>
     );
@@ -414,6 +398,51 @@ export function Orders({
     );
   });
 
+  const orderColumns: DataTableColumn<OrderDto>[] = [
+    {
+      id: "order",
+      header: "Order",
+      cell: (order) => (
+        <Link href={`/admin/orders/${order.id}`}>
+          <strong>{order.orderNumber}</strong>
+        </Link>
+      ),
+    },
+    {
+      id: "customer",
+      header: "Customer",
+      cell: (order) => (
+        <>
+          <span style={{ display: "block" }}>{order.customerName}</span>
+          <span className="muted" style={{ fontSize: 11.5 }}>
+            {order.customerEmail}
+          </span>
+        </>
+      ),
+    },
+    { id: "date", header: "Date", cell: (order) => formatDateTime(order.createdAt) },
+    {
+      id: "payment",
+      header: "Payment",
+      cell: (order) => <StatusBadge status={order.paymentStatus} />,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (order) => <StatusBadge status={order.status} />,
+    },
+    {
+      id: "items",
+      header: "Items",
+      cell: (order) => order.items.reduce((s, l) => s + l.quantity, 0),
+    },
+    {
+      id: "total",
+      header: "Total",
+      cell: (order) => <strong>{usdExact(order.grandTotal)}</strong>,
+    },
+  ];
+
   return (
     <>
       <div className="admin-title">
@@ -424,21 +453,29 @@ export function Orders({
         <Badge tone="accent">{orders.length} orders</Badge>
       </div>
 
-      <div className="admin-table-panel">
-        <div className="table-toolbar">
-          <label className="search-field">
-            <Search size={15} />
-            <input
-              aria-label="Search orders"
-              placeholder="Search order #, customer, or email…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
+      <DataTable
+        columns={orderColumns}
+        data={orders}
+        getRowKey={(order) => order.id}
+        isLoading={listQuery.isLoading}
+        page={page}
+        onPageChange={setPage}
+        pageSize={10}
+        searchValue={query}
+        onSearchChange={(next) => {
+          setQuery(next);
+          setPage(1);
+        }}
+        searchPlaceholder="Search order #, customer, or email…"
+        searchAriaLabel="Search orders"
+        toolbar={
           <Select
             items={ORDER_STATUS_FILTER_ITEMS}
             value={statusFilter}
-            onValueChange={(next) => setStatusFilter(next ?? "")}
+            onValueChange={(next) => {
+              setStatusFilter(next ?? "");
+              setPage(1);
+            }}
           >
             <SelectTrigger aria-label="Filter by status">
               <SelectValue />
@@ -451,62 +488,15 @@ export function Orders({
               ))}
             </SelectContent>
           </Select>
-        </div>
-
-        {listQuery.isLoading ? (
-          <Skeleton rows={4} />
-        ) : orders.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Order</th>
-                  <th>Customer</th>
-                  <th>Date</th>
-                  <th>Payment</th>
-                  <th>Status</th>
-                  <th>Items</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((order) => (
-                  <tr key={order.id}>
-                    <td>
-                      <Link href={`/admin/orders/${order.id}`}>
-                        <strong>{order.orderNumber}</strong>
-                      </Link>
-                    </td>
-                    <td>
-                      <span style={{ display: "block" }}>{order.customerName}</span>
-                      <span className="muted" style={{ fontSize: 11.5 }}>
-                        {order.customerEmail}
-                      </span>
-                    </td>
-                    <td>{formatDateTime(order.createdAt)}</td>
-                    <td>
-                      <StatusBadge status={order.paymentStatus} />
-                    </td>
-                    <td>
-                      <StatusBadge status={order.status} />
-                    </td>
-                    <td>{order.items.reduce((s, l) => s + l.quantity, 0)}</td>
-                    <td>
-                      <strong>{usdExact(order.grandTotal)}</strong>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
+        }
+        emptyState={
           <Empty
             icon={<ShoppingBag size={22} />}
             title="No orders match"
             text="Orders placed on the public storefront will appear here."
           />
-        )}
-      </div>
+        }
+      />
     </>
   );
 }

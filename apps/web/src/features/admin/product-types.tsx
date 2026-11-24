@@ -5,8 +5,13 @@ import { Pencil, Plus, Shapes, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
-import { Empty, Skeleton } from "@/components/ui/data-display";
-import { Modal } from "@/components/ui/dialog";
+import { Empty } from "@/components/ui/data-display";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  FormDialog,
+  FormDialogRow,
+  FormDialogSection,
+} from "@/components/ui/form-dialog";
 import {
   Select,
   SelectContent,
@@ -53,6 +58,7 @@ export function ProductTypesManager({
     queryFn: () => adminCatalogApi.listAttributes(false),
   });
 
+  const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<ProductTypeDraft | null>(null);
   const [attrToBind, setAttrToBind] = useState("");
   const [error, setError] = useState("");
@@ -150,12 +156,98 @@ export function ProductTypesManager({
   }
 
   const allAttrs: AttributeDefinitionDto[] = attrsQuery.data || [];
-  const types: ProductTypeDto[] = typesQuery.data || [];
+  const types: ProductTypeDto[] = (typesQuery.data || []).filter((pt) => {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return (
+      pt.name.toLowerCase().includes(q) ||
+      pt.code.toLowerCase().includes(q) ||
+      (pt.description || "").toLowerCase().includes(q)
+    );
+  });
   const availableToBind = draft
     ? allAttrs.filter(
         (a) => !draft.attributes.some((b) => b.attributeDefinitionId === a.id)
       )
     : [];
+
+  const columns: DataTableColumn<ProductTypeDto>[] = [
+    {
+      id: "name",
+      header: "Product type",
+      cell: (pt) => (
+        <>
+          <strong style={{ display: "block" }}>{pt.name}</strong>
+          {pt.description ? (
+            <span className="muted" style={{ fontSize: 11.5 }}>
+              {pt.description}
+            </span>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      id: "code",
+      header: "Code",
+      cell: (pt) => <code>{pt.code}</code>,
+    },
+    {
+      id: "attributes",
+      header: "Bound attributes",
+      cell: (pt) => (
+        <div className="button-row" style={{ gap: 4 }}>
+          {pt.attributes.length ? (
+            pt.attributes.map((attr) => (
+              <Badge
+                key={attr.attributeDefinitionId}
+                tone={attr.required ? "amber" : "neutral"}
+              >
+                {attr.name}
+              </Badge>
+            ))
+          ) : (
+            <span className="muted">None</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "variants",
+      header: "Variant options",
+      cell: (pt) => (
+        <div className="button-row" style={{ gap: 4 }}>
+          {pt.variantOptions.length ? (
+            pt.variantOptions.map((vo) => (
+              <Badge key={vo.id} tone="accent">
+                {vo.name}
+              </Badge>
+            ))
+          ) : (
+            <span className="muted">Default</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "updated",
+      header: "Updated",
+      cell: (pt) => formatDate(pt.updatedAt),
+    },
+    ...(canWrite
+      ? [
+          {
+            id: "actions",
+            header: "Actions",
+            align: "right" as const,
+            cell: (pt: ProductTypeDto) => (
+              <IconButton label={`Edit ${pt.name}`} onClick={() => openEdit(pt)}>
+                <Pencil size={14} />
+              </IconButton>
+            ),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <>
@@ -173,343 +265,284 @@ export function ProductTypesManager({
         ) : null}
       </div>
 
-      {typesQuery.isLoading ? (
-        <Skeleton rows={4} />
-      ) : typesQuery.isError ? (
-        <Empty
-          title="Could not load product types"
-          text={
-            typesQuery.error instanceof ApiError
-              ? typesQuery.error.message
-              : "Unexpected API error."
-          }
-        />
-      ) : types.length ? (
-        <div className="admin-table-panel table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Product type</th>
-                <th>Code</th>
-                <th>Bound attributes</th>
-                <th>Variant options</th>
-                <th>Updated</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {types.map((pt) => (
-                <tr key={pt.id}>
-                  <td>
-                    <strong style={{ display: "block" }}>{pt.name}</strong>
-                    {pt.description ? (
-                      <span className="muted" style={{ fontSize: 11.5 }}>
-                        {pt.description}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td>
-                    <code>{pt.code}</code>
-                  </td>
-                  <td>
-                    <div className="button-row" style={{ gap: 4 }}>
-                      {pt.attributes.length ? (
-                        pt.attributes.map((attr) => (
-                          <Badge
-                            key={attr.attributeDefinitionId}
-                            tone={attr.required ? "amber" : "neutral"}
-                          >
-                            {attr.name}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="muted">None</span>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="button-row" style={{ gap: 4 }}>
-                      {pt.variantOptions.length ? (
-                        pt.variantOptions.map((vo) => (
-                          <Badge key={vo.id} tone="accent">
-                            {vo.name}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="muted">Default</span>
-                      )}
-                    </div>
-                  </td>
-                  <td>{formatDate(pt.updatedAt)}</td>
-                  <td>
-                    {canWrite ? (
-                      <IconButton
-                        label={`Edit ${pt.name}`}
-                        onClick={() => openEdit(pt)}
-                      >
-                        <Pencil size={14} />
-                      </IconButton>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <Empty
-          icon={<Shapes size={22} />}
-          title="No product types defined"
-          text="Create a product type to organize dynamic attributes for a product family."
-        />
-      )}
+      <DataTable
+        columns={columns}
+        data={types}
+        getRowKey={(pt) => pt.id}
+        isLoading={typesQuery.isLoading}
+        pageSize={10}
+        searchValue={query}
+        onSearchChange={setQuery}
+        searchPlaceholder="Search product type name or code…"
+        searchAriaLabel="Search product types"
+        emptyState={
+          typesQuery.isError ? (
+            <Empty
+              title="Could not load product types"
+              text={
+                typesQuery.error instanceof ApiError
+                  ? typesQuery.error.message
+                  : "Unexpected API error."
+              }
+            />
+          ) : (
+            <Empty
+              icon={<Shapes size={22} />}
+              title="No product types defined"
+              text="Create a product type to organize dynamic attributes for a product family."
+            />
+          )
+        }
+      />
 
       {draft ? (
-        <Modal
-          wide
+        <FormDialog
+          open
+          onOpenChange={(nextOpen) => !nextOpen && setDraft(null)}
+          size="lg"
           title={draft.id ? `Edit ${draft.name}` : "New product type"}
           description="Bind reusable attributes and configure variant option axes (e.g. size, color)."
-          close={() => setDraft(null)}
+          submitLabel={draft.id ? "Save product type" : "Create product type"}
+          isSubmitting={createMutation.isPending || updateMutation.isPending}
+          error={error}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            if (!draft.name.trim()) {
+              setError("Name is required.");
+              return;
+            }
+            if (!draft.id && !/^[a-z0-9_-]+$/.test(draft.code.trim())) {
+              setError("Code must use lowercase letters, numbers, hyphens, or underscores.");
+              return;
+            }
+            if (draft.id) {
+              updateMutation.mutate(draft);
+            } else {
+              createMutation.mutate(draft);
+            }
+          }}
         >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setError("");
-              if (!draft.name.trim()) {
-                setError("Name is required.");
-                return;
-              }
-              if (!draft.id && !/^[a-z0-9_-]+$/.test(draft.code.trim())) {
-                setError("Code must use lowercase letters, numbers, hyphens, or underscores.");
-                return;
-              }
-              if (draft.id) {
-                updateMutation.mutate(draft);
-              } else {
-                createMutation.mutate(draft);
-              }
-            }}
-          >
-            <div className="form-pair">
-              <label>
-                Name
-                <input
-                  required
-                  value={draft.name}
-                  placeholder="e.g. Gaming Laptop"
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setDraft((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            name,
-                            code: prev.id
-                              ? prev.code
-                              : slugify(name).replace(/-/g, "_"),
-                          }
-                        : null
-                    );
-                  }}
-                />
-              </label>
-              <label>
-                Code
-                <input
-                  required
-                  disabled={Boolean(draft.id)}
-                  value={draft.code}
-                  placeholder="gaming_laptop"
-                  onChange={(e) =>
-                    setDraft((prev) =>
-                      prev
-                        ? { ...prev, code: e.target.value.toLowerCase().replace(/\s+/g, "_") }
-                        : null
-                    )
-                  }
-                />
-              </label>
-            </div>
-
+          <FormDialogRow>
             <label>
-              Description
+              Name
               <input
-                value={draft.description}
-                placeholder="High-refresh workstations and portable gaming rigs"
+                required
+                value={draft.name}
+                placeholder="e.g. Gaming Laptop"
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          name,
+                          code: prev.id ? prev.code : slugify(name).replace(/-/g, "_"),
+                        }
+                      : null
+                  );
+                }}
+              />
+            </label>
+            <label>
+              Code
+              <input
+                required
+                disabled={Boolean(draft.id)}
+                value={draft.code}
+                placeholder="gaming_laptop"
                 onChange={(e) =>
                   setDraft((prev) =>
-                    prev ? { ...prev, description: e.target.value } : null
+                    prev
+                      ? { ...prev, code: e.target.value.toLowerCase().replace(/\s+/g, "_") }
+                      : null
                   )
                 }
               />
             </label>
+          </FormDialogRow>
 
-            <div className="panel" style={{ padding: 12 }}>
-              <div className="section-title" style={{ marginBottom: 8 }}>
-                <strong>Attribute schema</strong>
-                <div className="button-row">
-                  <Select
-                    items={[
-                      { value: "", label: "Choose attribute…" },
-                      ...availableToBind.map((attr) => ({
-                        value: attr.id,
-                        label: `${attr.name} (${attr.dataType})`,
-                      })),
-                    ]}
-                    value={attrToBind}
-                    onValueChange={(next) => setAttrToBind(next ?? "")}
-                  >
-                    <SelectTrigger aria-label="Select attribute to add">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">Choose attribute…</SelectItem>
-                      {availableToBind.map((attr) => (
-                        <SelectItem key={attr.id} value={attr.id}>
-                          {attr.name} ({attr.dataType})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    size="sm"
-                    disabled={!attrToBind}
-                    onClick={() => {
-                      const found = allAttrs.find((a) => a.id === attrToBind);
-                      if (!found) return;
-                      setDraft((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              attributes: [
-                                ...prev.attributes,
-                                {
-                                  attributeDefinitionId: found.id,
-                                  displayOrder: prev.attributes.length,
-                                  requiredOverride: found.required,
-                                  label: `${found.name} (${found.code})`,
-                                  dataType: found.dataType,
-                                },
-                              ],
-                            }
-                          : null
-                      );
-                      setAttrToBind("");
-                    }}
-                  >
-                    Bind
-                  </Button>
-                </div>
-              </div>
+          <label>
+            Description
+            <input
+              value={draft.description}
+              placeholder="High-refresh workstations and portable gaming rigs"
+              onChange={(e) =>
+                setDraft((prev) =>
+                  prev ? { ...prev, description: e.target.value } : null
+                )
+              }
+            />
+          </label>
 
-              {draft.attributes.length ? (
-                <div className="form-stack" style={{ gap: 8 }}>
-                  {draft.attributes.map((binding, idx) => (
-                    <div
-                      key={binding.attributeDefinitionId}
-                      className="line-item"
-                      style={{ gap: 8 }}
-                    >
-                      <span>
-                        <strong>{binding.label}</strong>{" "}
-                        <Badge tone="accent">{binding.dataType}</Badge>
-                      </span>
-                      <div className="button-row">
-                        <label className="check-label">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(binding.requiredOverride)}
-                            onChange={(e) =>
-                              setDraft((prev) =>
-                                prev
-                                  ? {
-                                      ...prev,
-                                      attributes: prev.attributes.map((item, i) =>
-                                        i === idx
-                                          ? { ...item, requiredOverride: e.target.checked }
-                                          : item
-                                      ),
-                                    }
-                                  : null
-                              )
-                            }
-                          />
-                          Required
-                        </label>
-                        <IconButton
-                          label={`Unbind ${binding.label}`}
-                          onClick={() =>
-                            setDraft((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    attributes: prev.attributes.filter((_, i) => i !== idx),
-                                  }
-                                : null
-                            )
-                          }
-                        >
-                          <Trash2 size={13} />
-                        </IconButton>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="muted" style={{ fontSize: 12 }}>
-                  No attributes bound yet. Bind existing attributes above.
-                </p>
-              )}
-            </div>
-
-            <div className="panel" style={{ padding: 12 }}>
-              <div className="section-title" style={{ marginBottom: 8 }}>
-                <strong>Variant option dimensions</strong>
+          <FormDialogSection
+            title="Bound dynamic attributes"
+            actions={
+              <div className="button-row" style={{ gap: 6 }}>
+                <Select
+                  items={[
+                    { value: "", label: "Choose attribute…" },
+                    ...availableToBind.map((attr) => ({
+                      value: attr.id,
+                      label: `${attr.name} (${attr.dataType})`,
+                    })),
+                  ]}
+                  value={attrToBind}
+                  onValueChange={(next) => setAttrToBind(next ?? "")}
+                >
+                  <SelectTrigger aria-label="Select attribute to add">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Choose attribute…</SelectItem>
+                    {availableToBind.map((attr) => (
+                      <SelectItem key={attr.id} value={attr.id}>
+                        {attr.name} ({attr.dataType})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   size="sm"
-                  onClick={() =>
+                  disabled={!attrToBind}
+                  onClick={() => {
+                    const found = allAttrs.find((a) => a.id === attrToBind);
+                    if (!found) return;
                     setDraft((prev) =>
                       prev
                         ? {
                             ...prev,
-                            variantOptions: [
-                              ...prev.variantOptions,
-                              { code: "", name: "" },
+                            attributes: [
+                              ...prev.attributes,
+                              {
+                                attributeDefinitionId: found.id,
+                                displayOrder: prev.attributes.length,
+                                requiredOverride: found.required,
+                                label: `${found.name} (${found.code})`,
+                                dataType: found.dataType,
+                              },
                             ],
                           }
                         : null
-                    )
-                  }
+                    );
+                    setAttrToBind("");
+                  }}
                 >
-                  <Plus size={13} /> Add option
+                  Bind
                 </Button>
               </div>
+            }
+          >
+            {draft.attributes.length ? (
               <div className="form-stack" style={{ gap: 8 }}>
-                {draft.variantOptions.map((vo, idx) => (
-                  <div className="form-pair" key={idx} style={{ alignItems: "center" }}>
-                    <input
-                      aria-label={`Variant option code ${idx + 1}`}
-                      placeholder="size"
-                      value={vo.code}
-                      onChange={(e) => {
-                        const code = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "");
-                        setDraft((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                variantOptions: prev.variantOptions.map((x, i) =>
-                                  i === idx ? { ...x, code } : x
-                                ),
-                              }
-                            : null
-                        );
-                      }}
-                    />
+                {draft.attributes.map((binding, idx) => (
+                  <div
+                    key={binding.attributeDefinitionId}
+                    className="line-item"
+                    style={{ gap: 8 }}
+                  >
+                    <span>
+                      <strong>{binding.label}</strong>{" "}
+                      <Badge tone="accent">{binding.dataType}</Badge>
+                    </span>
+                    <div className="button-row">
+                      <label className="check-label">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(binding.requiredOverride)}
+                          onChange={(e) =>
+                            setDraft((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    attributes: prev.attributes.map((item, i) =>
+                                      i === idx
+                                        ? { ...item, requiredOverride: e.target.checked }
+                                        : item
+                                    ),
+                                  }
+                                : null
+                            )
+                          }
+                        />
+                        Required
+                      </label>
+                      <IconButton
+                        label={`Unbind ${binding.label}`}
+                        onClick={() =>
+                          setDraft((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  attributes: prev.attributes.filter((_, i) => i !== idx),
+                                }
+                              : null
+                          )
+                        }
+                      >
+                        <Trash2 size={13} />
+                      </IconButton>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="muted" style={{ fontSize: 12 }}>
+                No attributes bound yet. Bind existing attributes above.
+              </p>
+            )}
+          </FormDialogSection>
+
+          <FormDialogSection
+            title="Variant option dimensions"
+            actions={
+              <Button
+                size="sm"
+                onClick={() =>
+                  setDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          variantOptions: [
+                            ...prev.variantOptions,
+                            { code: "", name: "" },
+                          ],
+                        }
+                      : null
+                  )
+                }
+              >
+                <Plus size={13} /> Add option
+              </Button>
+            }
+          >
+            <div className="form-stack" style={{ gap: 8 }}>
+              {draft.variantOptions.map((vo, idx) => (
+                <FormDialogRow key={idx}>
+                  <input
+                    aria-label={`Variant option code ${idx + 1}`}
+                    placeholder="size"
+                    value={vo.code}
+                    onChange={(e) => {
+                      const code = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "");
+                      setDraft((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              variantOptions: prev.variantOptions.map((x, i) =>
+                                i === idx ? { ...x, code } : x
+                              ),
+                            }
+                          : null
+                      );
+                    }}
+                  />
+                  <div className="button-row" style={{ flexWrap: "nowrap" }}>
                     <input
                       aria-label={`Variant option name ${idx + 1}`}
                       placeholder="Size"
                       value={vo.name}
+                      style={{ flex: 1, minWidth: 0 }}
                       onChange={(e) => {
                         const name = e.target.value;
                         setDraft((prev) =>
@@ -542,28 +575,11 @@ export function ProductTypesManager({
                       <Trash2 size={13} />
                     </IconButton>
                   </div>
-                ))}
-              </div>
+                </FormDialogRow>
+              ))}
             </div>
-
-            {error ? (
-              <p className="danger" role="alert">
-                {error}
-              </p>
-            ) : null}
-
-            <div className="modal-actions">
-              <Button onClick={() => setDraft(null)}>Cancel</Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={createMutation.isPending || updateMutation.isPending}
-              >
-                {draft.id ? "Save product type" : "Create product type"}
-              </Button>
-            </div>
-          </form>
-        </Modal>
+          </FormDialogSection>
+        </FormDialog>
       ) : null}
     </>
   );

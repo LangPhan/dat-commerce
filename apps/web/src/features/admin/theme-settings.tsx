@@ -6,6 +6,9 @@ import { useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DialogClose } from "@/components/ui/dialog";
+import { FormDialog, FormDialogRow, FormDialogSection } from "@/components/ui/form-dialog";
 import {
   Select,
   SelectContent,
@@ -22,35 +25,40 @@ import type { AdminThemeResponse, ThemeTokens, ThemeVersionDto } from "@/types/a
 
 const FONT_ITEMS = ALLOWED_FONTS.map((f) => ({ value: f, label: f }));
 
-function ThemeEditorForm({
-  data,
+const FALLBACK_TOKENS: ThemeTokens = {
+  version: 1,
+  colors: {
+    primary: "#5B46E8",
+    background: "#FFFFFF",
+    surface: "#F8FAFC",
+    text: "#111318",
+    muted: "#5C6270",
+    accent: "#18794E",
+  },
+  typography: { headingFont: "Georgia", bodyFont: "Inter" },
+  radius: { card: "10px", button: "8px" },
+  container: { maxWidth: "1280px" },
+};
+
+function ThemeEditorDialog({
+  open,
+  onOpenChange,
+  initialTokens,
+  sourceLabel,
   canWrite,
   canPublish,
   notify,
 }: {
-  data: AdminThemeResponse;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  initialTokens: ThemeTokens;
+  sourceLabel: string;
   canWrite: boolean;
   canPublish: boolean;
   notify: (msg: string) => void;
 }) {
   const queryClient = useQueryClient();
-  const baseTokens: ThemeTokens = data.latest?.tokens ||
-    data.published?.tokens || {
-      version: 1,
-      colors: {
-        primary: "#5B46E8",
-        background: "#FFFFFF",
-        surface: "#F8FAFC",
-        text: "#111318",
-        muted: "#5C6270",
-        accent: "#18794E",
-      },
-      typography: { headingFont: "Georgia", bodyFont: "Inter" },
-      radius: { card: "10px", button: "8px" },
-      container: { maxWidth: "1280px" },
-    };
-
-  const [tokens, setTokens] = useState<ThemeTokens>(baseTokens);
+  const [tokens, setTokens] = useState<ThemeTokens>(initialTokens);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
 
@@ -59,34 +67,26 @@ function ThemeEditorForm({
       cmsAdminApi.createThemeVersion(payload.next, payload.note),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
-      setNote("");
       notify(`Saved theme draft v${created.versionNumber}`);
+      onOpenChange(false);
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : "Failed to save theme draft"),
   });
 
-  const publishMutation = useMutation({
-    mutationFn: (versionId?: string) => cmsAdminApi.publishTheme(versionId),
+  const saveAndPublishMutation = useMutation({
+    mutationFn: async (payload: { next: ThemeTokens; note?: string }) => {
+      const created = await cmsAdminApi.createThemeVersion(payload.next, payload.note);
+      return cmsAdminApi.publishTheme(created.id);
+    },
     onSuccess: (pub) => {
       queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
       queryClient.invalidateQueries({ queryKey: ["store-theme"] });
       notify(`Published theme v${pub.versionNumber}`);
+      onOpenChange(false);
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : "Failed to publish theme"),
-  });
-
-  const rollbackMutation = useMutation({
-    mutationFn: (versionId: string) => cmsAdminApi.rollbackTheme(versionId),
-    onSuccess: (rolled) => {
-      queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
-      queryClient.invalidateQueries({ queryKey: ["store-theme"] });
-      setTokens(rolled.tokens);
-      notify(`Rolled back theme (created published v${rolled.versionNumber})`);
-    },
-    onError: (err) =>
-      setError(err instanceof ApiError ? err.message : "Failed to rollback theme"),
   });
 
   function updateColor(key: keyof ThemeTokens["colors"], value: string) {
@@ -96,214 +96,212 @@ function ThemeEditorForm({
     }));
   }
 
+  function validateTokens(): boolean {
+    setError("");
+    const check = themeTokensSchema.safeParse(tokens);
+    if (!check.success) {
+      setError(
+        check.error.issues[0]?.message || "Theme tokens failed schema validation."
+      );
+      return false;
+    }
+    return true;
+  }
+
   return (
-    <div className="form-stack">
-      <div className="admin-title">
-        <div>
-          <h1>Theme Tokens</h1>
-          <p>
-            Allowlisted storefront colors, typography, radii, and container spacing (no raw CSS injection).
-          </p>
-        </div>
-        <div className="button-row">
-          {data.published ? (
-            <Badge tone="green">Published v{data.published.versionNumber}</Badge>
-          ) : null}
-          {canPublish && data.latest && data.latest.status !== "PUBLISHED" ? (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      size="xl"
+      title="Customize Theme Tokens"
+      description={`Editing based on ${sourceLabel}. Changes remain safe until saved or published.`}
+      error={error}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!canWrite || !validateTokens()) return;
+        saveDraftMutation.mutate({
+          next: tokens,
+          note: note.trim() || undefined,
+        });
+      }}
+      footer={
+        <>
+          <DialogClose render={<Button type="button">Cancel</Button>} />
+          {canWrite ? (
             <Button
-              variant="primary"
-              disabled={publishMutation.isPending}
-              onClick={() => publishMutation.mutate(data.latest?.id)}
+              type="submit"
+              variant={canPublish ? "default" : "primary"}
+              disabled={saveDraftMutation.isPending || saveAndPublishMutation.isPending}
             >
-              <Check size={14} /> Publish v{data.latest.versionNumber}
+              <Sparkles size={14} /> Save draft
             </Button>
           ) : null}
-        </div>
-      </div>
-
+          {canPublish ? (
+            <Button
+              type="button"
+              variant="primary"
+              disabled={saveDraftMutation.isPending || saveAndPublishMutation.isPending}
+              onClick={() => {
+                if (!validateTokens()) return;
+                saveAndPublishMutation.mutate({
+                  next: tokens,
+                  note: note.trim() || undefined,
+                });
+              }}
+            >
+              <Check size={14} /> Save &amp; Publish
+            </Button>
+          ) : null}
+        </>
+      }
+    >
       <div className="admin-form-grid">
-        <form
-          className="panel form-stack"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setError("");
-            const check = themeTokensSchema.safeParse(tokens);
-            if (!check.success) {
-              setError(
-                check.error.issues[0]?.message ||
-                  "Theme tokens failed schema validation."
-              );
-              return;
-            }
-            saveDraftMutation.mutate({
-              next: tokens,
-              note: note.trim() || undefined,
-            });
-          }}
-        >
-          <h2>Allowlisted color tokens</h2>
-          <div className="form-pair">
-            {(
-              [
-                ["primary", "Primary"],
-                ["background", "Background"],
-                ["surface", "Surface"],
-                ["text", "Text"],
-                ["muted", "Muted"],
-                ["accent", "Accent"],
-              ] as const
-            ).map(([key, label]) => (
-              <label key={key}>
-                {label}
-                <div className="button-row" style={{ gap: 6 }}>
-                  <input
-                    type="color"
-                    aria-label={`${label} color picker`}
-                    disabled={!canWrite}
-                    value={tokens.colors[key] || "#000000"}
-                    onChange={(e) => updateColor(key, e.target.value)}
-                    style={{ width: 40, padding: 2 }}
-                  />
-                  <input
-                    disabled={!canWrite}
-                    value={tokens.colors[key] || ""}
-                    onChange={(e) => updateColor(key, e.target.value)}
-                    pattern="^#[0-9A-Fa-f]{6}$"
-                  />
-                </div>
+        <div className="form-stack">
+          <FormDialogSection title="Allowlisted color tokens">
+            <FormDialogRow>
+              {(
+                [
+                  ["primary", "Primary"],
+                  ["background", "Background"],
+                  ["surface", "Surface"],
+                  ["text", "Text"],
+                  ["muted", "Muted"],
+                  ["accent", "Accent"],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key}>
+                  {label}
+                  <div className="button-row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                    <input
+                      type="color"
+                      aria-label={`${label} color picker`}
+                      disabled={!canWrite}
+                      value={tokens.colors[key] || "#000000"}
+                      onChange={(e) => updateColor(key, e.target.value)}
+                      style={{ width: 40, padding: 2, flexShrink: 0 }}
+                    />
+                    <input
+                      disabled={!canWrite}
+                      value={tokens.colors[key] || ""}
+                      onChange={(e) => updateColor(key, e.target.value)}
+                      pattern="^#[0-9A-Fa-f]{6}$"
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
+                  </div>
+                </label>
+              ))}
+            </FormDialogRow>
+          </FormDialogSection>
+
+          <FormDialogSection title="Typography & geometry">
+            <FormDialogRow>
+              <label>
+                Heading font
+                <Select
+                  disabled={!canWrite}
+                  items={FONT_ITEMS}
+                  value={tokens.typography.headingFont}
+                  onValueChange={(next) =>
+                    next &&
+                    setTokens((curr) => ({
+                      ...curr,
+                      typography: {
+                        ...curr.typography,
+                        headingFont: next,
+                      },
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FONT_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
-            ))}
-          </div>
+              <label>
+                Body font
+                <Select
+                  disabled={!canWrite}
+                  items={FONT_ITEMS}
+                  value={tokens.typography.bodyFont}
+                  onValueChange={(next) =>
+                    next &&
+                    setTokens((curr) => ({
+                      ...curr,
+                      typography: { ...curr.typography, bodyFont: next },
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FONT_ITEMS.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <label>
+                Card radius
+                <input
+                  disabled={!canWrite}
+                  value={tokens.radius.card}
+                  onChange={(e) =>
+                    setTokens((curr) => ({
+                      ...curr,
+                      radius: { ...curr.radius, card: e.target.value },
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Button radius
+                <input
+                  disabled={!canWrite}
+                  value={tokens.radius.button}
+                  onChange={(e) =>
+                    setTokens((curr) => ({
+                      ...curr,
+                      radius: { ...curr.radius, button: e.target.value },
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Container maxWidth (1024px–1536px)
+                <input
+                  disabled={!canWrite}
+                  value={tokens.container.maxWidth}
+                  onChange={(e) =>
+                    setTokens((curr) => ({
+                      ...curr,
+                      container: { maxWidth: e.target.value },
+                    }))
+                  }
+                />
+              </label>
+            </FormDialogRow>
 
-          <h2>Typography & geometry</h2>
-          <div className="form-pair">
             <label>
-              Heading font
-              <Select
-                disabled={!canWrite}
-                items={FONT_ITEMS}
-                value={tokens.typography.headingFont}
-                onValueChange={(next) =>
-                  next &&
-                  setTokens((curr) => ({
-                    ...curr,
-                    typography: {
-                      ...curr.typography,
-                      headingFont: next,
-                    },
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FONT_ITEMS.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-            <label>
-              Body font
-              <Select
-                disabled={!canWrite}
-                items={FONT_ITEMS}
-                value={tokens.typography.bodyFont}
-                onValueChange={(next) =>
-                  next &&
-                  setTokens((curr) => ({
-                    ...curr,
-                    typography: { ...curr.typography, bodyFont: next },
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FONT_ITEMS.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
-
-          <div className="form-pair">
-            <label>
-              Card radius (0px–24px)
+              Version note
               <input
                 disabled={!canWrite}
-                value={tokens.radius.card}
-                onChange={(e) =>
-                  setTokens((curr) => ({
-                    ...curr,
-                    radius: { ...curr.radius, card: e.target.value },
-                  }))
-                }
+                value={note}
+                placeholder="Seasonal palette update"
+                onChange={(e) => setNote(e.target.value)}
               />
             </label>
-            <label>
-              Button radius (0px–999px)
-              <input
-                disabled={!canWrite}
-                value={tokens.radius.button}
-                onChange={(e) =>
-                  setTokens((curr) => ({
-                    ...curr,
-                    radius: { ...curr.radius, button: e.target.value },
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Container maxWidth (1024px–1536px)
-              <input
-                disabled={!canWrite}
-                value={tokens.container.maxWidth}
-                onChange={(e) =>
-                  setTokens((curr) => ({
-                    ...curr,
-                    container: { maxWidth: e.target.value },
-                  }))
-                }
-              />
-            </label>
-          </div>
-
-          <label>
-            Version note
-            <input
-              disabled={!canWrite}
-              value={note}
-              placeholder="Seasonal palette update"
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </label>
-
-          {error ? (
-            <p className="danger" role="alert">
-              {error}
-            </p>
-          ) : null}
-
-          {canWrite ? (
-            <div className="button-row">
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={saveDraftMutation.isPending}
-              >
-                <Sparkles size={14} /> Save draft version
-              </Button>
-            </div>
-          ) : null}
-        </form>
+          </FormDialogSection>
+        </div>
 
         <aside className="form-stack">
           <section
@@ -354,65 +352,203 @@ function ThemeEditorForm({
           </section>
         </aside>
       </div>
+    </FormDialog>
+  );
+}
 
-      <section className="admin-table-panel">
-        <h2>Theme version history</h2>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Version</th>
-                <th>Status</th>
-                <th>Primary</th>
-                <th>Note</th>
-                <th>Created</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {data.versions.map((ver: ThemeVersionDto) => (
-                <tr key={ver.id}>
-                  <td>
-                    <strong>v{ver.versionNumber}</strong>
-                  </td>
-                  <td>
-                    <StatusBadge status={ver.status} />
-                  </td>
-                  <td>
-                    <code>{ver.tokens.colors.primary}</code>
-                  </td>
-                  <td className="muted">{ver.note || "—"}</td>
-                  <td>{formatDateTime(ver.createdAt)}</td>
-                  <td>
-                    <div className="button-row">
-                      {canPublish && ver.status === "DRAFT" ? (
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          disabled={publishMutation.isPending}
-                          onClick={() => publishMutation.mutate(ver.id)}
-                        >
-                          Publish
-                        </Button>
-                      ) : null}
-                      {canPublish && ver.status !== "PUBLISHED" ? (
-                        <Button
-                          size="sm"
-                          disabled={rollbackMutation.isPending}
-                          onClick={() => rollbackMutation.mutate(ver.id)}
-                        >
-                          <RotateCcw size={13} /> Rollback
-                        </Button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+function ThemeWorkspace({
+  data,
+  canWrite,
+  canPublish,
+  notify,
+}: {
+  data: AdminThemeResponse;
+  canWrite: boolean;
+  canPublish: boolean;
+  notify: (msg: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [editorState, setEditorState] = useState<{
+    key: string;
+    tokens: ThemeTokens;
+    label: string;
+  } | null>(null);
+
+  const publishMutation = useMutation({
+    mutationFn: (versionId?: string) => cmsAdminApi.publishTheme(versionId),
+    onSuccess: (pub) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
+      queryClient.invalidateQueries({ queryKey: ["store-theme"] });
+      notify(`Published theme v${pub.versionNumber}`);
+    },
+    onError: (err) =>
+      notify(err instanceof ApiError ? err.message : "Failed to publish theme"),
+  });
+
+  const rollbackMutation = useMutation({
+    mutationFn: (versionId: string) => cmsAdminApi.rollbackTheme(versionId),
+    onSuccess: (rolled) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
+      queryClient.invalidateQueries({ queryKey: ["store-theme"] });
+      notify(`Rolled back theme (created published v${rolled.versionNumber})`);
+    },
+    onError: (err) =>
+      notify(err instanceof ApiError ? err.message : "Failed to rollback theme"),
+  });
+
+  const baseTokens =
+    data.latest?.tokens || data.published?.tokens || FALLBACK_TOKENS;
+
+  const columns: DataTableColumn<ThemeVersionDto>[] = [
+    {
+      id: "version",
+      header: "Version",
+      cell: (ver) => <strong>v{ver.versionNumber}</strong>,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (ver) => <StatusBadge status={ver.status} />,
+    },
+    {
+      id: "primary",
+      header: "Primary",
+      cell: (ver) => (
+        <span className="inline-label">
+          <span
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: 3,
+              background: ver.tokens.colors.primary,
+              border: "1px solid var(--border)",
+            }}
+          />
+          <code>{ver.tokens.colors.primary}</code>
+        </span>
+      ),
+    },
+    {
+      id: "typography",
+      header: "Typography",
+      cell: (ver) =>
+        `${ver.tokens.typography.headingFont} / ${ver.tokens.typography.bodyFont}`,
+    },
+    {
+      id: "note",
+      header: "Note",
+      cell: (ver) => <span className="muted">{ver.note || "—"}</span>,
+    },
+    {
+      id: "created",
+      header: "Created",
+      cell: (ver) => formatDateTime(ver.createdAt),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      align: "right",
+      cell: (ver) => (
+        <div className="button-row" style={{ justifyContent: "flex-end" }}>
+          {canWrite ? (
+            <Button
+              size="sm"
+              onClick={() =>
+                setEditorState({
+                  key: ver.id,
+                  tokens: ver.tokens,
+                  label: `v${ver.versionNumber}`,
+                })
+              }
+            >
+              Edit copy
+            </Button>
+          ) : null}
+          {canPublish && ver.status === "DRAFT" ? (
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={publishMutation.isPending}
+              onClick={() => publishMutation.mutate(ver.id)}
+            >
+              Publish
+            </Button>
+          ) : null}
+          {canPublish && ver.status !== "PUBLISHED" ? (
+            <Button
+              size="sm"
+              disabled={rollbackMutation.isPending}
+              onClick={() => rollbackMutation.mutate(ver.id)}
+            >
+              <RotateCcw size={13} /> Rollback
+            </Button>
+          ) : null}
         </div>
-      </section>
-    </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <div className="admin-title">
+        <div>
+          <h1>Theme Tokens</h1>
+          <p>
+            Allowlisted storefront colors, typography, radii, and container spacing (no raw CSS injection).
+          </p>
+        </div>
+        <div className="button-row">
+          {data.published ? (
+            <Badge tone="green">Published v{data.published.versionNumber}</Badge>
+          ) : null}
+          {canPublish && data.latest && data.latest.status !== "PUBLISHED" ? (
+            <Button
+              disabled={publishMutation.isPending}
+              onClick={() => publishMutation.mutate(data.latest?.id)}
+            >
+              <Check size={14} /> Publish v{data.latest.versionNumber}
+            </Button>
+          ) : null}
+          {canWrite ? (
+            <Button
+              variant="primary"
+              onClick={() =>
+                setEditorState({
+                  key: data.latest?.id || "new",
+                  tokens: baseTokens,
+                  label: data.latest
+                    ? `v${data.latest.versionNumber}`
+                    : "default palette",
+                })
+              }
+            >
+              <Palette size={15} /> Customize theme
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      <DataTable
+        title="Theme version history"
+        columns={columns}
+        data={data.versions}
+        getRowKey={(ver) => ver.id}
+        pageSize={10}
+      />
+
+      {editorState ? (
+        <ThemeEditorDialog
+          key={editorState.key}
+          open
+          onOpenChange={(nextOpen) => !nextOpen && setEditorState(null)}
+          initialTokens={editorState.tokens}
+          sourceLabel={editorState.label}
+          canWrite={canWrite}
+          canPublish={canPublish}
+          notify={notify}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -446,8 +582,7 @@ export function ThemeSettingsView({
   }
 
   return (
-    <ThemeEditorForm
-      key={themeQuery.data.latest?.id || "theme"}
+    <ThemeWorkspace
       data={themeQuery.data}
       canWrite={canWrite}
       canPublish={canPublish}

@@ -2,7 +2,9 @@
 .admin-app {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  min-height: 100dvh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
 }
 
 .admin-app.rail-only {
@@ -125,21 +127,26 @@
 }
 
 .admin-body {
+  height: 100dvh;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .admin-top {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
+  flex-shrink: 0;
   gap: 10px;
   justify-content: space-between;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  min-height: 58px;
-  padding: 0 clamp(14px, 2.2vw, 32px);
-  position: sticky;
-  top: 0;
+  min-height: 56px;
+  padding: 0 clamp(14px, 2.2vw, 28px);
   z-index: 4;
 }
 
@@ -171,9 +178,26 @@
 }
 
 .admin-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
   max-width: 1460px;
   margin: 0 auto;
-  padding: 22px clamp(14px, 2.2vw, 32px) 44px;
+  padding: 16px clamp(14px, 2.2vw, 28px) 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.admin-page-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-right: 2px;
 }
 
 .admin-title {
@@ -181,7 +205,8 @@
   justify-content: space-between;
   align-items: flex-end;
   gap: 14px;
-  margin-bottom: 22px;
+  margin-bottom: 0;
+  flex-shrink: 0;
   flex-wrap: wrap;
 }
 
@@ -370,21 +395,54 @@
 }
 
 /* Tables */
-.admin-table-panel {
+.admin-table-panel,
+.ui-data-table-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
   min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   box-shadow: var(--shadow-sm);
 }
 
-.table-scroll {
+.admin-table-panel > .section-title,
+.ui-data-table-header {
+  flex-shrink: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.table-scroll,
+.ui-data-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
 }
 
+.ui-data-table-scroll.is-fetching {
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.ui-data-table-loading,
+.ui-data-table-empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
 .table-toolbar,
-.table-footer {
-  padding: 12px 14px;
+.ui-data-table-toolbar,
+.table-footer,
+.ui-data-table-footer {
+  flex-shrink: 0;
+  padding: 10px 14px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -443,11 +501,43 @@
 
 .admin-app th,
 .dialog th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: var(--subtle);
   color: var(--muted);
   font-weight: 640;
   font-size: 11.5px;
   white-space: nowrap;
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.admin-media-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.admin-tabs-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-tabs-shell > .ui-tabs {
+  flex-shrink: 0;
+  align-self: flex-start;
 }
 
 .admin-app td .badge,
@@ -738,9 +828,10 @@
 .ai-workspace {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
-  height: calc(100dvh - 190px);
-  min-height: 460px;
-  max-height: 760px;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  max-height: none;
   overflow: hidden;
 }
 
@@ -1088,6 +1179,16 @@
   .admin-app,
   .admin-app.rail-only {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    max-height: none;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .admin-body,
+  .admin-content {
+    height: auto;
+    max-height: none;
+    overflow: visible;
   }
   .admin-sidebar {
     display: none;

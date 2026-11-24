@@ -5,23 +5,29 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownUp,
-  Check,
   Package,
+  Pencil,
   Plus,
-  Search,
   Trash2,
   Upload,
 } from "lucide-react";
 import { useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, IconButton } from "@/components/ui/button";
 import {
   Breadcrumbs,
   Empty,
   ImageGallery,
   Skeleton,
 } from "@/components/ui/data-display";
-import { ConfirmDialog, Modal } from "@/components/ui/dialog";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { ConfirmDialog } from "@/components/ui/dialog";
+import {
+  FormDialog,
+  FormDialogRow,
+  FormDialogSection,
+} from "@/components/ui/form-dialog";
+import { Tabs } from "@/components/ui/overlay";
 import {
   Select,
   SelectContent,
@@ -41,6 +47,7 @@ import type {
   InventoryLevelDto,
   ProductDto,
   ProductTypeDto,
+  AdjustmentDto,
   TypeAttributeDto,
   VariantDto,
   VariantInput,
@@ -71,14 +78,19 @@ function formatAttributeInitialValues(product?: ProductDto): Record<string, unkn
   return map;
 }
 
-function ProductForm({
+function ProductFormDialog({
+  open,
+  onOpenChange,
   existing,
   notify,
+  onSaved,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   existing?: ProductDto;
   notify: (msg: string) => void;
+  onSaved?: (saved: ProductDto) => void;
 }) {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const { hasPermission } = useAuth();
   const canUploadMedia = hasPermission("media:write");
@@ -101,42 +113,37 @@ function ProductForm({
   const categories = categoriesQuery.data || [];
   const mediaAssets = mediaQuery.data || [];
 
-  const [selectedTypeId, setSelectedTypeId] = useState<string>(
-    existing?.productTypeId || ""
-  );
+  const [selectedTypeId, setSelectedTypeId] = useState(existing?.productTypeId || "");
   const [name, setName] = useState(existing?.name || "");
   const [slug, setSlug] = useState(existing?.slug || "");
   const [brand, setBrand] = useState(existing?.brand || "Terrain");
   const [status, setStatus] = useState(existing?.status || "ACTIVE");
   const [description, setDescription] = useState(existing?.description || "");
   const [seoTitle, setSeoTitle] = useState(existing?.seoTitle || "");
-  const [seoDescription, setSeoDescription] = useState(
-    existing?.seoDescription || ""
-  );
+  const [seoDescription, setSeoDescription] = useState(existing?.seoDescription || "");
   const [categoryIds, setCategoryIds] = useState<string[]>(
-    existing?.categories.map((c) => c.id) || []
+    existing ? existing.categories.map((c) => c.id) : []
+  );
+  const [attrValues, setAttrValues] = useState<Record<string, unknown>>(
+    formatAttributeInitialValues(existing)
   );
   const [images, setImages] = useState<
-    { mediaAssetId?: string | null; url: string; altText?: string }[]
-  >(() =>
+    { mediaAssetId?: string; url: string; altText?: string }[]
+  >(
     existing?.images?.length
-      ? existing.images.map((img) => ({
-          mediaAssetId: img.mediaAssetId,
-          url: img.url,
-          altText: img.altText || existing.name,
+      ? existing.images.map((i) => ({
+          mediaAssetId: i.mediaAssetId || undefined,
+          url: i.url,
+          altText: i.altText || undefined,
         }))
       : existing?.primaryImageUrl
         ? [{ url: existing.primaryImageUrl, altText: existing.name }]
         : [{ url: "/media/terrain-fallback.jpg", altText: "Product" }]
   );
   const [imageUrlInput, setImageUrlInput] = useState("");
-  const [attrValues, setAttrValues] = useState<Record<string, unknown>>(() =>
-    formatAttributeInitialValues(existing)
-  );
-  const [variants, setVariants] = useState<VariantInput[]>(() =>
+  const [variants, setVariants] = useState<VariantInput[]>(
     existing?.variants?.length
       ? existing.variants.map((v) => ({
-          id: v.id,
           sku: v.sku,
           title: v.title,
           price: v.price,
@@ -227,7 +234,8 @@ function ProductForm({
       queryClient.invalidateQueries({ queryKey: ["admin-products"] });
       queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
       notify("Product created");
-      router.push(`/admin/products/${created.id}`);
+      onOpenChange(false);
+      onSaved?.(created);
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : "Failed to create product"),
@@ -263,7 +271,8 @@ function ProductForm({
       queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
       setConfirmTypeSwitch(false);
       notify("Product saved");
-      router.push(`/admin/products/${updated.id}`);
+      onOpenChange(false);
+      onSaved?.(updated);
     },
     onError: (err) => {
       if (err instanceof ApiError && err.status === 409 && !confirmTypeSwitch) {
@@ -409,36 +418,19 @@ function ProductForm({
     );
   }
 
-  if (typesQuery.isLoading || categoriesQuery.isLoading) {
-    return <Skeleton rows={5} />;
-  }
-
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { label: "Products", href: "/admin/products" },
-          ...(existing
-            ? [
-                { label: existing.name, href: `/admin/products/${existing.id}` },
-                { label: "Edit" },
-              ]
-            : [{ label: "New product" }]),
-        ]}
-      />
-
-      <div className="admin-title">
-        <div>
-          <h1>{existing ? `Edit ${existing.name}` : "New product"}</h1>
-          <p>
-            Typed attributes and variant options update automatically based on product type.
-          </p>
-        </div>
-      </div>
-
-      <form
-        className="form-stack"
-        style={{ maxWidth: 940 }}
+      <FormDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        size="xl"
+        title={existing ? `Edit ${existing.name}` : "New product"}
+        description="Typed attributes and variant options update automatically based on product type."
+        headerExtra={existing ? <StatusBadge status={existing.status} /> : null}
+        submitLabel={existing ? "Save product" : "Create product"}
+        isSubmitting={createMutation.isPending || updateMutation.isPending}
+        submitDisabled={typesQuery.isLoading || categoriesQuery.isLoading}
+        error={error}
         onSubmit={(e) => {
           e.preventDefault();
           setError("");
@@ -461,452 +453,435 @@ function ProductForm({
           }
         }}
       >
-        <div className="admin-product-view">
-          <div className="form-stack">
-            <section className="panel form-stack">
-              <h2>Basic details</h2>
-              <div className="form-pair">
-                <label>
-                  Product name
-                  <input
-                    required
-                    value={name}
-                    placeholder="Apex Carbon GTX"
-                    onChange={(e) => {
-                      const nextName = e.target.value;
-                      setName(nextName);
-                      if (!existing) setSlug(slugify(nextName));
-                    }}
-                  />
-                </label>
-                <label>
-                  Slug
-                  <input
-                    value={slug}
-                    placeholder="apex-carbon-gtx"
-                    onChange={(e) => setSlug(slugify(e.target.value))}
-                  />
-                </label>
-              </div>
+        {typesQuery.isLoading || categoriesQuery.isLoading ? (
+          <Skeleton rows={5} />
+        ) : (
+          <div className="admin-product-view">
+            <div className="form-stack">
+              <FormDialogSection title="Basic details">
+                <FormDialogRow>
+                  <label>
+                    Product name
+                    <input
+                      required
+                      value={name}
+                      placeholder="Apex Carbon GTX"
+                      onChange={(e) => {
+                        const nextName = e.target.value;
+                        setName(nextName);
+                        if (!existing) setSlug(slugify(nextName));
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Slug
+                    <input
+                      value={slug}
+                      placeholder="apex-carbon-gtx"
+                      onChange={(e) => setSlug(slugify(e.target.value))}
+                    />
+                  </label>
+                </FormDialogRow>
 
-              <div className="form-pair">
+                <FormDialogRow>
+                  <label>
+                    Product type
+                    <Select
+                      required
+                      items={productTypes.map((pt) => ({
+                        value: pt.id,
+                        label: `${pt.name} (${pt.code})`,
+                      }))}
+                      value={effectiveTypeId}
+                      onValueChange={(next) => setSelectedTypeId(next ?? "")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {productTypes.map((pt) => (
+                          <SelectItem key={pt.id} value={pt.id}>
+                            {pt.name} ({pt.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                  <label>
+                    Brand
+                    <input
+                      required
+                      value={brand}
+                      onChange={(e) => setBrand(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Status
+                    <Select
+                      items={PRODUCT_STATUS_ITEMS}
+                      value={status}
+                      onValueChange={(next) => next && setStatus(next)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PRODUCT_STATUS_ITEMS.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                </FormDialogRow>
+
                 <label>
-                  Product type
-                  <Select
-                    required
-                    items={productTypes.map((pt) => ({
-                      value: pt.id,
-                      label: `${pt.name} (${pt.code})`,
-                    }))}
-                    value={effectiveTypeId}
-                    onValueChange={(next) => setSelectedTypeId(next ?? "")}
+                  Description
+                  <textarea
+                    rows={3}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                </label>
+
+                <div>
+                  <strong style={{ fontSize: 12.5 }}>Categories</strong>
+                  <div
+                    className="button-row"
+                    style={{ marginTop: 8, flexWrap: "wrap", gap: 10 }}
                   >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {productTypes.map((pt) => (
-                        <SelectItem key={pt.id} value={pt.id}>
-                          {pt.name} ({pt.code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-                <label>
-                  Brand
-                  <input
-                    required
-                    value={brand}
-                    onChange={(e) => setBrand(e.target.value)}
-                  />
-                </label>
-                <label>
-                  Status
-                  <Select
-                    items={PRODUCT_STATUS_ITEMS}
-                    value={status}
-                    onValueChange={(next) => next && setStatus(next)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PRODUCT_STATUS_ITEMS.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-              </div>
+                    {categories.map((cat) => {
+                      const checked = categoryIds.includes(cat.id);
+                      return (
+                        <label className="check-label" key={cat.id}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) =>
+                              setCategoryIds((curr) =>
+                                e.target.checked
+                                  ? [...curr, cat.id]
+                                  : curr.filter((c) => c !== cat.id)
+                              )
+                            }
+                          />
+                          {cat.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </FormDialogSection>
 
-              <label>
-                Description
-                <textarea
-                  rows={3}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </label>
+              <FormDialogSection
+                title="Dynamic attributes"
+                actions={
+                  activeProductType ? (
+                    <Badge tone="accent">{activeProductType.name}</Badge>
+                  ) : null
+                }
+              >
+                {activeProductType?.attributes?.length ? (
+                  <div className="form-stack" style={{ gap: 12 }}>
+                    {activeProductType.attributes.map(renderTypedAttributeInput)}
+                  </div>
+                ) : (
+                  <p className="muted" style={{ fontSize: 12.5 }}>
+                    This product type has no bound attributes.
+                  </p>
+                )}
+              </FormDialogSection>
 
-              <div>
-                <strong style={{ fontSize: 12.5 }}>Categories</strong>
-                <div
-                  className="button-row"
-                  style={{ marginTop: 8, flexWrap: "wrap", gap: 10 }}
+              {!existing ? (
+                <FormDialogSection
+                  title="Initial variants & SKUs"
+                  actions={
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        setVariants((curr) => [
+                          ...curr,
+                          {
+                            sku: "",
+                            title: `Variant ${curr.length + 1}`,
+                            price: curr[0]?.price || 129,
+                            stock: 10,
+                            options: {},
+                            status: "ACTIVE",
+                          },
+                        ])
+                      }
+                    >
+                      <Plus size={13} /> Add variant
+                    </Button>
+                  }
                 >
-                  {categories.map((cat) => {
-                    const checked = categoryIds.includes(cat.id);
-                    return (
-                      <label className="check-label" key={cat.id}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) =>
-                            setCategoryIds((curr) =>
-                              e.target.checked
-                                ? [...curr, cat.id]
-                                : curr.filter((c) => c !== cat.id)
-                            )
-                          }
-                        />
-                        {cat.name}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            </section>
+                  {variants.map((variant, idx) => (
+                    <div
+                      key={idx}
+                      className="panel"
+                      style={{ padding: 12, display: "grid", gap: 10, boxShadow: "none" }}
+                    >
+                      <FormDialogRow>
+                        <label>
+                          SKU
+                          <input
+                            required
+                            value={variant.sku}
+                            placeholder="TER-001"
+                            onChange={(e) =>
+                              setVariants((curr) =>
+                                curr.map((v, i) =>
+                                  i === idx ? { ...v, sku: e.target.value } : v
+                                )
+                              )
+                            }
+                          />
+                        </label>
+                        <label>
+                          Title
+                          <input
+                            required
+                            value={variant.title}
+                            placeholder="10 / Forest"
+                            onChange={(e) =>
+                              setVariants((curr) =>
+                                curr.map((v, i) =>
+                                  i === idx ? { ...v, title: e.target.value } : v
+                                )
+                              )
+                            }
+                          />
+                        </label>
+                      </FormDialogRow>
+                      <FormDialogRow>
+                        <label>
+                          Price (USD)
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            required
+                            value={variant.price}
+                            onChange={(e) =>
+                              setVariants((curr) =>
+                                curr.map((v, i) =>
+                                  i === idx ? { ...v, price: Number(e.target.value) } : v
+                                )
+                              )
+                            }
+                          />
+                        </label>
+                        <label>
+                          Compare at
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={variant.compareAtPrice ?? ""}
+                            onChange={(e) =>
+                              setVariants((curr) =>
+                                curr.map((v, i) =>
+                                  i === idx
+                                    ? {
+                                        ...v,
+                                        compareAtPrice: e.target.value
+                                          ? Number(e.target.value)
+                                          : undefined,
+                                      }
+                                    : v
+                                )
+                              )
+                            }
+                          />
+                        </label>
+                        <label>
+                          Initial stock
+                          <input
+                            type="number"
+                            min="0"
+                            required
+                            value={variant.stock}
+                            onChange={(e) =>
+                              setVariants((curr) =>
+                                curr.map((v, i) =>
+                                  i === idx ? { ...v, stock: Number(e.target.value) } : v
+                                )
+                              )
+                            }
+                          />
+                        </label>
+                      </FormDialogRow>
+                      {activeProductType?.variantOptions?.length ? (
+                        <FormDialogRow>
+                          {activeProductType.variantOptions.map((vo) => (
+                            <label key={vo.code}>
+                              {vo.name}
+                              <input
+                                value={variant.options?.[vo.code] || ""}
+                                placeholder={vo.name}
+                                onChange={(e) =>
+                                  setVariants((curr) =>
+                                    curr.map((v, i) =>
+                                      i === idx
+                                        ? {
+                                            ...v,
+                                            options: {
+                                              ...(v.options || {}),
+                                              [vo.code]: e.target.value,
+                                            },
+                                          }
+                                        : v
+                                    )
+                                  )
+                                }
+                              />
+                            </label>
+                          ))}
+                        </FormDialogRow>
+                      ) : null}
+                      {variants.length > 1 ? (
+                        <div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setVariants((curr) => curr.filter((_, i) => i !== idx))
+                            }
+                          >
+                            Remove variant
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </FormDialogSection>
+              ) : null}
 
-            <section className="panel form-stack">
-              <div className="section-title">
-                <h2>Dynamic attributes</h2>
-                {activeProductType ? (
-                  <Badge tone="accent">{activeProductType.name}</Badge>
+              {existing ? (
+                <FormDialogSection title="Search engine optimization">
+                  <label>
+                    SEO Title
+                    <input
+                      value={seoTitle}
+                      onChange={(e) => setSeoTitle(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    SEO Meta Description
+                    <textarea
+                      rows={2}
+                      value={seoDescription}
+                      onChange={(e) => setSeoDescription(e.target.value)}
+                    />
+                  </label>
+                </FormDialogSection>
+              ) : null}
+            </div>
+
+            <aside className="form-stack">
+              <FormDialogSection title="Product media">
+                <ImageGallery
+                  images={images.map((i) => i.url)}
+                  alt={name || "Product"}
+                  onRemove={(url) =>
+                    setImages((curr) => curr.filter((img) => img.url !== url))
+                  }
+                  onSelectPrimary={(url) =>
+                    setImages((curr) => {
+                      const hit = curr.find((i) => i.url === url);
+                      if (!hit) return curr;
+                      return [hit, ...curr.filter((i) => i.url !== url)];
+                    })
+                  }
+                />
+
+                {canUploadMedia ? (
+                  <label className="btn media-upload">
+                    <Upload size={14} />{" "}
+                    {uploadMutation.isPending ? "Uploading…" : "Upload to S3 storage"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={uploadMutation.isPending}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) uploadMutation.mutate(file);
+                      }}
+                    />
+                  </label>
                 ) : null}
-              </div>
-              {activeProductType?.attributes?.length ? (
-                <div className="form-stack" style={{ gap: 12 }}>
-                  {activeProductType.attributes.map(renderTypedAttributeInput)}
-                </div>
-              ) : (
-                <p className="muted" style={{ fontSize: 12.5 }}>
-                  This product type has no bound attributes.
-                </p>
-              )}
-            </section>
 
-            {!existing ? (
-              <section className="panel form-stack">
-                <div className="section-title">
-                  <h2>Initial variants & SKUs</h2>
+                {mediaAssets.length ? (
+                  <label>
+                    Attach from Media Library
+                    <Select
+                      items={[
+                        { value: "", label: "Choose uploaded asset…" },
+                        ...mediaAssets.map((a) => ({
+                          value: a.id,
+                          label: a.originalFilename,
+                        })),
+                      ]}
+                      value=""
+                      onValueChange={(next) => {
+                        const asset = mediaAssets.find((a) => a.id === next);
+                        if (!asset) return;
+                        setImages((curr) => [
+                          ...curr.filter((i) => i.url !== "/media/terrain-fallback.jpg"),
+                          {
+                            mediaAssetId: asset.id,
+                            url: asset.url,
+                            altText: asset.altText || asset.originalFilename,
+                          },
+                        ]);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Choose uploaded asset…</SelectItem>
+                        {mediaAssets.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.originalFilename}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                ) : null}
+
+                <div className="form-pair" style={{ alignItems: "flex-end" }}>
+                  <label style={{ flex: 1 }}>
+                    Or add image URL
+                    <input
+                      value={imageUrlInput}
+                      placeholder="/media/shoe-olive.jpg"
+                      onChange={(e) => setImageUrlInput(e.target.value)}
+                    />
+                  </label>
                   <Button
                     size="sm"
-                    onClick={() =>
-                      setVariants((curr) => [
-                        ...curr,
-                        {
-                          sku: "",
-                          title: `Variant ${curr.length + 1}`,
-                          price: curr[0]?.price || 129,
-                          stock: 10,
-                          options: {},
-                          status: "ACTIVE",
-                        },
-                      ])
-                    }
-                  >
-                    <Plus size={13} /> Add variant
-                  </Button>
-                </div>
-                {variants.map((variant, idx) => (
-                  <div
-                    key={idx}
-                    className="panel"
-                    style={{ padding: 12, display: "grid", gap: 10 }}
-                  >
-                    <div className="form-pair">
-                      <label>
-                        SKU
-                        <input
-                          required
-                          value={variant.sku}
-                          placeholder="TER-001"
-                          onChange={(e) =>
-                            setVariants((curr) =>
-                              curr.map((v, i) =>
-                                i === idx ? { ...v, sku: e.target.value } : v
-                              )
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        Title
-                        <input
-                          required
-                          value={variant.title}
-                          placeholder="10 / Forest"
-                          onChange={(e) =>
-                            setVariants((curr) =>
-                              curr.map((v, i) =>
-                                i === idx ? { ...v, title: e.target.value } : v
-                              )
-                            )
-                          }
-                        />
-                      </label>
-                    </div>
-                    <div className="form-pair">
-                      <label>
-                        Price (USD)
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          required
-                          value={variant.price}
-                          onChange={(e) =>
-                            setVariants((curr) =>
-                              curr.map((v, i) =>
-                                i === idx ? { ...v, price: Number(e.target.value) } : v
-                              )
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        Compare at
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={variant.compareAtPrice ?? ""}
-                          onChange={(e) =>
-                            setVariants((curr) =>
-                              curr.map((v, i) =>
-                                i === idx
-                                  ? {
-                                      ...v,
-                                      compareAtPrice: e.target.value
-                                        ? Number(e.target.value)
-                                        : undefined,
-                                    }
-                                  : v
-                              )
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        Initial stock
-                        <input
-                          type="number"
-                          min="0"
-                          required
-                          value={variant.stock}
-                          onChange={(e) =>
-                            setVariants((curr) =>
-                              curr.map((v, i) =>
-                                i === idx ? { ...v, stock: Number(e.target.value) } : v
-                              )
-                            )
-                          }
-                        />
-                      </label>
-                    </div>
-                    {activeProductType?.variantOptions?.length ? (
-                      <div className="form-pair">
-                        {activeProductType.variantOptions.map((vo) => (
-                          <label key={vo.code}>
-                            {vo.name}
-                            <input
-                              value={variant.options?.[vo.code] || ""}
-                              placeholder={vo.name}
-                              onChange={(e) =>
-                                setVariants((curr) =>
-                                  curr.map((v, i) =>
-                                    i === idx
-                                      ? {
-                                          ...v,
-                                          options: {
-                                            ...(v.options || {}),
-                                            [vo.code]: e.target.value,
-                                          },
-                                        }
-                                      : v
-                                  )
-                                )
-                              }
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    ) : null}
-                    {variants.length > 1 ? (
-                      <div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() =>
-                            setVariants((curr) => curr.filter((_, i) => i !== idx))
-                          }
-                        >
-                          <Trash2 size={13} /> Remove variant
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </section>
-            ) : (
-              <section className="panel form-stack">
-                <h2>SEO metadata</h2>
-                <label>
-                  SEO Title
-                  <input
-                    value={seoTitle}
-                    onChange={(e) => setSeoTitle(e.target.value)}
-                  />
-                </label>
-                <label>
-                  SEO Description
-                  <textarea
-                    rows={2}
-                    value={seoDescription}
-                    onChange={(e) => setSeoDescription(e.target.value)}
-                  />
-                </label>
-              </section>
-            )}
-          </div>
-
-          <aside className="form-stack">
-            <section className="panel form-stack">
-              <h2>Product media</h2>
-              <ImageGallery
-                images={images.map((i) => i.url)}
-                alt={name || "Product"}
-                onRemove={(url) =>
-                  setImages((curr) => curr.filter((img) => img.url !== url))
-                }
-                onSelectPrimary={(url) =>
-                  setImages((curr) => {
-                    const hit = curr.find((i) => i.url === url);
-                    if (!hit) return curr;
-                    return [hit, ...curr.filter((i) => i.url !== url)];
-                  })
-                }
-              />
-
-              {canUploadMedia ? (
-                <label className="btn media-upload">
-                  <Upload size={14} />{" "}
-                  {uploadMutation.isPending ? "Uploading…" : "Upload to S3 storage"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    disabled={uploadMutation.isPending}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = "";
-                      if (file) uploadMutation.mutate(file);
-                    }}
-                  />
-                </label>
-              ) : null}
-
-              {mediaAssets.length ? (
-                <label>
-                  Attach from Media Library
-                  <Select
-                    items={[
-                      { value: "", label: "Choose uploaded asset…" },
-                      ...mediaAssets.map((a) => ({
-                        value: a.id,
-                        label: a.originalFilename,
-                      })),
-                    ]}
-                    value=""
-                    onValueChange={(next) => {
-                      const asset = mediaAssets.find((a) => a.id === next);
-                      if (!asset) return;
+                    onClick={() => {
+                      if (!imageUrlInput.trim()) return;
                       setImages((curr) => [
                         ...curr.filter((i) => i.url !== "/media/terrain-fallback.jpg"),
-                        {
-                          mediaAssetId: asset.id,
-                          url: asset.url,
-                          altText: asset.altText || asset.originalFilename,
-                        },
+                        { url: imageUrlInput.trim(), altText: name || "Product image" },
                       ]);
+                      setImageUrlInput("");
                     }}
                   >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">Choose uploaded asset…</SelectItem>
-                      {mediaAssets.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.originalFilename}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-              ) : null}
-
-              <div className="form-pair" style={{ alignItems: "flex-end" }}>
-                <label style={{ flex: 1 }}>
-                  Or add image URL
-                  <input
-                    value={imageUrlInput}
-                    placeholder="/media/shoe-olive.jpg"
-                    onChange={(e) => setImageUrlInput(e.target.value)}
-                  />
-                </label>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (!imageUrlInput.trim()) return;
-                    setImages((curr) => [
-                      ...curr.filter((i) => i.url !== "/media/terrain-fallback.jpg"),
-                      { url: imageUrlInput.trim(), altText: name || "Product image" },
-                    ]);
-                    setImageUrlInput("");
-                  }}
-                >
-                  Add
-                </Button>
-              </div>
-            </section>
-          </aside>
-        </div>
-
-        {error ? (
-          <p className="danger" role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        <div className="button-row">
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={createMutation.isPending || updateMutation.isPending}
-          >
-            {existing ? "Save product" : "Create product"}
-          </Button>
-          <Link
-            className="btn"
-            href={existing ? `/admin/products/${existing.id}` : "/admin/products"}
-          >
-            Cancel
-          </Link>
-        </div>
-      </form>
+                    Add
+                  </Button>
+                </div>
+              </FormDialogSection>
+            </aside>
+          </div>
+        )}
+      </FormDialog>
 
       {confirmTypeSwitch ? (
         <ConfirmDialog
@@ -924,9 +899,13 @@ function ProductForm({
 
 function ProductDetailView({
   product,
+  initialEditOpen = false,
+  onEditCloseNavigate,
   notify,
 }: {
   product: ProductDto;
+  initialEditOpen?: boolean;
+  onEditCloseNavigate?: () => void;
   notify: (msg: string) => void;
 }) {
   const router = useRouter();
@@ -936,6 +915,8 @@ function ProductDetailView({
   const canPrice = hasPermission("pricing:write") || canWrite;
   const canAdjustStock = hasPermission("inventory:write");
 
+  const [detailTab, setDetailTab] = useState("variants");
+  const [editProductOpen, setEditProductOpen] = useState(initialEditOpen);
   const [editVariant, setEditVariant] = useState<VariantDto | null>(null);
   const [addVariantOpen, setAddVariantOpen] = useState(false);
   const [adjustTarget, setAdjustTarget] = useState<{
@@ -1015,54 +996,196 @@ function ProductDetailView({
     ? product.images.map((i) => i.url)
     : [product.primaryImageUrl || "/media/terrain-fallback.jpg"];
 
-  return (
-    <>
-      <Breadcrumbs
-        items={[
-          { label: "Products", href: "/admin/products" },
-          { label: product.name },
-        ]}
-      />
-
-      <div className="admin-title">
-        <div>
-          <h1>{product.name}</h1>
-          <p>
-            {product.productTypeName} · {product.brand} ·{" "}
-            {product.categories.map((c) => c.name).join(", ") || "Uncategorized"}
-          </p>
-        </div>
-        <div className="button-row">
-          <StatusBadge status={product.status} />
-          <Link
-            className="btn"
-            href={`/store/product/${product.slug}`}
-            target="_blank"
-          >
-            View in storefront
-          </Link>
-          {canWrite ? (
-            <>
-              <Link
-                className="btn primary"
-                href={`/admin/products/${product.id}/edit`}
-              >
-                Edit product
-              </Link>
-              <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-                <Trash2 size={14} /> Delete
-              </Button>
-            </>
+  const variantColumns: DataTableColumn<VariantDto>[] = [
+    {
+      id: "sku",
+      header: "SKU",
+      cell: (v) => <code>{v.sku}</code>,
+    },
+    {
+      id: "variant",
+      header: "Variant",
+      cell: (v) => <strong>{v.title}</strong>,
+    },
+    {
+      id: "options",
+      header: "Options",
+      cell: (v) =>
+        Object.entries(v.options || {}).length
+          ? Object.entries(v.options)
+              .map(([k, val]) => `${k}: ${val}`)
+              .join(" · ")
+          : "—",
+    },
+    {
+      id: "price",
+      header: "Price",
+      cell: (v) => (
+        <>
+          <strong>{usdExact(v.price)}</strong>
+          {v.compareAtPrice ? (
+            <span
+              className="muted"
+              style={{
+                textDecoration: "line-through",
+                marginLeft: 6,
+                fontSize: 11.5,
+              }}
+            >
+              {usdExact(v.compareAtPrice)}
+            </span>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      id: "stock",
+      header: "Stock",
+      cell: (v) => (
+        <>
+          <StatusBadge
+            status={
+              v.availableStock === 0
+                ? "Out of stock"
+                : v.availableStock <= 5
+                  ? "Low stock"
+                  : "In stock"
+            }
+          />{" "}
+          <span className="muted">({v.availableStock})</span>
+        </>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (v) => <StatusBadge status={v.status} />,
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      align: "right",
+      cell: (v) => (
+        <div className="button-row" style={{ justifyContent: "flex-end" }}>
+          {canPrice ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                setModalError("");
+                setEditVariant(v);
+              }}
+            >
+              Edit price
+            </Button>
+          ) : null}
+          {canAdjustStock ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                setModalError("");
+                setAdjustTarget({
+                  variantId: v.id,
+                  sku: v.sku,
+                  currentStock: v.availableStock,
+                });
+              }}
+            >
+              Adjust stock
+            </Button>
           ) : null}
         </div>
-      </div>
+      ),
+    },
+  ];
 
-      <div className="admin-product-view">
-        <div className="panel">
-          <ImageGallery images={gallery} alt={product.name} />
+  const attributeColumns: DataTableColumn<(typeof product.attributes)[number]>[] = [
+    {
+      id: "name",
+      header: "Attribute",
+      cell: (attr) => attr.name,
+    },
+    {
+      id: "code",
+      header: "Code",
+      cell: (attr) => <code>{attr.code}</code>,
+    },
+    {
+      id: "value",
+      header: "Value",
+      cell: (attr) => {
+        const rawDisplay =
+          attr.displayValue ||
+          (attr.value !== null && attr.value !== undefined
+            ? String(attr.value)
+            : "—");
+        return (
+          <strong>
+            {attr.unit &&
+            rawDisplay !== "—" &&
+            !rawDisplay.toLowerCase().endsWith(attr.unit.toLowerCase())
+              ? `${rawDisplay} ${attr.unit}`
+              : rawDisplay}
+          </strong>
+        );
+      },
+    },
+    {
+      id: "flags",
+      header: "Flags",
+      cell: (attr) => (
+        <div className="button-row" style={{ gap: 4, flexWrap: "wrap" }}>
+          {attr.filterable ? <Badge tone="green">Filterable</Badge> : null}
+          {attr.searchable ? <Badge>Searchable</Badge> : null}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <div className="admin-page-scroll">
+        <Breadcrumbs
+          items={[
+            { label: "Products", href: "/admin/products" },
+            { label: product.name },
+          ]}
+        />
+
+        <div className="admin-title">
+          <div>
+            <h1>{product.name}</h1>
+            <p>
+              {product.productTypeName} · {product.brand} ·{" "}
+              {product.categories.map((c) => c.name).join(", ") || "Uncategorized"}
+            </p>
+          </div>
+          <div className="button-row">
+            <StatusBadge status={product.status} />
+            <Link
+              className="btn"
+              href={`/store/product/${product.slug}`}
+              target="_blank"
+            >
+              View in storefront
+            </Link>
+            {canWrite ? (
+              <>
+                <Button variant="primary" onClick={() => setEditProductOpen(true)}>
+                  <Pencil size={14} /> Edit product
+                </Button>
+                <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 size={14} /> Delete
+                </Button>
+              </>
+            ) : null}
+          </div>
         </div>
 
-        <div className="form-stack">
+        <div className="admin-product-view">
+          <div className="panel">
+            <ImageGallery images={gallery} alt={product.name} />
+          </div>
+
           <section className="panel form-stack">
             <h2>Overview</h2>
             <p className="muted" style={{ fontSize: 13 }}>
@@ -1097,378 +1220,241 @@ function ProductDetailView({
               </div>
             </div>
           </section>
+        </div>
 
-          <section className="panel form-stack">
-            <h2>Typed attributes</h2>
-            {product.attributes.length ? (
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Attribute</th>
-                      <th>Code</th>
-                      <th>Value</th>
-                      <th>Flags</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {product.attributes.map((attr) => (
-                      <tr key={attr.definitionId}>
-                        <td>{attr.name}</td>
-                        <td>
-                          <code>{attr.code}</code>
-                        </td>
-                        <td>
-                          <strong>
-                            {(() => {
-                              const rawDisplay =
-                                attr.displayValue ||
-                                (attr.value !== null && attr.value !== undefined
-                                  ? String(attr.value)
-                                  : "—");
-                              return attr.unit &&
-                                rawDisplay !== "—" &&
-                                !rawDisplay.toLowerCase().endsWith(attr.unit.toLowerCase())
-                                ? `${rawDisplay} ${attr.unit}`
-                                : rawDisplay;
-                            })()}
-                          </strong>
-                        </td>
-                        <td>
-                          <div className="button-row" style={{ gap: 4, flexWrap: "wrap" }}>
-                            {attr.filterable ? (
-                              <Badge tone="green">Filterable</Badge>
-                            ) : null}
-                            {attr.searchable ? <Badge>Searchable</Badge> : null}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="muted" style={{ fontSize: 12.5 }}>
-                No attribute values recorded.
-              </p>
-            )}
-          </section>
+        <div className="admin-tabs-shell">
+          <Tabs
+            items={[
+              {
+                id: "variants",
+                label: "Variants & inventory",
+                badge: product.variants.length,
+              },
+              {
+                id: "attributes",
+                label: "Typed attributes",
+                badge: product.attributes.length,
+              },
+            ]}
+            value={detailTab}
+            onChange={setDetailTab}
+          />
+
+          {detailTab === "variants" ? (
+            <DataTable
+              title="Variants & inventory"
+              headerActions={
+                canWrite ? (
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => {
+                      setModalError("");
+                      setAddVariantOpen(true);
+                    }}
+                  >
+                    <Plus size={14} /> Add variant
+                  </Button>
+                ) : null
+              }
+              columns={variantColumns}
+              data={product.variants}
+              getRowKey={(v) => v.id}
+              pageSize={6}
+            />
+          ) : (
+            <DataTable
+              title="Typed attributes"
+              columns={attributeColumns}
+              data={product.attributes}
+              getRowKey={(attr) => attr.definitionId}
+              pageSize={6}
+              emptyState={
+                <Empty
+                  title="No attribute values recorded"
+                  text="Edit the product to populate dynamic attributes for its product type."
+                />
+              }
+            />
+          )}
         </div>
       </div>
 
-      <section className="admin-table-panel" style={{ marginTop: 18 }}>
-        <div className="section-title">
-          <h2>Variants & inventory</h2>
-          {canWrite ? (
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => {
-                setModalError("");
-                setAddVariantOpen(true);
-              }}
-            >
-              <Plus size={14} /> Add variant
-            </Button>
-          ) : null}
-        </div>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th>Variant</th>
-                <th>Options</th>
-                <th>Price</th>
-                <th>Stock</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {product.variants.map((v) => (
-                <tr key={v.id}>
-                  <td>
-                    <code>{v.sku}</code>
-                  </td>
-                  <td>
-                    <strong>{v.title}</strong>
-                  </td>
-                  <td>
-                    {Object.entries(v.options || {}).length
-                      ? Object.entries(v.options)
-                          .map(([k, val]) => `${k}: ${val}`)
-                          .join(" · ")
-                      : "—"}
-                  </td>
-                  <td>
-                    <strong>{usdExact(v.price)}</strong>
-                    {v.compareAtPrice ? (
-                      <span
-                        className="muted"
-                        style={{
-                          textDecoration: "line-through",
-                          marginLeft: 6,
-                          fontSize: 11.5,
-                        }}
-                      >
-                        {usdExact(v.compareAtPrice)}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td>
-                    <StatusBadge
-                      status={
-                        v.availableStock === 0
-                          ? "Out of stock"
-                          : v.availableStock <= 5
-                            ? "Low stock"
-                            : "In stock"
-                      }
-                    />{" "}
-                    <span className="muted">({v.availableStock})</span>
-                  </td>
-                  <td>
-                    <StatusBadge status={v.status} />
-                  </td>
-                  <td>
-                    <div className="button-row">
-                      {canPrice ? (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setModalError("");
-                            setEditVariant(v);
-                          }}
-                        >
-                          Edit price
-                        </Button>
-                      ) : null}
-                      {canAdjustStock ? (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setModalError("");
-                            setAdjustTarget({
-                              variantId: v.id,
-                              sku: v.sku,
-                              currentStock: v.availableStock,
-                            });
-                          }}
-                        >
-                          Adjust stock
-                        </Button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {editProductOpen ? (
+        <ProductFormDialog
+          key={`edit-${product.id}-${product.version}`}
+          open
+          onOpenChange={(nextOpen) => {
+            setEditProductOpen(nextOpen);
+            if (!nextOpen) {
+              onEditCloseNavigate?.();
+            }
+          }}
+          existing={product}
+          notify={notify}
+          onSaved={() => {
+            onEditCloseNavigate?.();
+          }}
+        />
+      ) : null}
 
       {editVariant ? (
-        <Modal
+        <FormDialog
+          open
+          onOpenChange={(nextOpen) => !nextOpen && setEditVariant(null)}
           title={`Edit ${editVariant.sku}`}
           description="Update variant title, pricing, or availability status."
-          close={() => setEditVariant(null)}
+          submitLabel="Save variant"
+          isSubmitting={updateVariantMutation.isPending}
+          error={modalError}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const compRaw = String(fd.get("compareAtPrice") || "").trim();
+            updateVariantMutation.mutate({
+              variantId: editVariant.id,
+              title: String(fd.get("title") || ""),
+              price: Number(fd.get("price")),
+              compareAtPrice: compRaw ? Number(compRaw) : null,
+              status: String(fd.get("status") || "ACTIVE"),
+            });
+          }}
         >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              const compRaw = String(fd.get("compareAtPrice") || "").trim();
-              updateVariantMutation.mutate({
-                variantId: editVariant.id,
-                title: String(fd.get("title") || ""),
-                price: Number(fd.get("price")),
-                compareAtPrice: compRaw ? Number(compRaw) : null,
-                status: String(fd.get("status") || "ACTIVE"),
-              });
-            }}
-          >
+          <label>
+            Title
+            <input name="title" required defaultValue={editVariant.title} />
+          </label>
+          <FormDialogRow>
             <label>
-              Title
-              <input name="title" required defaultValue={editVariant.title} />
+              Price (USD)
+              <input
+                name="price"
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                defaultValue={editVariant.price}
+              />
             </label>
-            <div className="form-pair">
-              <label>
-                Price (USD)
-                <input
-                  name="price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  required
-                  defaultValue={editVariant.price}
-                />
-              </label>
-              <label>
-                Compare at (optional)
-                <input
-                  name="compareAtPrice"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  defaultValue={editVariant.compareAtPrice ?? ""}
-                />
-              </label>
-              <label>
-                Status
-                <Select
-                  name="status"
-                  items={VARIANT_STATUS_ITEMS}
-                  defaultValue={editVariant.status}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {VARIANT_STATUS_ITEMS.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-            </div>
-            {modalError ? (
-              <p className="danger" role="alert">
-                {modalError}
-              </p>
-            ) : null}
-            <div className="modal-actions">
-              <Button onClick={() => setEditVariant(null)}>Cancel</Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={updateVariantMutation.isPending}
+            <label>
+              Compare at (optional)
+              <input
+                name="compareAtPrice"
+                type="number"
+                step="0.01"
+                min="0"
+                defaultValue={editVariant.compareAtPrice ?? ""}
+              />
+            </label>
+            <label>
+              Status
+              <Select
+                name="status"
+                items={VARIANT_STATUS_ITEMS}
+                defaultValue={editVariant.status}
               >
-                Save variant
-              </Button>
-            </div>
-          </form>
-        </Modal>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VARIANT_STATUS_ITEMS.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </FormDialogRow>
+        </FormDialog>
       ) : null}
 
       {addVariantOpen ? (
-        <Modal
+        <FormDialog
+          open
+          onOpenChange={setAddVariantOpen}
           title={`Add variant to ${product.name}`}
           description="Create a new SKU variant with initial stocked quantity."
-          close={() => setAddVariantOpen(false)}
+          submitLabel="Add variant"
+          isSubmitting={addVariantMutation.isPending}
+          error={modalError}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            addVariantMutation.mutate({
+              sku: String(fd.get("sku") || "").trim(),
+              title: String(fd.get("title") || "").trim(),
+              price: Number(fd.get("price")),
+              stock: Number(fd.get("stock")),
+              status: "ACTIVE",
+            });
+          }}
         >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              addVariantMutation.mutate({
-                sku: String(fd.get("sku") || "").trim(),
-                title: String(fd.get("title") || "").trim(),
-                price: Number(fd.get("price")),
-                stock: Number(fd.get("stock")),
-                status: "ACTIVE",
-              });
-            }}
-          >
-            <div className="form-pair">
-              <label>
-                SKU
-                <input name="sku" required placeholder="SKU-NEW-01" />
-              </label>
-              <label>
-                Title
-                <input name="title" required placeholder="Large / Black" />
-              </label>
-            </div>
-            <div className="form-pair">
-              <label>
-                Price (USD)
-                <input
-                  name="price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  required
-                  defaultValue={product.minPrice}
-                />
-              </label>
-              <label>
-                Initial stock
-                <input name="stock" type="number" min="0" required defaultValue={10} />
-              </label>
-            </div>
-            {modalError ? (
-              <p className="danger" role="alert">
-                {modalError}
-              </p>
-            ) : null}
-            <div className="modal-actions">
-              <Button onClick={() => setAddVariantOpen(false)}>Cancel</Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={addVariantMutation.isPending}
-              >
-                Add variant
-              </Button>
-            </div>
-          </form>
-        </Modal>
+          <FormDialogRow>
+            <label>
+              SKU
+              <input name="sku" required placeholder="SKU-NEW-01" />
+            </label>
+            <label>
+              Title
+              <input name="title" required placeholder="Large / Black" />
+            </label>
+          </FormDialogRow>
+          <FormDialogRow>
+            <label>
+              Price (USD)
+              <input
+                name="price"
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                defaultValue={product.minPrice}
+              />
+            </label>
+            <label>
+              Initial stock
+              <input name="stock" type="number" min="0" required defaultValue={10} />
+            </label>
+          </FormDialogRow>
+        </FormDialog>
       ) : null}
 
       {adjustTarget ? (
-        <Modal
+        <FormDialog
+          open
+          onOpenChange={(nextOpen) => !nextOpen && setAdjustTarget(null)}
+          size="sm"
           title={`Adjust stock for ${adjustTarget.sku}`}
           description={`Current available stock: ${adjustTarget.currentStock} units. Every change creates an inventory adjustment record.`}
-          close={() => setAdjustTarget(null)}
+          submitLabel="Apply adjustment"
+          isSubmitting={adjustMutation.isPending}
+          error={modalError}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            adjustMutation.mutate({
+              variantId: adjustTarget.variantId,
+              delta: Number(fd.get("delta")),
+              reason: String(fd.get("reason") || "").trim(),
+            });
+          }}
         >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              adjustMutation.mutate({
-                variantId: adjustTarget.variantId,
-                delta: Number(fd.get("delta")),
-                reason: String(fd.get("reason") || "").trim(),
-              });
-            }}
-          >
-            <div className="form-pair">
-              <label>
-                Quantity delta (e.g. +10 or -2)
-                <input name="delta" type="number" required defaultValue={10} />
-              </label>
-              <label>
-                Reason
-                <input
-                  name="reason"
-                  required
-                  placeholder="Warehouse restock / cycle count"
-                />
-              </label>
-            </div>
-            {modalError ? (
-              <p className="danger" role="alert">
-                {modalError}
-              </p>
-            ) : null}
-            <div className="modal-actions">
-              <Button onClick={() => setAdjustTarget(null)}>Cancel</Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={adjustMutation.isPending}
-              >
-                Apply adjustment
-              </Button>
-            </div>
-          </form>
-        </Modal>
+          <FormDialogRow>
+            <label>
+              Quantity delta (e.g. +10 or -2)
+              <input name="delta" type="number" required defaultValue={10} />
+            </label>
+            <label>
+              Reason
+              <input
+                name="reason"
+                required
+                placeholder="Warehouse restock / cycle count"
+              />
+            </label>
+          </FormDialogRow>
+        </FormDialog>
       ) : null}
 
       {deleteOpen ? (
@@ -1490,6 +1476,7 @@ function InventoryView({ notify }: { notify: (msg: string) => void }) {
   const { hasPermission } = useAuth();
   const canAdjust = hasPermission("inventory:write");
 
+  const [tab, setTab] = useState("levels");
   const [query, setQuery] = useState("");
   const [selectedLevel, setSelectedLevel] = useState<InventoryLevelDto | null>(null);
   const [error, setError] = useState("");
@@ -1526,6 +1513,75 @@ function InventoryView({ notify }: { notify: (msg: string) => void }) {
       l.locationName.toLowerCase().includes(q)
     );
   });
+  const adjustments = overview?.recentAdjustments || [];
+
+  const levelColumns: DataTableColumn<InventoryLevelDto>[] = [
+    { id: "sku", header: "SKU", cell: (lvl) => <code>{lvl.sku}</code> },
+    { id: "location", header: "Location", cell: (lvl) => lvl.locationName },
+    { id: "onHand", header: "On hand", cell: (lvl) => lvl.stockedQuantity },
+    { id: "reserved", header: "Reserved", cell: (lvl) => lvl.reservedQuantity },
+    {
+      id: "available",
+      header: "Available",
+      cell: (lvl) => <strong>{lvl.availableQuantity}</strong>,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (lvl) => (
+        <StatusBadge
+          status={
+            lvl.availableQuantity === 0
+              ? "Out of stock"
+              : lvl.availableQuantity <= 5
+                ? "Low stock"
+                : "In stock"
+          }
+        />
+      ),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      align: "right",
+      cell: (lvl) =>
+        canAdjust ? (
+          <Button
+            size="sm"
+            onClick={() => {
+              setError("");
+              setSelectedLevel(lvl);
+            }}
+          >
+            <ArrowDownUp size={13} /> Adjust
+          </Button>
+        ) : null,
+    },
+  ];
+
+  const adjustmentColumns: DataTableColumn<AdjustmentDto>[] = [
+    {
+      id: "delta",
+      header: "Delta",
+      cell: (adj) => (
+        <Badge tone={adj.delta >= 0 ? "green" : "red"}>
+          {adj.delta >= 0 ? `+${adj.delta}` : adj.delta}
+        </Badge>
+      ),
+    },
+    {
+      id: "change",
+      header: "Before → After",
+      cell: (adj) => (
+        <>
+          {adj.quantityBefore} → <strong>{adj.quantityAfter}</strong>
+        </>
+      ),
+    },
+    { id: "reason", header: "Reason", cell: (adj) => adj.reason },
+    { id: "actor", header: "Actor", cell: (adj) => adj.actorEmail },
+    { id: "created", header: "Timestamp", cell: (adj) => formatDate(adj.createdAt) },
+  ];
 
   return (
     <>
@@ -1541,179 +1597,101 @@ function InventoryView({ notify }: { notify: (msg: string) => void }) {
         ) : null}
       </div>
 
-      {invQuery.isLoading ? (
-        <Skeleton rows={4} />
-      ) : (
-        <div className="form-stack">
-          <div className="admin-table-panel">
-            <div className="table-toolbar">
-              <label className="search-field">
-                <Search size={15} />
-                <input
-                  aria-label="Search inventory by SKU"
-                  placeholder="Search SKU or warehouse location…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </label>
-            </div>
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>SKU</th>
-                    <th>Location</th>
-                    <th>On hand</th>
-                    <th>Reserved</th>
-                    <th>Available</th>
-                    <th>Status</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {levels.map((lvl) => (
-                    <tr key={lvl.id}>
-                      <td>
-                        <code>{lvl.sku}</code>
-                      </td>
-                      <td>{lvl.locationName}</td>
-                      <td>{lvl.stockedQuantity}</td>
-                      <td>{lvl.reservedQuantity}</td>
-                      <td>
-                        <strong>{lvl.availableQuantity}</strong>
-                      </td>
-                      <td>
-                        <StatusBadge
-                          status={
-                            lvl.availableQuantity === 0
-                              ? "Out of stock"
-                              : lvl.availableQuantity <= 5
-                                ? "Low stock"
-                                : "In stock"
-                          }
-                        />
-                      </td>
-                      <td>
-                        {canAdjust ? (
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setError("");
-                              setSelectedLevel(lvl);
-                            }}
-                          >
-                            <ArrowDownUp size={13} /> Adjust
-                          </Button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      <div className="admin-tabs-shell">
+        <Tabs
+          items={[
+            {
+              id: "levels",
+              label: "Stock levels",
+              badge: overview?.levels?.length || 0,
+            },
+            {
+              id: "adjustments",
+              label: "Recent adjustments",
+              badge: adjustments.length,
+            },
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
 
-          <section className="admin-table-panel">
-            <div className="section-title">
-              <h2>Recent stock adjustments</h2>
-              <Badge>{overview?.recentAdjustments?.length || 0} logged</Badge>
-            </div>
-            {overview?.recentAdjustments?.length ? (
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Delta</th>
-                      <th>Before → After</th>
-                      <th>Reason</th>
-                      <th>Actor</th>
-                      <th>Timestamp</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {overview.recentAdjustments.map((adj) => (
-                      <tr key={adj.id}>
-                        <td>
-                          <Badge tone={adj.delta >= 0 ? "green" : "red"}>
-                            {adj.delta >= 0 ? `+${adj.delta}` : adj.delta}
-                          </Badge>
-                        </td>
-                        <td>
-                          {adj.quantityBefore} → <strong>{adj.quantityAfter}</strong>
-                        </td>
-                        <td>{adj.reason}</td>
-                        <td>{adj.actorEmail}</td>
-                        <td>{formatDate(adj.createdAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="muted" style={{ padding: "8px 0" }}>
-                No manual adjustments recorded yet.
-              </p>
-            )}
-          </section>
-        </div>
-      )}
+        {tab === "levels" ? (
+          <DataTable
+            columns={levelColumns}
+            data={levels}
+            getRowKey={(lvl) => lvl.id}
+            isLoading={invQuery.isLoading}
+            searchValue={query}
+            onSearchChange={setQuery}
+            searchPlaceholder="Search SKU or warehouse location…"
+            searchAriaLabel="Search inventory by SKU"
+            pageSize={12}
+            emptyState={
+              <Empty
+                title="No inventory records match"
+                text="Try clearing the SKU search query."
+              />
+            }
+          />
+        ) : (
+          <DataTable
+            columns={adjustmentColumns}
+            data={adjustments}
+            getRowKey={(adj) => adj.id}
+            isLoading={invQuery.isLoading}
+            pageSize={12}
+            emptyState={
+              <Empty
+                title="No manual adjustments yet"
+                text="Adjust SKU stock to create an audited ledger entry."
+              />
+            }
+          />
+        )}
+      </div>
 
       {selectedLevel ? (
-        <Modal
+        <FormDialog
+          open
+          onOpenChange={(nextOpen) => !nextOpen && setSelectedLevel(null)}
+          size="sm"
           title={`Adjust stock — ${selectedLevel.sku}`}
           description={`Available: ${selectedLevel.availableQuantity} units at ${selectedLevel.locationName}.`}
-          close={() => setSelectedLevel(null)}
+          submitLabel="Commit adjustment"
+          isSubmitting={adjustMutation.isPending}
+          error={error}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            const fd = new FormData(e.currentTarget);
+            const reason = String(fd.get("reason") || "").trim();
+            if (!reason) {
+              setError("A reason is required for every inventory adjustment.");
+              return;
+            }
+            adjustMutation.mutate({
+              variantId: selectedLevel.variantId,
+              stockLocationId: selectedLevel.stockLocationId,
+              delta: Number(fd.get("delta")),
+              reason,
+            });
+          }}
         >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setError("");
-              const fd = new FormData(e.currentTarget);
-              const reason = String(fd.get("reason") || "").trim();
-              if (!reason) {
-                setError("A reason is required for every inventory adjustment.");
-                return;
-              }
-              adjustMutation.mutate({
-                variantId: selectedLevel.variantId,
-                stockLocationId: selectedLevel.stockLocationId,
-                delta: Number(fd.get("delta")),
-                reason,
-              });
-            }}
-          >
-            <div className="form-pair">
-              <label>
-                Delta
-                <input name="delta" type="number" required defaultValue={10} />
-              </label>
-              <label>
-                Reason
-                <input
-                  name="reason"
-                  required
-                  placeholder="Supplier shipment received"
-                />
-              </label>
-            </div>
-            {error ? (
-              <p className="danger" role="alert">
-                {error}
-              </p>
-            ) : null}
-            <div className="modal-actions">
-              <Button onClick={() => setSelectedLevel(null)}>Cancel</Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={adjustMutation.isPending}
-              >
-                <Check size={14} /> Commit adjustment
-              </Button>
-            </div>
-          </form>
-        </Modal>
+          <FormDialogRow>
+            <label>
+              Delta
+              <input name="delta" type="number" required defaultValue={10} />
+            </label>
+            <label>
+              Reason
+              <input
+                name="reason"
+                required
+                placeholder="Supplier shipment received"
+              />
+            </label>
+          </FormDialogRow>
+        </FormDialog>
       ) : null}
     </>
   );
@@ -1726,6 +1704,7 @@ export function Catalog({
   route: string[];
   notify: (message: string) => void;
 }) {
+  const router = useRouter();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("catalog:write");
   const [view, id, subView] = route;
@@ -1733,8 +1712,11 @@ export function Catalog({
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [createOpen, setCreateOpen] = useState(id === "new");
+  const [editingProduct, setEditingProduct] = useState<ProductDto | null>(null);
 
-  const isListView = view === "products" && !id;
+  const isListView = view === "products" && (!id || id === "new");
   const isDetailOrEdit = view === "products" && Boolean(id) && id !== "new";
 
   const categoriesQuery = useQuery({
@@ -1764,10 +1746,6 @@ export function Catalog({
     return <InventoryView notify={notify} />;
   }
 
-  if (id === "new") {
-    return <ProductForm key="new-product" notify={notify} />;
-  }
-
   if (isDetailOrEdit) {
     if (detailQuery.isLoading) return <Skeleton rows={4} />;
     if (detailQuery.isError || !detailQuery.data) {
@@ -1787,20 +1765,91 @@ export function Catalog({
         />
       );
     }
-    if (subView === "edit") {
-      return (
-        <ProductForm
-          key={detailQuery.data.id}
-          existing={detailQuery.data}
-          notify={notify}
-        />
-      );
-    }
-    return <ProductDetailView product={detailQuery.data} notify={notify} />;
+    return (
+      <ProductDetailView
+        key={detailQuery.data.id}
+        product={detailQuery.data}
+        initialEditOpen={subView === "edit"}
+        onEditCloseNavigate={
+          subView === "edit"
+            ? () => router.push(`/admin/products/${detailQuery.data.id}`)
+            : undefined
+        }
+        notify={notify}
+      />
+    );
   }
 
   const products = productsQuery.data || [];
   const categories = categoriesQuery.data || [];
+
+  const columns: DataTableColumn<ProductDto>[] = [
+    {
+      id: "product",
+      header: "Product",
+      cell: (product) => (
+        <Link href={`/admin/products/${product.id}`} className="row-product">
+          <img
+            src={product.primaryImageUrl || "/media/terrain-fallback.jpg"}
+            alt=""
+          />
+          <div>
+            <strong style={{ display: "block" }}>{product.name}</strong>
+            <span className="muted" style={{ fontSize: 11.5 }}>
+              {product.brand} · {product.variants.length}{" "}
+              {product.variants.length === 1 ? "variant" : "variants"}
+            </span>
+          </div>
+        </Link>
+      ),
+    },
+    {
+      id: "type",
+      header: "Type",
+      cell: (product) => <Badge tone="accent">{product.productTypeName}</Badge>,
+    },
+    {
+      id: "categories",
+      header: "Categories",
+      cell: (product) => product.categories.map((c) => c.name).join(", ") || "—",
+    },
+    {
+      id: "price",
+      header: "Price",
+      cell: (product) => <strong>{usdExact(product.minPrice)}</strong>,
+    },
+    {
+      id: "stock",
+      header: "Stock",
+      cell: (product) => (
+        <span className={cn(product.totalStock <= 5 ? "danger" : undefined)}>
+          {product.totalStock}
+        </span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (product) => <StatusBadge status={product.status} />,
+    },
+    ...(canWrite
+      ? [
+          {
+            id: "actions",
+            header: "Actions",
+            align: "right" as const,
+            cell: (product: ProductDto) => (
+              <IconButton
+                label={`Edit ${product.name}`}
+                onClick={() => setEditingProduct(product)}
+              >
+                <Pencil size={14} />
+              </IconButton>
+            ),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <>
@@ -1812,131 +1861,110 @@ export function Catalog({
           </p>
         </div>
         {canWrite ? (
-          <Link className="btn primary" href="/admin/products/new">
+          <Button variant="primary" onClick={() => setCreateOpen(true)}>
             <Plus size={15} /> Add product
-          </Link>
+          </Button>
         ) : null}
       </div>
 
-      <div className="admin-table-panel">
-        <div className="table-toolbar">
-          <label className="search-field">
-            <Search size={15} />
-            <input
-              aria-label="Search products"
-              placeholder="Search name, slug, or brand…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
-          <Select
-            items={[
-              { value: "", label: "All categories" },
-              ...categories.map((cat) => ({ value: cat.id, label: cat.name })),
-            ]}
-            value={categoryId}
-            onValueChange={(next) => setCategoryId(next ?? "")}
-          >
-            <SelectTrigger aria-label="Filter by category">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">All categories</SelectItem>
-              {categories.map((cat) => (
-                <SelectItem key={cat.id} value={cat.id}>
-                  {cat.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            items={PRODUCT_STATUS_FILTER_ITEMS}
-            value={statusFilter}
-            onValueChange={(next) => setStatusFilter(next ?? "")}
-          >
-            <SelectTrigger aria-label="Filter by status">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PRODUCT_STATUS_FILTER_ITEMS.map((item) => (
-                <SelectItem key={item.value || "all"} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {productsQuery.isLoading ? (
-          <Skeleton rows={4} />
-        ) : products.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Type</th>
-                  <th>Categories</th>
-                  <th>Price</th>
-                  <th>Stock</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((product) => (
-                  <tr key={product.id}>
-                    <td>
-                      <Link
-                        href={`/admin/products/${product.id}`}
-                        className="row-product"
-                      >
-                        <img
-                          src={product.primaryImageUrl || "/media/terrain-fallback.jpg"}
-                          alt=""
-                        />
-                        <div>
-                          <strong style={{ display: "block" }}>{product.name}</strong>
-                          <span className="muted" style={{ fontSize: 11.5 }}>
-                            {product.brand} · {product.variants.length}{" "}
-                            {product.variants.length === 1 ? "variant" : "variants"}
-                          </span>
-                        </div>
-                      </Link>
-                    </td>
-                    <td>
-                      <Badge tone="accent">{product.productTypeName}</Badge>
-                    </td>
-                    <td>
-                      {product.categories.map((c) => c.name).join(", ") || "—"}
-                    </td>
-                    <td>
-                      <strong>{usdExact(product.minPrice)}</strong>
-                    </td>
-                    <td>
-                      <span
-                        className={cn(
-                          product.totalStock <= 5 ? "danger" : undefined
-                        )}
-                      >
-                        {product.totalStock}
-                      </span>
-                    </td>
-                    <td>
-                      <StatusBadge status={product.status} />
-                    </td>
-                  </tr>
+      <DataTable
+        columns={columns}
+        data={products}
+        getRowKey={(product) => product.id}
+        isLoading={productsQuery.isLoading}
+        page={page}
+        onPageChange={setPage}
+        pageSize={12}
+        searchValue={query}
+        onSearchChange={(next) => {
+          setQuery(next);
+          setPage(1);
+        }}
+        searchPlaceholder="Search name, slug, or brand…"
+        searchAriaLabel="Search products"
+        toolbar={
+          <>
+            <Select
+              items={[
+                { value: "", label: "All categories" },
+                ...categories.map((cat) => ({ value: cat.id, label: cat.name })),
+              ]}
+              value={categoryId}
+              onValueChange={(next) => {
+                setCategoryId(next ?? "");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger aria-label="Filter by category">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All categories</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </SelectItem>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
+              </SelectContent>
+            </Select>
+            <Select
+              items={PRODUCT_STATUS_FILTER_ITEMS}
+              value={statusFilter}
+              onValueChange={(next) => {
+                setStatusFilter(next ?? "");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger aria-label="Filter by status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRODUCT_STATUS_FILTER_ITEMS.map((item) => (
+                  <SelectItem key={item.value || "all"} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        }
+        emptyState={
           <Empty
             icon={<Package size={22} />}
             title="No products match"
             text="Adjust your search or create a new product."
           />
-        )}
-      </div>
+        }
+      />
+
+      {createOpen ? (
+        <ProductFormDialog
+          key="new-product"
+          open
+          onOpenChange={(nextOpen) => {
+            setCreateOpen(nextOpen);
+            if (!nextOpen && id === "new") {
+              router.push("/admin/products");
+            }
+          }}
+          notify={notify}
+          onSaved={(created) => {
+            if (id === "new") {
+              router.push(`/admin/products/${created.id}`);
+            }
+          }}
+        />
+      ) : null}
+
+      {editingProduct ? (
+        <ProductFormDialog
+          key={`edit-${editingProduct.id}-${editingProduct.version}`}
+          open
+          onOpenChange={(nextOpen) => !nextOpen && setEditingProduct(null)}
+          existing={editingProduct}
+          notify={notify}
+        />
+      ) : null}
     </>
   );
 }

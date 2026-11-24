@@ -1,12 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
-import { Empty, Skeleton } from "@/components/ui/data-display";
-import { ConfirmDialog, Modal } from "@/components/ui/dialog";
+import { Empty } from "@/components/ui/data-display";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { ConfirmDialog } from "@/components/ui/dialog";
+import { FormDialog, FormDialogRow } from "@/components/ui/form-dialog";
 import {
   Select,
   SelectContent,
@@ -61,6 +63,7 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [page, setPage] = useState(1);
   const [draft, setDraft] = useState<AttributeFormDraft | null>(null);
   const [removeTarget, setRemoveTarget] = useState<AttributeDefinitionDto | null>(null);
   const [error, setError] = useState("");
@@ -250,6 +253,94 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
     });
   }
 
+  const columns: DataTableColumn<AttributeDefinitionDto>[] = [
+    {
+      id: "name",
+      header: "Name",
+      cell: (item) => (
+        <>
+          {canWrite ? (
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => openEdit(item)}
+            >
+              {item.name}
+            </button>
+          ) : (
+            <strong>{item.name}</strong>
+          )}
+          {item.unit ? (
+            <span className="muted" style={{ fontSize: 11, marginLeft: 5 }}>
+              ({item.unit})
+            </span>
+          ) : null}
+          {item.archivedAt ? (
+            <Badge tone="neutral" className="ml-badge">
+              Archived
+            </Badge>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      id: "code",
+      header: "Code",
+      cell: (item) => <code>{item.code}</code>,
+    },
+    {
+      id: "type",
+      header: "Data type",
+      cell: (item) => <Badge tone="accent">{item.dataType}</Badge>,
+    },
+    {
+      id: "productTypes",
+      header: "Product types",
+      cell: (item) => {
+        const boundTypes = typeNamesByAttrId.get(item.id) || [];
+        return boundTypes.length ? boundTypes.join(", ") : "Unbound";
+      },
+    },
+    {
+      id: "behavior",
+      header: "Behavior",
+      cell: (item) => (
+        <div className="button-row" style={{ gap: 4 }}>
+          {item.required ? <Badge tone="amber">Required</Badge> : null}
+          {item.filterable ? <Badge tone="green">Filterable</Badge> : null}
+          {item.searchable ? <Badge>Searchable</Badge> : null}
+        </div>
+      ),
+    },
+    ...(canWrite
+      ? [
+          {
+            id: "actions",
+            header: "Actions",
+            align: "right" as const,
+            cell: (item: AttributeDefinitionDto) => (
+              <div className="button-row" style={{ justifyContent: "flex-end" }}>
+                <IconButton
+                  label={`Edit ${item.name}`}
+                  onClick={() => openEdit(item)}
+                >
+                  <Pencil size={14} />
+                </IconButton>
+                {!item.archivedAt ? (
+                  <IconButton
+                    label={`Delete ${item.name}`}
+                    onClick={() => setRemoveTarget(item)}
+                  >
+                    <Trash2 size={14} />
+                  </IconButton>
+                ) : null}
+              </div>
+            ),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <>
       <div className="admin-title">
@@ -266,384 +357,303 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
         ) : null}
       </div>
 
-      <div className="admin-table-panel">
-        <div className="table-toolbar">
-          <label className="search-field">
-            <Search size={15} />
-            <input
-              aria-label="Search attributes"
-              placeholder="Search attribute name or code…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
-          <Select
-            items={[
-              { value: "", label: "All product types" },
-              ...productTypes.map((pt) => ({ value: pt.name, label: pt.name })),
-            ]}
-            value={typeFilter}
-            onValueChange={(next) => setTypeFilter(next ?? "")}
-          >
-            <SelectTrigger aria-label="Filter by product type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">All product types</SelectItem>
-              {productTypes.map((pt) => (
-                <SelectItem key={pt.id} value={pt.name}>
-                  {pt.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <label className="check-label">
-            <input
-              type="checkbox"
-              checked={includeArchived}
-              onChange={(e) => setIncludeArchived(e.target.checked)}
-            />
-            Show archived
-          </label>
-        </div>
-
-        {attrsQuery.isLoading ? (
-          <Skeleton rows={4} />
-        ) : visible.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Code</th>
-                  <th>Data type</th>
-                  <th>Product types</th>
-                  <th>Behavior</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((item) => {
-                  const boundTypes = typeNamesByAttrId.get(item.id) || [];
-                  return (
-                    <tr key={item.id}>
-                      <td>
-                        {canWrite ? (
-                          <button
-                            type="button"
-                            className="text-button"
-                            onClick={() => openEdit(item)}
-                          >
-                            {item.name}
-                          </button>
-                        ) : (
-                          <strong>{item.name}</strong>
-                        )}
-                        {item.unit ? (
-                          <span className="muted" style={{ fontSize: 11, marginLeft: 5 }}>
-                            ({item.unit})
-                          </span>
-                        ) : null}
-                        {item.archivedAt ? (
-                          <Badge tone="neutral" className="ml-badge">
-                            Archived
-                          </Badge>
-                        ) : null}
-                      </td>
-                      <td>
-                        <code>{item.code}</code>
-                      </td>
-                      <td>
-                        <Badge tone="accent">{item.dataType}</Badge>
-                      </td>
-                      <td>
-                        {boundTypes.length ? boundTypes.join(", ") : "Unbound"}
-                      </td>
-                      <td>
-                        <div className="button-row" style={{ gap: 4 }}>
-                          {item.required ? <Badge tone="amber">Required</Badge> : null}
-                          {item.filterable ? <Badge tone="green">Filterable</Badge> : null}
-                          {item.searchable ? <Badge>Searchable</Badge> : null}
-                        </div>
-                      </td>
-                      <td>
-                        {canWrite && !item.archivedAt ? (
-                          <IconButton
-                            label={`Delete ${item.name}`}
-                            onClick={() => setRemoveTarget(item)}
-                          >
-                            <Trash2 size={14} />
-                          </IconButton>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
+      <DataTable
+        columns={columns}
+        data={visible}
+        getRowKey={(item) => item.id}
+        isLoading={attrsQuery.isLoading}
+        page={page}
+        onPageChange={setPage}
+        pageSize={10}
+        searchValue={query}
+        onSearchChange={(next) => {
+          setQuery(next);
+          setPage(1);
+        }}
+        searchPlaceholder="Search attribute name or code…"
+        searchAriaLabel="Search attributes"
+        toolbar={
+          <>
+            <Select
+              items={[
+                { value: "", label: "All product types" },
+                ...productTypes.map((pt) => ({ value: pt.name, label: pt.name })),
+              ]}
+              value={typeFilter}
+              onValueChange={(next) => {
+                setTypeFilter(next ?? "");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger aria-label="Filter by product type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All product types</SelectItem>
+                {productTypes.map((pt) => (
+                  <SelectItem key={pt.id} value={pt.name}>
+                    {pt.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={includeArchived}
+                onChange={(e) => {
+                  setIncludeArchived(e.target.checked);
+                  setPage(1);
+                }}
+              />
+              Show archived
+            </label>
+          </>
+        }
+        emptyState={
           <Empty
             title="No attributes match"
             text="Create a custom attribute or clear the active product type filter."
           />
-        )}
-      </div>
+        }
+      />
 
       {draft ? (
-        <Modal
+        <FormDialog
+          open
+          onOpenChange={(nextOpen) => !nextOpen && setDraft(null)}
+          size="lg"
           title={draft.id ? `Edit ${draft.name}` : "New dynamic attribute"}
           description="Attribute codes must be unique lowercase identifiers (letters, numbers, underscores)."
-          close={() => setDraft(null)}
+          submitLabel={draft.id ? "Save attribute" : "Create attribute"}
+          isSubmitting={createMutation.isPending || updateMutation.isPending}
+          error={error}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            if (!draft.name.trim()) {
+              setError("Attribute name is required.");
+              return;
+            }
+            if (!draft.id && !/^[a-z0-9_]+$/.test(draft.code.trim())) {
+              setError(
+                "Attribute code must contain only lowercase letters, numbers, and underscores."
+              );
+              return;
+            }
+            if (
+              (draft.dataType === "ENUM" || draft.dataType === "MULTI_SELECT") &&
+              !draft.optionsText
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean).length
+            ) {
+              setError("Provide at least one comma-separated option.");
+              return;
+            }
+            if (draft.id) {
+              updateMutation.mutate(draft);
+            } else {
+              createMutation.mutate(draft);
+            }
+          }}
         >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setError("");
-              if (!draft.name.trim()) {
-                setError("Attribute name is required.");
-                return;
-              }
-              if (!draft.id && !/^[a-z0-9_]+$/.test(draft.code.trim())) {
-                setError(
-                  "Attribute code must contain only lowercase letters, numbers, and underscores."
-                );
-                return;
-              }
-              if (
-                (draft.dataType === "ENUM" || draft.dataType === "MULTI_SELECT") &&
-                !draft.optionsText
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean).length
-              ) {
-                setError("Provide at least one comma-separated option.");
-                return;
-              }
-              if (draft.id) {
-                updateMutation.mutate(draft);
-              } else {
-                createMutation.mutate(draft);
-              }
-            }}
-          >
-            <div className="form-pair">
-              <label>
-                Name
-                <input
-                  required
-                  value={draft.name}
-                  placeholder="e.g. Battery Capacity"
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setDraft((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            name,
-                            code: prev.id
-                              ? prev.code
-                              : slugify(name).replace(/-/g, "_"),
-                          }
-                        : null
-                    );
-                  }}
-                />
-              </label>
-              <label>
-                Code
-                <input
-                  required
-                  disabled={Boolean(draft.id)}
-                  value={draft.code}
-                  placeholder="battery_capacity"
-                  onChange={(e) =>
-                    setDraft((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            code: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""),
-                          }
-                        : null
-                    )
-                  }
-                />
-              </label>
-            </div>
+          <FormDialogRow>
+            <label>
+              Name
+              <input
+                required
+                value={draft.name}
+                placeholder="e.g. Battery Capacity"
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          name,
+                          code: prev.id
+                            ? prev.code
+                            : slugify(name).replace(/-/g, "_"),
+                        }
+                      : null
+                  );
+                }}
+              />
+            </label>
+            <label>
+              Code
+              <input
+                required
+                disabled={Boolean(draft.id)}
+                value={draft.code}
+                placeholder="battery_capacity"
+                onChange={(e) =>
+                  setDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          code: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""),
+                        }
+                      : null
+                  )
+                }
+              />
+            </label>
+          </FormDialogRow>
 
-            <div className="form-pair">
-              <label>
-                Data type
-                <Select
-                  disabled={Boolean(draft.id)}
-                  items={DATA_TYPE_ITEMS}
-                  value={draft.dataType}
-                  onValueChange={(next) =>
-                    next &&
-                    setDraft((prev) =>
-                      prev
-                        ? { ...prev, dataType: next as AttributeDataType }
-                        : null
-                    )
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DATA_TYPE_ITEMS.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label>
-                Bind to product type (optional)
-                <Select
-                  items={[
-                    { value: "", label: "None" },
-                    ...productTypes.map((pt) => ({ value: pt.id, label: pt.name })),
-                  ]}
-                  value={draft.bindProductTypeId}
-                  onValueChange={(next) =>
-                    setDraft((prev) =>
-                      prev ? { ...prev, bindProductTypeId: next ?? "" } : null
-                    )
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">None</SelectItem>
-                    {productTypes.map((pt) => (
-                      <SelectItem key={pt.id} value={pt.id}>
-                        {pt.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-            </div>
-
-            <div className="form-pair">
-              <label>
-                Unit (optional)
-                <input
-                  value={draft.unit}
-                  placeholder="GB, mm, Wh"
-                  onChange={(e) =>
-                    setDraft((prev) => (prev ? { ...prev, unit: e.target.value } : null))
-                  }
-                />
-              </label>
-              {draft.dataType === "NUMBER" ? (
-                <div className="form-pair">
-                  <label>
-                    Min
-                    <input
-                      type="number"
-                      value={draft.minRule}
-                      onChange={(e) =>
-                        setDraft((prev) =>
-                          prev ? { ...prev, minRule: e.target.value } : null
-                        )
-                      }
-                    />
-                  </label>
-                  <label>
-                    Max
-                    <input
-                      type="number"
-                      value={draft.maxRule}
-                      onChange={(e) =>
-                        setDraft((prev) =>
-                          prev ? { ...prev, maxRule: e.target.value } : null
-                        )
-                      }
-                    />
-                  </label>
-                </div>
-              ) : (
-                <div />
-              )}
-            </div>
-
-            {draft.dataType === "ENUM" || draft.dataType === "MULTI_SELECT" ? (
-              <label>
-                Allowed options (comma-separated)
-                <input
-                  value={draft.optionsText}
-                  placeholder="Small, Medium, Large"
-                  onChange={(e) =>
-                    setDraft((prev) =>
-                      prev ? { ...prev, optionsText: e.target.value } : null
-                    )
-                  }
-                />
-              </label>
-            ) : null}
-
-            <div className="button-row" style={{ gap: 14 }}>
-              <label className="check-label">
-                <input
-                  type="checkbox"
-                  checked={draft.required}
-                  onChange={(e) =>
-                    setDraft((prev) =>
-                      prev ? { ...prev, required: e.target.checked } : null
-                    )
-                  }
-                />
-                Required on product
-              </label>
-              <label className="check-label">
-                <input
-                  type="checkbox"
-                  checked={draft.filterable}
-                  onChange={(e) =>
-                    setDraft((prev) =>
-                      prev ? { ...prev, filterable: e.target.checked } : null
-                    )
-                  }
-                />
-                Storefront filterable
-              </label>
-              <label className="check-label">
-                <input
-                  type="checkbox"
-                  checked={draft.searchable}
-                  onChange={(e) =>
-                    setDraft((prev) =>
-                      prev ? { ...prev, searchable: e.target.checked } : null
-                    )
-                  }
-                />
-                Search indexed
-              </label>
-            </div>
-
-            {error ? (
-              <p className="danger" role="alert">
-                {error}
-              </p>
-            ) : null}
-
-            <div className="modal-actions">
-              <Button onClick={() => setDraft(null)}>Cancel</Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={createMutation.isPending || updateMutation.isPending}
+          <FormDialogRow>
+            <label>
+              Data type
+              <Select
+                disabled={Boolean(draft.id)}
+                items={DATA_TYPE_ITEMS}
+                value={draft.dataType}
+                onValueChange={(next) =>
+                  next &&
+                  setDraft((prev) =>
+                    prev ? { ...prev, dataType: next as AttributeDataType } : null
+                  )
+                }
               >
-                {draft.id ? "Save attribute" : "Create attribute"}
-              </Button>
-            </div>
-          </form>
-        </Modal>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DATA_TYPE_ITEMS.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label>
+              Bind to product type (optional)
+              <Select
+                items={[
+                  { value: "", label: "None" },
+                  ...productTypes.map((pt) => ({ value: pt.id, label: pt.name })),
+                ]}
+                value={draft.bindProductTypeId}
+                onValueChange={(next) =>
+                  setDraft((prev) =>
+                    prev ? { ...prev, bindProductTypeId: next ?? "" } : null
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None</SelectItem>
+                  {productTypes.map((pt) => (
+                    <SelectItem key={pt.id} value={pt.id}>
+                      {pt.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </FormDialogRow>
+
+          <FormDialogRow>
+            <label>
+              Unit (optional)
+              <input
+                value={draft.unit}
+                placeholder="GB, mm, Wh"
+                onChange={(e) =>
+                  setDraft((prev) => (prev ? { ...prev, unit: e.target.value } : null))
+                }
+              />
+            </label>
+            {draft.dataType === "NUMBER" ? (
+              <FormDialogRow>
+                <label>
+                  Min
+                  <input
+                    type="number"
+                    value={draft.minRule}
+                    onChange={(e) =>
+                      setDraft((prev) =>
+                        prev ? { ...prev, minRule: e.target.value } : null
+                      )
+                    }
+                  />
+                </label>
+                <label>
+                  Max
+                  <input
+                    type="number"
+                    value={draft.maxRule}
+                    onChange={(e) =>
+                      setDraft((prev) =>
+                        prev ? { ...prev, maxRule: e.target.value } : null
+                      )
+                    }
+                  />
+                </label>
+              </FormDialogRow>
+            ) : (
+              <div />
+            )}
+          </FormDialogRow>
+
+          {draft.dataType === "ENUM" || draft.dataType === "MULTI_SELECT" ? (
+            <label>
+              Allowed options (comma-separated)
+              <input
+                value={draft.optionsText}
+                placeholder="Small, Medium, Large"
+                onChange={(e) =>
+                  setDraft((prev) =>
+                    prev ? { ...prev, optionsText: e.target.value } : null
+                  )
+                }
+              />
+            </label>
+          ) : null}
+
+          <div className="button-row" style={{ gap: 14 }}>
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={draft.required}
+                onChange={(e) =>
+                  setDraft((prev) =>
+                    prev ? { ...prev, required: e.target.checked } : null
+                  )
+                }
+              />
+              Required on product
+            </label>
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={draft.filterable}
+                onChange={(e) =>
+                  setDraft((prev) =>
+                    prev ? { ...prev, filterable: e.target.checked } : null
+                  )
+                }
+              />
+              Storefront filterable
+            </label>
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={draft.searchable}
+                onChange={(e) =>
+                  setDraft((prev) =>
+                    prev ? { ...prev, searchable: e.target.checked } : null
+                  )
+                }
+              />
+              Search indexed
+            </label>
+          </div>
+        </FormDialog>
       ) : null}
 
       {removeTarget ? (

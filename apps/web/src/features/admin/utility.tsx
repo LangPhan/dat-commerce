@@ -6,6 +6,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpRight,
+  Pencil,
   Plus,
   Trash2,
   Upload,
@@ -13,8 +14,17 @@ import {
 import { useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
-import { Empty, Skeleton } from "@/components/ui/data-display";
-import { ConfirmDialog, Drawer, Modal } from "@/components/ui/dialog";
+import { Empty, Pagination, Skeleton } from "@/components/ui/data-display";
+import {
+  DataTable,
+  DataTableCard,
+  DataTableFooter,
+  DataTableSearch,
+  DataTableToolbar,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
+import { ConfirmDialog, Drawer } from "@/components/ui/dialog";
+import { FormDialog, FormDialogRow } from "@/components/ui/form-dialog";
 import {
   Select,
   SelectContent,
@@ -32,7 +42,7 @@ import {
 import { cmsAdminApi } from "@/lib/cms-ai-api";
 import { formatDateTime, newId, slugify, usdExact } from "@/lib/format";
 import { useStored } from "@/lib/storage";
-import type { NavigationItemDto } from "@/types/api-cms-ai";
+import type { PageSummaryDto, NavigationItemDto } from "@/types/api-cms-ai";
 import type { CollectionDto, OrderDto } from "@/types/api-commerce";
 
 type FieldConfig = {
@@ -67,6 +77,7 @@ function CollectionsView({ notify }: { notify: (msg: string) => void }) {
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("catalog:write");
 
+  const [query, setQuery] = useState("");
   const [edit, setEdit] = useState<{
     id?: string;
     name: string;
@@ -129,8 +140,82 @@ function CollectionsView({ notify }: { notify: (msg: string) => void }) {
     },
   });
 
-  const collections = collectionsQuery.data || [];
+  const collections = (collectionsQuery.data || []).filter((item) => {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return (
+      item.name.toLowerCase().includes(q) ||
+      item.slug.toLowerCase().includes(q) ||
+      (item.description || "").toLowerCase().includes(q)
+    );
+  });
   const products = productsQuery.data || [];
+
+  function openEditCollection(item: CollectionDto) {
+    setError("");
+    setEdit({
+      id: item.id,
+      name: item.name,
+      slug: item.slug,
+      description: item.description || "",
+      productIds: item.productIds,
+    });
+  }
+
+  const columns: DataTableColumn<CollectionDto>[] = [
+    {
+      id: "name",
+      header: "Collection",
+      cell: (item) =>
+        canWrite ? (
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => openEditCollection(item)}
+          >
+            {item.name}
+          </button>
+        ) : (
+          <strong>{item.name}</strong>
+        ),
+    },
+    { id: "slug", header: "Slug", cell: (item) => <code>{item.slug}</code> },
+    {
+      id: "description",
+      header: "Description",
+      cell: (item) => <span className="muted">{item.description || "—"}</span>,
+    },
+    {
+      id: "products",
+      header: "Products",
+      cell: (item) => <Badge tone="accent">{item.productIds.length} products</Badge>,
+    },
+    ...(canWrite
+      ? [
+          {
+            id: "actions",
+            header: "Actions",
+            align: "right" as const,
+            cell: (item: CollectionDto) => (
+              <div className="button-row" style={{ justifyContent: "flex-end" }}>
+                <IconButton
+                  label={`Edit ${item.name}`}
+                  onClick={() => openEditCollection(item)}
+                >
+                  <Pencil size={14} />
+                </IconButton>
+                <IconButton
+                  label={`Delete ${item.name}`}
+                  onClick={() => setDeleteTarget(item)}
+                >
+                  <Trash2 size={14} />
+                </IconButton>
+              </div>
+            ),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <>
@@ -152,180 +237,120 @@ function CollectionsView({ notify }: { notify: (msg: string) => void }) {
         ) : null}
       </div>
 
-      {collectionsQuery.isLoading ? (
-        <Skeleton rows={4} />
-      ) : collections.length ? (
-        <div className="admin-table-panel table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Collection</th>
-                <th>Slug</th>
-                <th>Description</th>
-                <th>Products</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {collections.map((item) => (
-                <tr key={item.id}>
-                  <td>
-                    {canWrite ? (
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => {
-                          setError("");
-                          setEdit({
-                            id: item.id,
-                            name: item.name,
-                            slug: item.slug,
-                            description: item.description || "",
-                            productIds: item.productIds,
-                          });
-                        }}
-                      >
-                        {item.name}
-                      </button>
-                    ) : (
-                      <strong>{item.name}</strong>
-                    )}
-                  </td>
-                  <td>
-                    <code>{item.slug}</code>
-                  </td>
-                  <td className="muted">{item.description || "—"}</td>
-                  <td>
-                    <Badge tone="accent">{item.productIds.length} products</Badge>
-                  </td>
-                  <td>
-                    {canWrite ? (
-                      <IconButton
-                        label={`Delete ${item.name}`}
-                        onClick={() => setDeleteTarget(item)}
-                      >
-                        <Trash2 size={14} />
-                      </IconButton>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <Empty
-          title="No collections yet"
-          text="Create a collection to group featured products across categories."
-        />
-      )}
+      <DataTable
+        columns={columns}
+        data={collections}
+        getRowKey={(item) => item.id}
+        isLoading={collectionsQuery.isLoading}
+        pageSize={10}
+        searchValue={query}
+        onSearchChange={setQuery}
+        searchPlaceholder="Search collection name or slug…"
+        searchAriaLabel="Search collections"
+        emptyState={
+          <Empty
+            title="No collections yet"
+            text="Create a collection to group featured products across categories."
+          />
+        }
+      />
 
       {edit ? (
-        <Modal
+        <FormDialog
+          open
+          onOpenChange={(nextOpen) => !nextOpen && setEdit(null)}
+          size="lg"
           title={edit.id ? `Edit ${edit.name}` : "New collection"}
           description="Assign products to display under this curated assortment."
-          close={() => setEdit(null)}
+          submitLabel="Save collection"
+          isSubmitting={saveMutation.isPending}
+          error={error}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            if (!edit.name.trim()) {
+              setError("Name is required.");
+              return;
+            }
+            saveMutation.mutate(edit);
+          }}
         >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setError("");
-              if (!edit.name.trim()) {
-                setError("Name is required.");
-                return;
-              }
-              saveMutation.mutate(edit);
-            }}
-          >
-            <div className="form-pair">
-              <label>
-                Name
-                <input
-                  required
-                  value={edit.name}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setEdit((prev) =>
-                      prev
-                        ? { ...prev, name, slug: prev.id ? prev.slug : slugify(name) }
-                        : null
-                    );
-                  }}
-                />
-              </label>
-              <label>
-                Slug
-                <input
-                  value={edit.slug}
-                  onChange={(e) =>
-                    setEdit((prev) =>
-                      prev ? { ...prev, slug: slugify(e.target.value) } : null
-                    )
-                  }
-                />
-              </label>
-            </div>
+          <FormDialogRow>
             <label>
-              Description
-              <textarea
-                rows={2}
-                value={edit.description}
+              Name
+              <input
+                required
+                value={edit.name}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setEdit((prev) =>
+                    prev
+                      ? { ...prev, name, slug: prev.id ? prev.slug : slugify(name) }
+                      : null
+                  );
+                }}
+              />
+            </label>
+            <label>
+              Slug
+              <input
+                value={edit.slug}
                 onChange={(e) =>
                   setEdit((prev) =>
-                    prev ? { ...prev, description: e.target.value } : null
+                    prev ? { ...prev, slug: slugify(e.target.value) } : null
                   )
                 }
               />
             </label>
-            <div>
-              <strong style={{ fontSize: 12.5 }}>Assigned products</strong>
-              <div
-                className="button-row"
-                style={{
-                  marginTop: 8,
-                  maxHeight: 200,
-                  overflowY: "auto",
-                  flexWrap: "wrap",
-                  gap: 8,
-                }}
-              >
-                {products.map((p) => {
-                  const checked = edit.productIds.includes(p.id);
-                  return (
-                    <label className="check-label" key={p.id}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) =>
-                          setEdit((prev) => {
-                            if (!prev) return null;
-                            const next = e.target.checked
-                              ? [...prev.productIds, p.id]
-                              : prev.productIds.filter((x) => x !== p.id);
-                            return { ...prev, productIds: next };
-                          })
-                        }
-                      />
-                      {p.name}
-                    </label>
-                  );
-                })}
-              </div>
+          </FormDialogRow>
+          <label>
+            Description
+            <textarea
+              rows={2}
+              value={edit.description}
+              onChange={(e) =>
+                setEdit((prev) =>
+                  prev ? { ...prev, description: e.target.value } : null
+                )
+              }
+            />
+          </label>
+          <div>
+            <strong style={{ fontSize: 12.5 }}>Assigned products</strong>
+            <div
+              className="button-row"
+              style={{
+                marginTop: 8,
+                maxHeight: 200,
+                overflowY: "auto",
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
+              {products.map((p) => {
+                const checked = edit.productIds.includes(p.id);
+                return (
+                  <label className="check-label" key={p.id}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) =>
+                        setEdit((prev) => {
+                          if (!prev) return null;
+                          const next = e.target.checked
+                            ? [...prev.productIds, p.id]
+                            : prev.productIds.filter((x) => x !== p.id);
+                          return { ...prev, productIds: next };
+                        })
+                      }
+                    />
+                    {p.name}
+                  </label>
+                );
+              })}
             </div>
-            {error ? (
-              <p className="danger" role="alert">
-                {error}
-              </p>
-            ) : null}
-            <div className="modal-actions">
-              <Button onClick={() => setEdit(null)}>Cancel</Button>
-              <Button variant="primary" type="submit" disabled={saveMutation.isPending}>
-                Save collection
-              </Button>
-            </div>
-          </form>
-        </Modal>
+          </div>
+        </FormDialog>
       ) : null}
 
       {deleteTarget ? (
@@ -346,7 +371,10 @@ function MediaLibraryView({ notify }: { notify: (msg: string) => void }) {
   const queryClient = useQueryClient();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("media:write");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [error, setError] = useState("");
+  const PAGE_SIZE = 8;
 
   const mediaQuery = useQuery({
     queryKey: ["admin-media"],
@@ -374,7 +402,17 @@ function MediaLibraryView({ notify }: { notify: (msg: string) => void }) {
       notify(err instanceof ApiError ? err.message : "Failed to delete asset"),
   });
 
-  const assets = mediaQuery.data || [];
+  const assets = (mediaQuery.data || []).filter((asset) => {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return (
+      asset.originalFilename.toLowerCase().includes(q) ||
+      (asset.altText || "").toLowerCase().includes(q)
+    );
+  });
+  const totalPages = Math.max(1, Math.ceil(assets.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const pageAssets = assets.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <>
@@ -410,45 +448,75 @@ function MediaLibraryView({ notify }: { notify: (msg: string) => void }) {
       </div>
 
       {error ? (
-        <p className="danger" role="alert" style={{ marginBottom: 12 }}>
+        <p className="danger" role="alert" style={{ margin: 0 }}>
           {error}
         </p>
       ) : null}
 
-      {mediaQuery.isLoading ? (
-        <Skeleton rows={3} />
-      ) : assets.length ? (
-        <div className="admin-media">
-          {assets.map((asset) => (
-            <div key={asset.id} className="panel">
-              <img src={asset.url} alt={asset.altText || asset.originalFilename} />
-              <div>
-                <strong>{asset.originalFilename}</strong>
-                {canWrite ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={deleteMutation.isPending}
-                    onClick={() => deleteMutation.mutate(asset.id)}
-                  >
-                    Remove
-                  </Button>
-                ) : null}
-              </div>
+      <DataTableCard>
+        <DataTableToolbar>
+          <DataTableSearch
+            value={query}
+            onChange={(next) => {
+              setQuery(next);
+              setPage(1);
+            }}
+            placeholder="Search uploaded filename or alt text…"
+            ariaLabel="Search media assets"
+          />
+        </DataTableToolbar>
+        {mediaQuery.isLoading ? (
+          <div className="ui-data-table-loading">
+            <Skeleton rows={3} />
+          </div>
+        ) : pageAssets.length ? (
+          <div className="admin-media-scroll">
+            <div className="admin-media">
+              {pageAssets.map((asset) => (
+                <div key={asset.id} className="panel">
+                  <img src={asset.url} alt={asset.altText || asset.originalFilename} />
+                  <div>
+                    <strong>{asset.originalFilename}</strong>
+                    {canWrite ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => deleteMutation.mutate(asset.id)}
+                      >
+                        Remove
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      ) : (
-        <Empty
-          title="No uploaded media assets yet"
-          text="Upload an image above to store it in Silo S3 and attach it to catalog products."
-        />
-      )}
+          </div>
+        ) : (
+          <div className="ui-data-table-empty">
+            <Empty
+              title="No uploaded media assets yet"
+              text="Upload an image above to store it in Silo S3 and attach it to catalog products."
+            />
+          </div>
+        )}
+        {assets.length > 0 && !mediaQuery.isLoading ? (
+          <DataTableFooter>
+            <Pagination
+              page={safePage}
+              totalItems={assets.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+            />
+          </DataTableFooter>
+        ) : null}
+      </DataTableCard>
     </>
   );
 }
 
 function CustomersView() {
+  const [query, setQuery] = useState("");
   const [customerDrawer, setCustomerDrawer] = useState<{
     name: string;
     email: string;
@@ -473,7 +541,51 @@ function CustomersView() {
       });
     }
   }
-  const customers = Array.from(grouped.values());
+  const customers = Array.from(grouped.values()).filter((c) => {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q)
+    );
+  });
+
+  type CustomerRow = { name: string; email: string; orders: OrderDto[] };
+  const columns: DataTableColumn<CustomerRow>[] = [
+    {
+      id: "name",
+      header: "Customer",
+      cell: (c) => (
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => setCustomerDrawer(c)}
+        >
+          {c.name}
+        </button>
+      ),
+    },
+    { id: "email", header: "Email", cell: (c) => c.email },
+    { id: "orders", header: "Orders", cell: (c) => c.orders.length },
+    {
+      id: "spend",
+      header: "Lifetime spend",
+      cell: (c) => {
+        const spend = c.orders
+          .filter((o) => o.status !== "CANCELED")
+          .reduce((s, o) => s + Number(o.grandTotal), 0);
+        return <strong>{usdExact(spend)}</strong>;
+      },
+    },
+    {
+      id: "latest",
+      header: "Latest order",
+      cell: (c) => (
+        <Link href={`/admin/orders/${c.orders[0].id}`}>
+          {c.orders[0].orderNumber}
+        </Link>
+      ),
+    },
+  ];
 
   return (
     <>
@@ -485,58 +597,23 @@ function CustomersView() {
         <Badge tone="accent">{customers.length} customers</Badge>
       </div>
 
-      {ordersQuery.isLoading ? (
-        <Skeleton rows={4} />
-      ) : customers.length ? (
-        <div className="admin-table-panel table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Customer</th>
-                <th>Email</th>
-                <th>Orders</th>
-                <th>Lifetime spend</th>
-                <th>Latest order</th>
-              </tr>
-            </thead>
-            <tbody>
-              {customers.map((c) => {
-                const spend = c.orders
-                  .filter((o) => o.status !== "CANCELED")
-                  .reduce((s, o) => s + Number(o.grandTotal), 0);
-                return (
-                  <tr key={c.email}>
-                    <td>
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => setCustomerDrawer(c)}
-                      >
-                        {c.name}
-                      </button>
-                    </td>
-                    <td>{c.email}</td>
-                    <td>{c.orders.length}</td>
-                    <td>
-                      <strong>{usdExact(spend)}</strong>
-                    </td>
-                    <td>
-                      <Link href={`/admin/orders/${c.orders[0].id}`}>
-                        {c.orders[0].orderNumber}
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <Empty
-          title="No customer orders yet"
-          text="Customers appear automatically after their first checkout."
-        />
-      )}
+      <DataTable
+        columns={columns}
+        data={customers}
+        getRowKey={(c) => c.email}
+        isLoading={ordersQuery.isLoading}
+        pageSize={10}
+        searchValue={query}
+        onSearchChange={setQuery}
+        searchPlaceholder="Search customer name or email…"
+        searchAriaLabel="Search customers"
+        emptyState={
+          <Empty
+            title="No customer orders yet"
+            text="Customers appear automatically after their first checkout."
+          />
+        }
+      />
 
       {customerDrawer ? (
         <Drawer
@@ -577,6 +654,7 @@ function PagesView({ notify }: { notify: (msg: string) => void }) {
   const queryClient = useQueryClient();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("content:write");
+  const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [error, setError] = useState("");
 
@@ -601,7 +679,56 @@ function PagesView({ notify }: { notify: (msg: string) => void }) {
       setError(err instanceof ApiError ? err.message : "Failed to create page"),
   });
 
-  const pages = pagesQuery.data || [];
+  const pages = (pagesQuery.data || []).filter((p) => {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return p.title.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q);
+  });
+
+  const columns: DataTableColumn<PageSummaryDto>[] = [
+    { id: "page", header: "Page", cell: (p) => <strong>{p.title}</strong> },
+    {
+      id: "slug",
+      header: "Slug",
+      cell: (p) => <code>{p.slug === "home" ? "/store" : `/store/${p.slug}`}</code>,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (p) => (
+        <StatusBadge status={p.hasUnpublishedChanges ? "Draft" : p.status} />
+      ),
+    },
+    { id: "version", header: "Version", cell: (p) => `v${p.latestVersionNumber}` },
+    {
+      id: "sections",
+      header: "Sections",
+      cell: (p) => `${p.blockCount} ${p.blockCount === 1 ? "section" : "sections"}`,
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      align: "right",
+      cell: (p) => {
+        const livePath = p.slug === "home" ? "/store" : `/store/${p.slug}`;
+        return (
+          <div className="button-row" style={{ justifyContent: "flex-end" }}>
+            <Link
+              className="btn btn-sm primary"
+              href={`/?page=${encodeURIComponent(p.slug)}`}
+            >
+              Edit in Visual Editor
+            </Link>
+            {p.publishedVersionId ? (
+              <Link className="btn btn-sm" href={livePath} target="_blank">
+                View live <ArrowUpRight size={13} />
+              </Link>
+            ) : null}
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <>
@@ -625,106 +752,53 @@ function PagesView({ notify }: { notify: (msg: string) => void }) {
         ) : null}
       </div>
 
-      {pagesQuery.isLoading ? (
-        <Skeleton rows={4} />
-      ) : pages.length ? (
-        <div className="admin-table-panel table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Page</th>
-                <th>Slug</th>
-                <th>Status</th>
-                <th>Version</th>
-                <th>Sections</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pages.map((p) => {
-                const livePath = p.slug === "home" ? "/store" : `/store/${p.slug}`;
-                return (
-                  <tr key={p.id}>
-                    <td>
-                      <strong>{p.title}</strong>
-                    </td>
-                    <td>
-                      <code>{livePath}</code>
-                    </td>
-                    <td>
-                      <StatusBadge
-                        status={p.hasUnpublishedChanges ? "Draft" : p.status}
-                      />
-                    </td>
-                    <td>v{p.latestVersionNumber}</td>
-                    <td>{p.blockCount} {p.blockCount === 1 ? "section" : "sections"}</td>
-                    <td>
-                      <div className="button-row">
-                        <Link
-                          className="btn btn-sm primary"
-                          href={`/?page=${encodeURIComponent(p.slug)}`}
-                        >
-                          Edit in Visual Editor
-                        </Link>
-                        {p.publishedVersionId ? (
-                          <Link className="btn btn-sm" href={livePath} target="_blank">
-                            View live <ArrowUpRight size={13} />
-                          </Link>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <Empty title="No CMS pages yet" text="Create your first storefront page." />
-      )}
+      <DataTable
+        columns={columns}
+        data={pages}
+        getRowKey={(p) => p.id}
+        isLoading={pagesQuery.isLoading}
+        pageSize={10}
+        searchValue={query}
+        onSearchChange={setQuery}
+        searchPlaceholder="Search page title or slug…"
+        searchAriaLabel="Search CMS pages"
+        emptyState={
+          <Empty title="No CMS pages yet" text="Create your first storefront page." />
+        }
+      />
 
       {modalOpen ? (
-        <Modal
+        <FormDialog
+          open
+          onOpenChange={setModalOpen}
+          size="sm"
           title="New CMS page"
           description="Create a blank draft page ready for the Visual Store Editor."
-          close={() => setModalOpen(false)}
+          submitLabel="Create draft page"
+          isSubmitting={createMutation.isPending}
+          error={error}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            const fd = new FormData(e.currentTarget);
+            const title = String(fd.get("title") || "").trim();
+            const slug = slugify(String(fd.get("slug") || title));
+            if (!title || !slug) {
+              setError("Title and slug are required.");
+              return;
+            }
+            createMutation.mutate({ title, slug });
+          }}
         >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setError("");
-              const fd = new FormData(e.currentTarget);
-              const title = String(fd.get("title") || "").trim();
-              const slug = slugify(String(fd.get("slug") || title));
-              if (!title || !slug) {
-                setError("Title and slug are required.");
-                return;
-              }
-              createMutation.mutate({ title, slug });
-            }}
-          >
-            <label>
-              Title
-              <input name="title" required placeholder="Field Guide" />
-            </label>
-            <label>
-              Slug
-              <input name="slug" placeholder="field-guide" />
-            </label>
-            {error ? (
-              <p className="danger" role="alert">
-                {error}
-              </p>
-            ) : null}
-            <div className="modal-actions">
-              <Button onClick={() => setModalOpen(false)}>Cancel</Button>
-              <Button variant="primary" type="submit" disabled={createMutation.isPending}>
-                Create draft page
-              </Button>
-            </div>
-          </form>
-        </Modal>
+          <label>
+            Title
+            <input name="title" required placeholder="Field Guide" />
+          </label>
+          <label>
+            Slug
+            <input name="slug" placeholder="field-guide" />
+          </label>
+        </FormDialog>
       ) : null}
     </>
   );
@@ -734,7 +808,11 @@ function NavigationView({ notify }: { notify: (msg: string) => void }) {
   const queryClient = useQueryClient();
   const { hasPermission } = useAuth();
   const canWrite = hasPermission("content:write");
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalItem, setModalItem] = useState<{
+    id?: string;
+    label: string;
+    url: string;
+  } | null>(null);
 
   const navQuery = useQuery({
     queryKey: ["admin-nav", "main"],
@@ -755,123 +833,147 @@ function NavigationView({ notify }: { notify: (msg: string) => void }) {
 
   const items = navQuery.data?.items || [];
 
+  const columns: DataTableColumn<NavigationItemDto>[] = [
+    { id: "label", header: "Label", cell: (item) => <strong>{item.label}</strong> },
+    { id: "url", header: "Destination", cell: (item) => <code>{item.url}</code> },
+    {
+      id: "order",
+      header: "Actions",
+      align: "right",
+      cell: (item) => {
+        const index = items.findIndex((entry) => entry.id === item.id);
+        return canWrite ? (
+          <div className="button-row" style={{ justifyContent: "flex-end" }}>
+            <IconButton
+              label={`Edit ${item.label}`}
+              onClick={() => setModalItem({ id: item.id, label: item.label, url: item.url })}
+            >
+              <Pencil size={14} />
+            </IconButton>
+            <IconButton
+              label="Move up"
+              disabled={index <= 0 || updateMutation.isPending}
+              onClick={() => {
+                const next = [...items];
+                [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                updateMutation.mutate(next);
+              }}
+            >
+              <ArrowUp size={14} />
+            </IconButton>
+            <IconButton
+              label="Move down"
+              disabled={index === items.length - 1 || updateMutation.isPending}
+              onClick={() => {
+                const next = [...items];
+                [next[index + 1], next[index]] = [next[index], next[index + 1]];
+                updateMutation.mutate(next);
+              }}
+            >
+              <ArrowDown size={14} />
+            </IconButton>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={updateMutation.isPending}
+              onClick={() => {
+                updateMutation.mutate(items.filter((l) => l.id !== item.id));
+              }}
+            >
+              Remove
+            </Button>
+          </div>
+        ) : (
+          <span className="muted">Read-only</span>
+        );
+      },
+    },
+  ];
+
   return (
     <>
       <div className="admin-title">
         <div>
           <h1>Navigation</h1>
-          <p>Reorder, add, or remove links shown in the customer storefront header.</p>
+          <p>Reorder, add, edit, or remove links shown in the customer storefront header.</p>
         </div>
         {canWrite ? (
-          <Button variant="primary" onClick={() => setModalOpen(true)}>
+          <Button
+            variant="primary"
+            onClick={() => setModalItem({ label: "", url: "/store/shop" })}
+          >
             <Plus size={15} /> Add link
           </Button>
         ) : null}
       </div>
 
-      {navQuery.isLoading ? (
-        <Skeleton rows={4} />
-      ) : items.length ? (
-        <div className="admin-table-panel table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Label</th>
-                <th>Destination</th>
-                <th>Order</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, index) => (
-                <tr key={item.id}>
-                  <td>
-                    <strong>{item.label}</strong>
-                  </td>
-                  <td>
-                    <code>{item.url}</code>
-                  </td>
-                  <td>
-                    {canWrite ? (
-                      <div className="button-row">
-                        <IconButton
-                          label="Move up"
-                          disabled={index === 0 || updateMutation.isPending}
-                          onClick={() => {
-                            const next = [...items];
-                            [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                            updateMutation.mutate(next);
-                          }}
-                        >
-                          <ArrowUp size={14} />
-                        </IconButton>
-                        <IconButton
-                          label="Move down"
-                          disabled={index === items.length - 1 || updateMutation.isPending}
-                          onClick={() => {
-                            const next = [...items];
-                            [next[index + 1], next[index]] = [next[index], next[index + 1]];
-                            updateMutation.mutate(next);
-                          }}
-                        >
-                          <ArrowDown size={14} />
-                        </IconButton>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={updateMutation.isPending}
-                          onClick={() => {
-                            updateMutation.mutate(items.filter((l) => l.id !== item.id));
-                          }}
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="muted">Read-only</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <Empty title="No navigation links" text="Add links to populate the storefront header." />
-      )}
+      <DataTable
+        columns={columns}
+        data={items}
+        getRowKey={(item) => item.id}
+        isLoading={navQuery.isLoading}
+        pageSize={10}
+        emptyState={
+          <Empty
+            title="No navigation links"
+            text="Add links to populate the storefront header."
+          />
+        }
+      />
 
-      {modalOpen ? (
-        <Modal
-          title="Add navigation link"
+      {modalItem ? (
+        <FormDialog
+          open
+          onOpenChange={(nextOpen) => !nextOpen && setModalItem(null)}
+          size="sm"
+          title={modalItem.id ? `Edit ${modalItem.label}` : "Add navigation link"}
           description="Uses allowlisted internal / paths or https:// URLs."
-          close={() => setModalOpen(false)}
-        >
-          <form
-            className="form-stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const fd = new FormData(e.currentTarget);
-              const label = String(fd.get("label") || "").trim();
-              const url = String(fd.get("url") || "").trim();
+          submitLabel={modalItem.id ? "Save link" : "Add link"}
+          isSubmitting={updateMutation.isPending}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const label = modalItem.label.trim();
+            const url = modalItem.url.trim();
+            if (!label || !url) return;
+            if (modalItem.id) {
+              updateMutation.mutate(
+                items.map((item) =>
+                  item.id === modalItem.id ? { ...item, label, url } : item
+                )
+              );
+            } else {
               updateMutation.mutate([...items, { id: newId(), label, url }]);
-              setModalOpen(false);
-            }}
-          >
-            <label>
-              Label
-              <input name="label" required placeholder="New Arrivals" />
-            </label>
-            <label>
-              Destination path
-              <input name="url" required placeholder="/store/shop" />
-            </label>
-            <div className="modal-actions">
-              <Button onClick={() => setModalOpen(false)}>Cancel</Button>
-              <Button variant="primary" type="submit" disabled={updateMutation.isPending}>
-                Add link
-              </Button>
-            </div>
-          </form>
-        </Modal>
+            }
+            setModalItem(null);
+          }}
+        >
+          <label>
+            Label
+            <input
+              required
+              value={modalItem.label}
+              placeholder="New Arrivals"
+              onChange={(e) =>
+                setModalItem((prev) =>
+                  prev ? { ...prev, label: e.target.value } : null
+                )
+              }
+            />
+          </label>
+          <label>
+            Destination path
+            <input
+              required
+              value={modalItem.url}
+              placeholder="/store/shop"
+              onChange={(e) =>
+                setModalItem((prev) =>
+                  prev ? { ...prev, url: e.target.value } : null
+                )
+              }
+            />
+          </label>
+        </FormDialog>
       ) : null}
     </>
   );
@@ -957,7 +1059,7 @@ export function UtilityPage({
   }
 
   return (
-    <>
+    <div className="admin-page-scroll">
       <div className="admin-title">
         <div>
           <h1>{title}</h1>
@@ -965,6 +1067,6 @@ export function UtilityPage({
         </div>
       </div>
       {content}
-    </>
+    </div>
   );
 }
