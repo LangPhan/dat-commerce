@@ -202,7 +202,11 @@ export function FloatingAiBar({
           ? nodes
           : vars.reqScope === "section"
             ? rootSection || vars.targetNode
-            : vars.targetNode;
+            : vars.reqSelectedIds.length > 1
+              ? vars.reqSelectedIds
+                  .map((id) => findNode(nodes, id))
+                  .filter((n): n is ElementNode => n !== null)
+              : vars.targetNode;
 
       const pageOutline = flattenTree(nodes).map((item) => ({
         id: item.node.id,

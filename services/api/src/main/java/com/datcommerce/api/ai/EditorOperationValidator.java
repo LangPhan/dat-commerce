@@ -164,8 +164,11 @@ public class EditorOperationValidator {
                 case "insert_node" -> {
                     Object parentObj = raw.get("parentId");
                     String parentId = parentObj == null ? null : str(parentObj);
-                    if ("element".equals(normalizedScope) && parentId != null
-                            && !allowedTargetIds.contains(parentId) && !insertedIds.contains(parentId)) {
+                    boolean invalidElementInsertParent = "element".equals(normalizedScope)
+                            && (parentId == null
+                                ? !allowedTargetIds.isEmpty()
+                                : (!allowedTargetIds.contains(parentId) && !insertedIds.contains(parentId)));
+                    if (invalidElementInsertParent) {
                         throw new ApiException(
                                 ErrorCode.VALIDATION_ERROR,
                                 "AI insert_node parentId '" + parentId + "' is outside element scope"
