@@ -46,8 +46,8 @@ html[data-theme="dark"]:has(.public-store) {
   flex-direction: column;
 }
 
-.public-store > main,
-.store-page-stage > main {
+.public-store>main,
+.store-page-stage>main {
   flex: 1;
 }
 
@@ -116,6 +116,7 @@ html[data-theme="dark"]:has(.public-store) {
   0% {
     transform: translateX(-10%);
   }
+
   100% {
     transform: translateX(310%);
   }
@@ -146,16 +147,20 @@ html[data-theme="dark"]:has(.public-store) {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .store-page-loader,
   .store-page-stage.is-revealing {
     transition: opacity 180ms ease;
   }
+
   .store-page-loader.is-exiting {
     transform: none;
   }
+
   .store-page-stage.is-loading {
     transform: none;
   }
+
   .store-page-loader-bar {
     animation: none;
     left: 0;
@@ -400,7 +405,7 @@ html[data-theme="dark"]:has(.public-store) {
   font-size: clamp(32px, 4.8cqw, 64px);
 }
 
-.block-split > img {
+.block-split>img {
   display: block;
   width: 100%;
   height: 100%;
@@ -476,7 +481,7 @@ html[data-theme="dark"]:has(.public-store) {
   font-size: 14px;
 }
 
-.store-section-head > a {
+.store-section-head>a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -569,7 +574,7 @@ html[data-theme="dark"]:has(.public-store) {
   font-size: 11.5px;
 }
 
-.product-card-sub > span:first-child {
+.product-card-sub>span:first-child {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -935,18 +940,50 @@ html[data-theme="dark"]:has(.public-store) {
   align-items: start;
 }
 
-.listing-grid > * {
+.listing-grid>* {
   min-width: 0;
 }
 
 .filters {
-  display: grid;
-  gap: 14px;
-  align-content: start;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100dvh - 360px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--subtle);
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 16px;
+}
+
+.filters-header {
+  flex: none;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--subtle);
+}
+
+.filters-title {
+  display: block;
+  font-size: 13px;
+}
+
+.filters-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 16px 16px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.filters-footer {
+  flex: none;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--subtle);
 }
 
 .active-filter-chips {
@@ -1108,7 +1145,7 @@ html[data-theme="dark"]:has(.public-store) {
   text-decoration: underline;
 }
 
-.product-detail dl > div {
+.product-detail dl>div {
   display: flex;
   justify-content: space-between;
   gap: 10px;
@@ -1275,9 +1312,11 @@ html[data-theme="dark"]:has(.public-store) {
   .store-nav {
     display: none;
   }
+
   .store-menu {
     display: block;
   }
+
   .store-nav.open {
     display: grid;
     position: absolute;
@@ -1289,13 +1328,16 @@ html[data-theme="dark"]:has(.public-store) {
     padding: 14px 20px;
     z-index: 8;
   }
+
   .hero-copy {
     max-width: 92%;
   }
+
   .block-split,
   .store-split-editorial {
     grid-template-columns: 1fr;
   }
+
   .store-products,
   .store-products.cols-3,
   .testimonial-grid,
@@ -1308,9 +1350,11 @@ html[data-theme="dark"]:has(.public-store) {
   .public-store .store-menu {
     display: block;
   }
+
   .public-store .store-nav {
     display: none;
   }
+
   .public-store .store-nav.open {
     display: grid;
     position: absolute;
@@ -1322,6 +1366,7 @@ html[data-theme="dark"]:has(.public-store) {
     z-index: 8;
     padding: 14px 20px;
   }
+
   .listing-grid,
   .product-detail,
   .checkout-grid,
@@ -1330,15 +1375,23 @@ html[data-theme="dark"]:has(.public-store) {
   .store-footer {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .filters {
+    position: static;
+    max-height: min(60dvh, 420px);
+  }
+
   .store-products,
   .listing-products,
   .testimonial-grid,
   .gallery-mosaic {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
   .cart-line {
     grid-template-columns: 56px 1fr auto;
   }
+
   .newsletter-form {
     flex-wrap: wrap;
   }

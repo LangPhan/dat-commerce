@@ -204,7 +204,10 @@ export function Listing({
 
       <div className="listing-grid">
         <aside className="filters" aria-label="Catalog filters">
-          <strong style={{ fontSize: 13 }}>Filters</strong>
+          <div className="filters-header">
+            <strong className="filters-title">Filters</strong>
+          </div>
+          <div className="filters-scroll">
           <label>
             Category
             <Select
@@ -289,10 +292,13 @@ export function Listing({
             );
           })}
 
+          </div>
           {activeChips.length > 0 ? (
-            <Button size="sm" onClick={clearFilters}>
-              Clear all filters
-            </Button>
+            <div className="filters-footer">
+              <Button size="sm" onClick={clearFilters}>
+                Clear all filters
+              </Button>
+            </div>
           ) : null}
         </aside>
 
