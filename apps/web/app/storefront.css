@@ -45,8 +45,123 @@ html[data-theme="dark"]:has(.public-store) {
   flex-direction: column;
 }
 
-.public-store > main {
+.public-store > main,
+.store-page-stage > main {
   flex: 1;
+}
+
+.store-boot-placeholder {
+  min-height: 88vh;
+}
+
+.store-page-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  color: var(--text, #1c221e);
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.store-page-loader.is-exiting {
+  opacity: 0;
+  transform: scale(1.015);
+  pointer-events: none;
+}
+
+.store-page-loader-inner {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+
+.store-page-loader-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--accent, #274e36);
+}
+
+.store-page-loader-track {
+  width: 120px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--border, #e3e7e0);
+  overflow: hidden;
+  position: relative;
+}
+
+.store-page-loader-bar {
+  position: absolute;
+  inset-block: 0;
+  left: -40%;
+  width: 45%;
+  border-radius: 999px;
+  background: var(--accent, #274e36);
+  animation: store-loader-slide 1.05s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes store-loader-slide {
+  0% {
+    transform: translateX(-10%);
+  }
+  100% {
+    transform: translateX(310%);
+  }
+}
+
+.store-page-stage {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.store-page-stage.is-loading {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+
+.store-page-stage.is-revealing {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 480ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.store-page-stage.is-ready {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .store-page-loader,
+  .store-page-stage.is-revealing {
+    transition: opacity 180ms ease;
+  }
+  .store-page-loader.is-exiting {
+    transform: none;
+  }
+  .store-page-stage.is-loading {
+    transform: none;
+  }
+  .store-page-loader-bar {
+    animation: none;
+    left: 0;
+    width: 100%;
+    opacity: 0.45;
+  }
 }
 
 .store-announcement {

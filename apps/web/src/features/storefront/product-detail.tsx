@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Check, Heart, Minus, Plus, ShoppingBag, Star } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import { Tabs } from "@/components/ui/overlay";
@@ -397,17 +397,28 @@ export function ProductDetail({
   adding,
   wished,
   toggleWishlist,
+  onReady,
 }: {
   idOrSlug: string;
   onAddToCart: (variantId: string, qty: number, buyNow?: boolean) => void;
   adding: boolean;
   wished: boolean;
   toggleWishlist: (productId: string) => void;
+  onReady?: () => void;
 }) {
   const productQuery = useQuery({
     queryKey: ["store-product", idOrSlug],
     queryFn: () => storeApi.getProduct(idOrSlug),
   });
+
+  const notifiedReadyRef = useRef(false);
+  useEffect(() => {
+    if (notifiedReadyRef.current) return;
+    if (!productQuery.isPending) {
+      notifiedReadyRef.current = true;
+      onReady?.();
+    }
+  }, [productQuery.isPending, onReady]);
 
   if (productQuery.isLoading) {
     return (

@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Grid2X2, List, Search, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Pagination, Skeleton } from "@/components/ui/data-display";
 import {
@@ -39,9 +39,11 @@ const MAX_PRICE_ITEMS = [
 export function Listing({
   search = false,
   forcedCategory,
+  onReady,
 }: {
   search?: boolean;
   forcedCategory?: string;
+  onReady?: () => void;
 }) {
   const searchParams = useSearchParams();
   const urlCategory = forcedCategory || searchParams.get("category") || "";
@@ -85,6 +87,15 @@ export function Listing({
       }),
     placeholderData: keepPreviousData,
   });
+
+  const notifiedReadyRef = useRef(false);
+  useEffect(() => {
+    if (notifiedReadyRef.current) return;
+    if (!productsQuery.isPending && !categoriesQuery.isPending) {
+      notifiedReadyRef.current = true;
+      onReady?.();
+    }
+  }, [productsQuery.isPending, categoriesQuery.isPending, onReady]);
 
   const categories = categoriesQuery.data || [];
   const data = productsQuery.data;

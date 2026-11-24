@@ -335,7 +335,12 @@ export function Editor() {
     selectNode,
   ]);
 
-  if (pagesQuery.isLoading || (activeId && pageDetailQuery.isLoading)) {
+  if (
+    pagesQuery.isLoading ||
+    themeQuery.isLoading ||
+    (activeId && pageDetailQuery.isLoading) ||
+    (activeId && !pageDetailQuery.isError && pageId !== activeId)
+  ) {
     return (
       <div className="ed-loading-shell">
         <Skeleton rows={8} />

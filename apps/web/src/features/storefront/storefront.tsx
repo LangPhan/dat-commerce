@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import {
@@ -29,6 +29,7 @@ import { PageRenderer } from "@/features/builder/renderer/PageRenderer";
 import { ProductCard, StoreBlock, type StoreProductItem } from "./blocks";
 import { CartPage, CheckoutPage, ConfirmationPage } from "./cart-checkout";
 import { StoreFooter, StoreHeader } from "./header-footer";
+import { extractPreloadImageUrls, StorePageReveal } from "./page-reveal";
 import { Listing } from "./listing";
 import { ProductDetail } from "./product-detail";
 
@@ -90,9 +91,19 @@ export function Storefront({ route }: { route: string[] }) {
           ? view
           : null;
 
+  const [subViewReady, setSubViewReady] = useState(false);
+  const handleSubViewReady = useCallback(() => {
+    setSubViewReady(true);
+  }, []);
+
   const themeQuery = useQuery({
     queryKey: ["store-theme"],
     queryFn: () => cmsStoreApi.getTheme(),
+  });
+
+  const navQuery = useQuery({
+    queryKey: ["store-nav", "main"],
+    queryFn: () => cmsStoreApi.getNavigation("main"),
   });
 
   const cmsPageQuery = useQuery({
@@ -179,9 +190,40 @@ export function Storefront({ route }: { route: string[] }) {
     ? apiBlocksToEditorBlocks(cmsPageQuery.data.content)
     : initialBlocks;
 
+  const coreReady =
+    !themeQuery.isPending && !navQuery.isPending && !cartQuery.isPending;
+  const routeReady = !view
+    ? !cmsPageQuery.isPending &&
+      !catalogQuery.isPending &&
+      !categoriesQuery.isPending
+    : cmsSlug
+      ? !cmsPageQuery.isPending &&
+        !catalogQuery.isPending &&
+        !categoriesQuery.isPending
+      : view === "shop" ||
+          view === "search" ||
+          view === "category" ||
+          view === "product"
+        ? subViewReady
+        : view === "categories"
+          ? !categoriesQuery.isPending
+          : view === "collection"
+            ? !collectionsQuery.isPending && !catalogQuery.isPending
+            : true;
+  const pageReady = coreReady && routeReady;
+
+  const preloadImageUrls = useMemo(() => {
+    if (cmsPageQuery.data && isV2Content(cmsPageQuery.data.content)) {
+      return extractPreloadImageUrls(cmsPageQuery.data.content.nodes);
+    }
+    return [];
+  }, [cmsPageQuery.data]);
+
   let content: React.ReactNode;
   if (!view) {
-    if (cmsPageQuery.data && isV2Content(cmsPageQuery.data.content)) {
+    if (cmsPageQuery.isPending) {
+      content = <div className="store-boot-placeholder" aria-hidden="true" />;
+    } else if (cmsPageQuery.data && isV2Content(cmsPageQuery.data.content)) {
       content = (
         <PageRenderer
           mode="live"
@@ -217,6 +259,7 @@ export function Storefront({ route }: { route: string[] }) {
           key={view + ":" + (id || "")}
           search={view === "search"}
           forcedCategory={view === "category" ? id : undefined}
+          onReady={handleSubViewReady}
         />
       </Suspense>
     );
@@ -235,6 +278,7 @@ export function Storefront({ route }: { route: string[] }) {
             (w) => w === id || catalog.find((p) => p.id === w)?.slug === id
           )}
           toggleWishlist={toggleWishlist}
+          onReady={handleSubViewReady}
         />
         {related.length ? (
           <div className="store-container" style={{ paddingTop: 0 }}>
@@ -473,7 +517,9 @@ export function Storefront({ route }: { route: string[] }) {
       </div>
     );
   } else if (view === "about") {
-    if (cmsPageQuery.data && isV2Content(cmsPageQuery.data.content)) {
+    if (cmsPageQuery.isPending) {
+      content = <div className="store-boot-placeholder" aria-hidden="true" />;
+    } else if (cmsPageQuery.data && isV2Content(cmsPageQuery.data.content)) {
       content = (
         <PageRenderer
           mode="live"
@@ -597,15 +643,17 @@ export function Storefront({ route }: { route: string[] }) {
       className="store public-store"
       style={themeTokensToCssVars(themeQuery.data?.tokens)}
     >
-      <StoreHeader
-        cart={cartCount}
-        wishlistCount={wishlist.length}
-        currentPath={view ? `/store/${view}` : "/store"}
-        freeShippingThresholdOverride={cart?.freeShippingThreshold}
-      />
-      <main>{content}</main>
-      <StoreFooter />
-      <Toast message={toast} />
+      <StorePageReveal ready={pageReady} preloadImageUrls={preloadImageUrls}>
+        <StoreHeader
+          cart={cartCount}
+          wishlistCount={wishlist.length}
+          currentPath={view ? `/store/${view}` : "/store"}
+          freeShippingThresholdOverride={cart?.freeShippingThreshold}
+        />
+        <main>{content}</main>
+        <StoreFooter />
+        <Toast message={toast} />
+      </StorePageReveal>
     </div>
   );
 }
