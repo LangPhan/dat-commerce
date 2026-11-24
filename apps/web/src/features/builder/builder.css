@@ -4,6 +4,15 @@
   min-width: 0;
 }
 
+.bldr-edit-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.bldr-edit-wrap.is-fill-height > .bldr-edit-node {
+  height: 100%;
+}
+
 .bldr-live-node,
 .bldr-edit-node {
   position: relative;
@@ -389,6 +398,8 @@
 }
 
 .bldr-promo-banner {
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;

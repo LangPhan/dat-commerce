@@ -245,6 +245,7 @@ export function Editor() {
       hydratedThemeIdRef.current = saved.id;
       markThemeSaved();
       void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
       setToast("Theme tokens saved as draft");
     },
     onError: (err) => {
@@ -265,6 +266,7 @@ export function Editor() {
       hydratedThemeIdRef.current = published.id;
       markThemeSaved();
       void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
       void queryClient.invalidateQueries({ queryKey: ["store-theme"] });
       setToast("Theme tokens published live");
     },
@@ -296,6 +298,7 @@ export function Editor() {
           markThemeSaved();
         }
         void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
+        void queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
         setToast(`Added "${createdSwatch.name}" (${createdSwatch.hex}) to Brand Palette`);
       })
       .catch((err) => {
@@ -323,6 +326,7 @@ export function Editor() {
           markThemeSaved();
         }
         void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
+        void queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
         setToast(`Removed "${target.name}" from Brand Palette`);
       })
       .catch((err) => {
@@ -454,6 +458,9 @@ export function Editor() {
           <EditorCanvas
             catalog={productsQuery.data || []}
             categories={categoriesQuery.data || []}
+            fallbackThemeTokens={
+              themeQuery.data?.latest?.tokens || themeQuery.data?.published?.tokens || null
+            }
             canUseAi={canUseAi}
             canWrite={canWrite}
             onNotify={setToast}

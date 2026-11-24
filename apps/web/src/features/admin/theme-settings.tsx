@@ -242,6 +242,7 @@ function ThemeWorkspace({
       setSyncedServerId(created.id);
       setDirty(false);
       queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
+      queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
       notify(`Saved theme draft v${created.versionNumber}`);
     },
     onError: (err) =>
@@ -260,6 +261,7 @@ function ThemeWorkspace({
       setSyncedServerId(pub.id);
       setDirty(false);
       queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
+      queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
       queryClient.invalidateQueries({ queryKey: ["store-theme"] });
       notify(`Published theme v${pub.versionNumber}`);
     },
@@ -271,6 +273,7 @@ function ThemeWorkspace({
     mutationFn: (versionId?: string) => cmsAdminApi.publishTheme(versionId),
     onSuccess: (pub) => {
       queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
+      queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
       queryClient.invalidateQueries({ queryKey: ["store-theme"] });
       notify(`Published theme v${pub.versionNumber}`);
     },
@@ -285,6 +288,7 @@ function ThemeWorkspace({
       setSyncedServerId(rolled.id);
       setTokens(rolled.tokens);
       queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
+      queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
       queryClient.invalidateQueries({ queryKey: ["store-theme"] });
       notify(`Rolled back theme (published v${rolled.versionNumber})`);
     },

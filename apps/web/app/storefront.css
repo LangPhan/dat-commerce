@@ -22,6 +22,7 @@ html[data-theme="dark"]:has(.public-store) {
 }
 
 .store {
+  --store-rail-x: 64px;
   --text: #1c221e;
   --muted: #556159;
   --border: #e3e7e0;
@@ -184,7 +185,7 @@ html[data-theme="dark"]:has(.public-store) {
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid var(--border);
-  padding: 0 clamp(16px, 4cqw, 64px);
+  padding: 0 var(--store-rail-x, 64px);
   position: relative;
   background: #ffffff;
   color: #1c221e;
@@ -256,7 +257,7 @@ html[data-theme="dark"]:has(.public-store) {
 .store-quick-search {
   border-bottom: 1px solid var(--border);
   background: var(--subtle);
-  padding: 10px clamp(16px, 4cqw, 64px);
+  padding: 10px var(--store-rail-x, 64px);
 }
 
 .store-quick-search form {
@@ -832,9 +833,21 @@ html[data-theme="dark"]:has(.public-store) {
   display: grid;
   grid-template-columns: 1.4fr repeat(3, 1fr);
   gap: 28px;
-  padding: 40px clamp(16px, 4cqw, 64px);
+  padding: 40px var(--store-rail-x, 64px);
   background: #1c271f;
   color: #f3f5ef;
+}
+
+@media (max-width: 1024px) {
+  .store {
+    --store-rail-x: 36px;
+  }
+}
+
+@media (max-width: 640px) {
+  .store {
+    --store-rail-x: 24px;
+  }
 }
 
 .store-footer-col {

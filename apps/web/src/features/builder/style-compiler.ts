@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { sanitizeStyleValues } from "./sanitizers";
 import type {
   ElementNode,
+  ElementType,
   ResponsiveStyles,
   ResponsiveVisibility,
   StylePropertyKey,
@@ -83,6 +84,85 @@ export function compileNodeInlineStyle(
   const cssObj: Record<string, string | number> = {};
   assignStyleMap(cssObj, resolved);
   return cssObj as CSSProperties;
+}
+
+const WRAPPER_HOIST_KEYS: readonly (keyof CSSProperties)[] = [
+  "width",
+  "minWidth",
+  "maxWidth",
+  "flexGrow",
+  "flexShrink",
+  "alignSelf",
+  "gridColumn",
+  "gridRow",
+  "margin",
+  "marginTop",
+  "marginRight",
+  "marginBottom",
+  "marginLeft",
+  "position",
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "zIndex",
+];
+
+const FULL_WIDTH_INTRINSIC_TYPES = new Set<ElementType>([
+  "promotion_banner",
+  "divider",
+]);
+
+/**
+ * Splits a node's compiled style into outer wrapper styles (flex/grid placement,
+ * outer width, margins, positioning) and inner element styles so edit/DnD
+ * wrappers preserve exact flex/grid sizing fidelity with live rendering without
+ * double-applying margins or percentage widths.
+ */
+export function splitEditWrapperStyles(
+  compiledStyle: CSSProperties,
+  nodeType?: ElementType
+): {
+  wrapperStyle: CSSProperties;
+  elementStyle: CSSProperties;
+} {
+  const elementStyle: Record<string, unknown> = { ...compiledStyle };
+  const wrapperStyle: Record<string, unknown> = {};
+
+  for (const key of WRAPPER_HOIST_KEYS) {
+    const val = elementStyle[key as string];
+    if (val !== undefined) {
+      wrapperStyle[key as string] = val;
+      delete elementStyle[key as string];
+    }
+  }
+
+  if (compiledStyle.width !== undefined) {
+    elementStyle.width = "100%";
+  }
+  if (compiledStyle.maxWidth !== undefined) {
+    elementStyle.maxWidth = "100%";
+  }
+  if (compiledStyle.minWidth !== undefined) {
+    elementStyle.minWidth = "100%";
+  }
+  if (compiledStyle.height === "100%") {
+    wrapperStyle.height = "100%";
+  }
+
+  if (
+    nodeType &&
+    FULL_WIDTH_INTRINSIC_TYPES.has(nodeType) &&
+    wrapperStyle.width === undefined &&
+    wrapperStyle.flexGrow === undefined
+  ) {
+    wrapperStyle.width = "100%";
+  }
+
+  return {
+    wrapperStyle: wrapperStyle as CSSProperties,
+    elementStyle: elementStyle as CSSProperties,
+  };
 }
 
 export function isVisibleForViewport(

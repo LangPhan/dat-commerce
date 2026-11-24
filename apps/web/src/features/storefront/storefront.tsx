@@ -654,6 +654,7 @@ export function Storefront({ route }: { route: string[] }) {
       style={themeTokensToCssVars(themeQuery.data?.tokens)}
     >
       <GlobalTypographyStyleTag
+        typography={themeQuery.data?.tokens?.typography}
         scopeId="storefront"
         scopeSelector=".store.public-store"
       />

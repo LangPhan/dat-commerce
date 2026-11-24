@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { GripVertical, Ban, Plus } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, ReactNode } from "react";
 import {
   canAcceptChild,
   createElementId,
@@ -312,12 +312,14 @@ export function CanvasNodeDndShell({
   parentId,
   index,
   isSelected,
+  wrapperStyle,
   children,
 }: {
   node: ElementNode;
   parentId: string | null;
   index: number;
   isSelected: boolean;
+  wrapperStyle?: CSSProperties;
   children: ReactNode;
 }) {
   const dragData: DragPayload = {
@@ -350,7 +352,13 @@ export function CanvasNodeDndShell({
     });
 
   return (
-    <div className="ed-dnd-item-wrap">
+    <div
+      className={cn(
+        "ed-dnd-item-wrap",
+        wrapperStyle?.height === "100%" && "is-fill-height"
+      )}
+      style={wrapperStyle}
+    >
       <CanvasDropSlot
         id={`slot-before-${parentId ?? "root"}-${node.id}`}
         parentId={parentId}

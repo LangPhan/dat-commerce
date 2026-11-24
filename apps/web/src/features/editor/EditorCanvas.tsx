@@ -7,6 +7,7 @@ import { useEditorStore } from "@/features/builder/store/editor-store";
 import { StoreFooter, StoreHeader } from "@/features/storefront/header-footer";
 import type { StoreCategoryItem, StoreProductItem } from "@/features/storefront/blocks";
 import { themeTokensToCssVars } from "@/lib/cms-schema";
+import type { ThemeTokens } from "@/types/api-cms-ai";
 import { cn } from "@/lib/format";
 import { FloatingAiBar } from "./ai/FloatingAiBar";
 import {
@@ -18,12 +19,14 @@ import {
 export function EditorCanvas({
   catalog,
   categories,
+  fallbackThemeTokens,
   canUseAi,
   canWrite,
   onNotify,
 }: {
   catalog: StoreProductItem[];
   categories: StoreCategoryItem[];
+  fallbackThemeTokens?: ThemeTokens | null;
   canUseAi: boolean;
   canWrite: boolean;
   onNotify: (msg: string) => void;
@@ -62,12 +65,13 @@ export function EditorCanvas({
       ? lastAppliedAiCompare.beforeNodes
       : nodes;
 
+  const baseThemeTokens = themeTokens || fallbackThemeTokens || null;
   const activeThemeTokens = aiPreview
     ? (viewingBeforePreview ? aiPreview.beforeThemeTokens : aiPreview.previewThemeTokens) ||
-      themeTokens
+      baseThemeTokens
     : viewingBeforeApplied && lastAppliedAiCompare
-      ? lastAppliedAiCompare.beforeThemeTokens || themeTokens
-      : themeTokens;
+      ? lastAppliedAiCompare.beforeThemeTokens || baseThemeTokens
+      : baseThemeTokens;
   const aiAffectedIds =
     aiPreview && !viewingBeforePreview
       ? new Set(aiPreview.diffs.map((d) => d.nodeId))
@@ -178,12 +182,13 @@ export function EditorCanvas({
                 wrapEditNode={
                   previewMode
                     ? undefined
-                    : ({ node, parentId, index, isSelected, children }) => (
+                    : ({ node, parentId, index, isSelected, wrapperStyle, children }) => (
                         <CanvasNodeDndShell
                           node={node}
                           parentId={parentId}
                           index={index}
                           isSelected={isSelected}
+                          wrapperStyle={wrapperStyle}
                         >
                           {children}
                         </CanvasNodeDndShell>

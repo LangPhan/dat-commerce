@@ -556,6 +556,14 @@ label.ed-search-box > input:not([type="checkbox"]):not([aria-hidden="true"]),
   border-radius: 6px;
 }
 
+.ed-artboard-frame.vp-tablet .store {
+  --store-rail-x: 36px;
+}
+
+.ed-artboard-frame.vp-mobile .store {
+  --store-rail-x: 24px;
+}
+
 .ed-store-surface {
   position: relative;
   min-height: 620px;
@@ -605,10 +613,17 @@ label.ed-search-box > input:not([type="checkbox"]):not([aria-hidden="true"]),
 /* ---- DND INDICATORS ---- */
 .ed-dnd-item-wrap {
   position: relative;
+  min-width: 0;
 }
 
 .ed-dnd-node-shell {
   position: relative;
+  min-width: 0;
+}
+
+.ed-dnd-item-wrap.is-fill-height > .ed-dnd-node-shell,
+.ed-dnd-item-wrap.is-fill-height > .ed-dnd-node-shell > .bldr-edit-node {
+  height: 100%;
 }
 
 .ed-dnd-node-shell.is-dragging {

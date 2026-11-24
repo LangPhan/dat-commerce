@@ -1,7 +1,7 @@
 "use client";
 
 import { EyeOff, Lock } from "lucide-react";
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import type { StoreCategoryItem, StoreProductItem } from "@/features/storefront/blocks";
 import { cn } from "@/lib/format";
 import { getElementPart } from "../parts";
@@ -12,6 +12,7 @@ import {
   compileLivePageCss,
   compileNodeInlineStyle,
   isVisibleForViewport,
+  splitEditWrapperStyles,
 } from "../style-compiler";
 import { normalizeGlobalTypography } from "@/features/typography/defaults";
 import { getEffectivePresetId } from "@/features/typography/resolve";
@@ -39,6 +40,7 @@ export type EditNodeWrapperProps = {
   isSelected: boolean;
   isHovered: boolean;
   isAiPreviewAffected: boolean;
+  wrapperStyle?: CSSProperties;
   children: ReactNode;
 };
 
@@ -159,6 +161,10 @@ export function PageRenderer({
         const isHovered = hoveredId === node.id;
         const isAiAffected = Boolean(aiAffectedIds?.has(node.id));
         const compiledStyle = compileNodeInlineStyle(node.styles, viewport);
+        const { wrapperStyle, elementStyle } = splitEditWrapperStyles(
+          compiledStyle,
+          node.type
+        );
 
         const editEffectivePreset = getEffectivePresetId(node, normalizedTypo?.presets);
         const editNodeAttrs: BuilderNodeAttrs = {
@@ -183,7 +189,7 @@ export function PageRenderer({
                 depth + 1
               ),
           },
-          compiledStyle,
+          elementStyle,
           editNodeAttrs
         );
 
@@ -267,7 +273,7 @@ export function PageRenderer({
 
         if (wrapEditNode) {
           return (
-            <div key={node.id}>
+            <Fragment key={node.id}>
               {wrapEditNode({
                 node,
                 parentId,
@@ -276,13 +282,25 @@ export function PageRenderer({
                 isSelected,
                 isHovered,
                 isAiPreviewAffected: isAiAffected,
+                wrapperStyle,
                 children: interactiveBox,
               })}
-            </div>
+            </Fragment>
           );
         }
 
-        return <div key={node.id}>{interactiveBox}</div>;
+        return (
+          <div
+            key={node.id}
+            className={cn(
+              "bldr-edit-wrap",
+              wrapperStyle.height === "100%" && "is-fill-height"
+            )}
+            style={wrapperStyle}
+          >
+            {interactiveBox}
+          </div>
+        );
       })}
       {mode === "edit" && renderContainerEndSlot
         ? renderContainerEndSlot(parentId, list.length)
