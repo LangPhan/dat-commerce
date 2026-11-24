@@ -502,6 +502,10 @@
   padding: 12px;
 }
 
+.ed-canvas-scroll.ed-ai-hidden {
+  padding-bottom: 56px;
+}
+
 .ed-artboard-frame {
   position: relative;
   background: #ffffff;
@@ -641,6 +645,30 @@
 }
 
 /* ---- FLOATING CONTEXTUAL AI DOCK ---- */
+.ed-ai-minimized-pill {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  z-index: 28;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  backdrop-filter: blur(10px);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.22);
+  cursor: pointer;
+}
+
+.ed-ai-minimized-pill:hover {
+  border-color: var(--accent);
+}
+
 .ed-floating-ai-dock {
   position: absolute;
   left: 50%;
@@ -654,13 +682,105 @@
 }
 
 .ed-ai-bar,
-.ed-ai-preview-card {
+.ed-ai-preview-card,
+.ed-ai-thread-card {
   background: color-mix(in srgb, var(--surface) 95%, transparent);
   backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22);
   padding: 10px 12px;
+}
+
+.ed-ai-thread-card {
+  padding: 8px 11px;
+}
+
+.ed-ai-thread-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.ed-ai-thread-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ed-ai-thread-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ed-mini-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ed-mini-link:hover {
+  color: var(--text);
+}
+
+.ed-ai-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 140px;
+  overflow-y: auto;
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.ed-ai-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: var(--subtle);
+  font-size: 11.5px;
+}
+
+.ed-ai-turn-user {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ed-ai-turn-target {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ed-ai-turn-prompt {
+  font-weight: 600;
+  color: var(--text);
+  flex: 1 1 auto;
+}
+
+.ed-ai-turn-reply {
+  color: var(--muted);
+  font-size: 11px;
+  padding-left: 2px;
 }
 
 .ed-ai-preview-card {

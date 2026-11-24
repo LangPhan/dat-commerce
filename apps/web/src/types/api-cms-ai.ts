@@ -268,6 +268,12 @@ export type UpdateAiModelSettingsRequest = {
 };
 
 
+export type EditorChatHistoryItem = {
+  role: "user" | "assistant";
+  content: string;
+  targetLabel?: string;
+};
+
 export type EditorSuggestRequest = {
   pageId?: string;
   pageSlug?: string;
@@ -279,6 +285,7 @@ export type EditorSuggestRequest = {
   targetSubtree?: unknown;
   pageOutline?: Array<Record<string, unknown>>;
   themeTokens?: unknown;
+  history?: EditorChatHistoryItem[];
 };
 
 export type EditorSuggestResponse = {

@@ -17,6 +17,7 @@ import {
   Save,
   Settings,
   Smartphone,
+  Sparkles,
   Tablet,
   Undo2,
   ZoomIn,
@@ -98,6 +99,7 @@ export function EditorTopBar({
   const showOutlines = useEditorStore((s) => s.showOutlines);
   const showGrid = useEditorStore((s) => s.showGrid);
   const previewMode = useEditorStore((s) => s.previewMode);
+  const aiBarOpen = useEditorStore((s) => s.aiBarOpen);
   const history = useEditorStore((s) => s.history);
   const historyIndex = useEditorStore((s) => s.historyIndex);
 
@@ -106,6 +108,7 @@ export function EditorTopBar({
   const setShowOutlines = useEditorStore((s) => s.setShowOutlines);
   const setShowGrid = useEditorStore((s) => s.setShowGrid);
   const setPreviewMode = useEditorStore((s) => s.setPreviewMode);
+  const toggleAiBar = useEditorStore((s) => s.toggleAiBar);
   const setPageMeta = useEditorStore((s) => s.setPageMeta);
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
@@ -119,13 +122,6 @@ export function EditorTopBar({
   const canRedo = historyIndex < history.length - 1;
   const liveHref =
     pageSlug === "home" ? "/store" : `/store/${encodeURIComponent(pageSlug)}`;
-
-  const saveLabel =
-    savingDraft || saveStatus === "saving"
-      ? "Saving..."
-      : dirty || saveStatus === "unsaved"
-        ? "Unsaved changes"
-        : "Saved";
 
   return (
     <header className="ed-topbar">
@@ -177,7 +173,13 @@ export function EditorTopBar({
         <div className="ed-status-cluster">
           <Badge tone={dirty ? "accent" : "green"}>
             {!dirty && !savingDraft ? <CheckCircle2 size={11} /> : null}
-            <span>{dirty ? "Unsaved" : savingDraft ? "Saving" : "Saved"}</span>
+            <span>
+              {savingDraft || saveStatus === "saving"
+                ? "Saving"
+                : dirty || saveStatus === "unsaved"
+                  ? "Unsaved"
+                  : "Saved"}
+            </span>
           </Badge>
           <Badge tone={status === "PUBLISHED" ? "green" : "neutral"}>
             {status === "PUBLISHED" ? "Live" : "Draft"}
@@ -288,6 +290,14 @@ export function EditorTopBar({
       </div>
 
       <div className="ed-topbar-right">
+        <IconButton
+          label={aiBarOpen ? "Hide AI chat" : "Show AI chat"}
+          title={aiBarOpen ? "Hide AI chat" : "Show AI chat"}
+          className={aiBarOpen ? "ed-tool-active" : undefined}
+          onClick={toggleAiBar}
+        >
+          <Sparkles size={14} />
+        </IconButton>
         <IconButton
           label={previewMode ? "Exit Preview" : "Preview"}
           title={previewMode ? "Exit Preview" : "Live Preview"}

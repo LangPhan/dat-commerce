@@ -11,7 +11,10 @@ import {
 } from "../operations";
 import { createElementNode } from "../registry/definitions";
 import type {
+  AiChatTurn,
+  AiChatTurnStatus,
   AiPreviewSession,
+  AiScopeMode,
   EditorOperation,
   ElementNode,
   ElementType,
@@ -58,6 +61,10 @@ export interface EditorStoreState {
   historyIndex: number;
 
   aiPreview: AiPreviewSession | null;
+  aiBarOpen: boolean;
+  aiDraftPrompt: string;
+  aiScope: AiScopeMode;
+  aiChatByPage: Record<string, AiChatTurn[]>;
 
   loadPage: (params: {
     pageId: string;
@@ -133,6 +140,17 @@ export interface EditorStoreState {
   startAiPreview: (session: AiPreviewSession) => void;
   applyAiPreview: () => void;
   revertAiPreview: () => void;
+  setAiBarOpen: (open: boolean) => void;
+  toggleAiBar: () => void;
+  setAiDraftPrompt: (prompt: string) => void;
+  setAiScope: (scope: AiScopeMode) => void;
+  appendAiChatTurn: (pageKey: string, turn: AiChatTurn) => void;
+  updateAiChatTurnStatus: (
+    pageKey: string,
+    turnId: string,
+    status: AiChatTurnStatus
+  ) => void;
+  clearAiChatForPage: (pageKey: string) => void;
   discardAllChanges: (serverNodes: ElementNode[]) => void;
 }
 
@@ -174,6 +192,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
   historyIndex: -1,
 
   aiPreview: null,
+  aiBarOpen: true,
+  aiDraftPrompt: "",
+  aiScope: "element",
+  aiChatByPage: {},
 
   loadPage: (params) => {
     const firstId = params.nodes[0]?.id;
@@ -312,6 +334,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       dirty: true,
       saveStatus: "unsaved",
       aiPreview: null,
+  aiBarOpen: true,
+  aiDraftPrompt: "",
+  aiScope: "element",
+  aiChatByPage: {},
     });
     return true;
   },
@@ -349,6 +375,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       dirty: true,
       saveStatus: "unsaved",
       aiPreview: null,
+  aiBarOpen: true,
+  aiDraftPrompt: "",
+  aiScope: "element",
+  aiChatByPage: {},
     });
     return true;
   },
@@ -561,6 +591,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     const state = get();
     const preview = state.aiPreview;
     if (!preview) return;
+    const pageKey = state.pageId || state.pageSlug || "home";
     const entry: HistoryEntry = {
       id: makeHistoryId(),
       timestamp: new Date().toISOString(),
@@ -576,6 +607,12 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     };
     const truncated = state.history.slice(0, state.historyIndex + 1);
     const appended = [...truncated, entry].slice(-MAX_HISTORY);
+    const prevTurns = state.aiChatByPage[pageKey] || [];
+    const nextTurns = prevTurns.map((t) =>
+      (preview.turnId ? t.id === preview.turnId : t.status === "previewing")
+        ? { ...t, status: "applied" as const }
+        : t
+    );
     set({
       nodes: preview.previewNodes,
       selectedIds: entry.afterSelectedIds.length
@@ -586,10 +623,73 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       dirty: true,
       saveStatus: "unsaved",
       aiPreview: null,
+      aiChatByPage: {
+        ...state.aiChatByPage,
+        [pageKey]: nextTurns,
+      },
     });
   },
 
-  revertAiPreview: () => set({ aiPreview: null }),
+  revertAiPreview: () =>
+    set((state) => {
+      const preview = state.aiPreview;
+      if (!preview) return { aiPreview: null };
+      const pageKey = state.pageId || state.pageSlug || "home";
+      const prevTurns = state.aiChatByPage[pageKey] || [];
+      const nextTurns = prevTurns.map((t) =>
+        (preview.turnId ? t.id === preview.turnId : t.status === "previewing")
+          ? { ...t, status: "reverted" as const }
+          : t
+      );
+      return {
+        aiPreview: null,
+        aiChatByPage: {
+          ...state.aiChatByPage,
+          [pageKey]: nextTurns,
+        },
+      };
+    }),
+
+  setAiBarOpen: (aiBarOpen) => set({ aiBarOpen }),
+
+  toggleAiBar: () => set((s) => ({ aiBarOpen: !s.aiBarOpen })),
+
+  setAiDraftPrompt: (aiDraftPrompt) => set({ aiDraftPrompt }),
+
+  setAiScope: (aiScope) => set({ aiScope }),
+
+  appendAiChatTurn: (pageKey, turn) =>
+    set((s) => {
+      const existing = s.aiChatByPage[pageKey] || [];
+      const next = [...existing, turn].slice(-40);
+      return {
+        aiChatByPage: {
+          ...s.aiChatByPage,
+          [pageKey]: next,
+        },
+      };
+    }),
+
+  updateAiChatTurnStatus: (pageKey, turnId, status) =>
+    set((s) => {
+      const existing = s.aiChatByPage[pageKey] || [];
+      return {
+        aiChatByPage: {
+          ...s.aiChatByPage,
+          [pageKey]: existing.map((t) =>
+            t.id === turnId ? { ...t, status } : t
+          ),
+        },
+      };
+    }),
+
+  clearAiChatForPage: (pageKey) =>
+    set((s) => ({
+      aiChatByPage: {
+        ...s.aiChatByPage,
+        [pageKey]: [],
+      },
+    })),
 
   discardAllChanges: (serverNodes) =>
     set({

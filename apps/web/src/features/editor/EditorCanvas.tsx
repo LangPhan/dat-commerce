@@ -37,6 +37,7 @@ export function EditorCanvas({
   const showOutlines = useEditorStore((s) => s.showOutlines);
   const showGrid = useEditorStore((s) => s.showGrid);
   const previewMode = useEditorStore((s) => s.previewMode);
+  const aiBarOpen = useEditorStore((s) => s.aiBarOpen);
 
   const selectNode = useEditorStore((s) => s.selectNode);
   const setHoveredId = useEditorStore((s) => s.setHoveredId);
@@ -65,13 +66,13 @@ export function EditorCanvas({
         : "100%";
 
   return (
-    <main
-      className={cn("ed-canvas-stage", previewMode && "is-preview")}
-      onClick={() => {
-        if (!previewMode) selectNode(null);
-      }}
-    >
-      <div className="ed-canvas-scroll">
+    <main className={cn("ed-canvas-stage", previewMode && "is-preview")}>
+      <div
+        className={cn("ed-canvas-scroll", !aiBarOpen && "ed-ai-hidden")}
+        onClick={() => {
+          if (!previewMode) selectNode(null);
+        }}
+      >
         <div
           className={cn(
             "ed-artboard-frame",

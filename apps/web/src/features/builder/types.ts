@@ -222,12 +222,32 @@ export type DiffRow = {
   after: string;
 };
 
+export type AiChatTurnStatus = "previewing" | "applied" | "reverted" | "error";
+
+export type AiScopeMode = "element" | "section" | "page";
+
+export type AiChatTurn = {
+  id: string;
+  timestamp: string;
+  prompt: string;
+  summary?: string;
+  explanation?: string;
+  model: string;
+  scope: AiScopeMode;
+  targetLabel: string;
+  targetNodeIds: string[];
+  status: AiChatTurnStatus;
+  diffCount: number;
+  error?: string;
+};
+
 export type AiPreviewSession = {
+  turnId?: string;
   prompt: string;
   summary: string;
   explanation: string;
   model: string;
-  scope: "element" | "section" | "page";
+  scope: AiScopeMode;
   targetNodeIds: string[];
   operations: EditorOperation[];
   diffs: DiffRow[];

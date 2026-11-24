@@ -127,13 +127,33 @@ public class EditorAiService {
         gatewayContext.put("targetSubtree", request.targetSubtree());
 
         String serializedContext = buildPromptContextJson(request, scope, viewport);
-        List<AiModelGateway.GatewayMessage> messages = List.of(
-                AiModelGateway.GatewayMessage.system(SYSTEM_PROMPT),
-                AiModelGateway.GatewayMessage.user(
-                        "<untrusted_page_content>\n" + serializedContext + "\n</untrusted_page_content>\n\n"
-                                + "Merchant instruction: " + request.prompt().trim()
-                )
-        );
+        List<AiModelGateway.GatewayMessage> messages = new ArrayList<>();
+        messages.add(AiModelGateway.GatewayMessage.system(SYSTEM_PROMPT));
+        if (request.history() != null && !request.history().isEmpty()) {
+            int start = Math.max(0, request.history().size() - 12);
+            for (int i = start; i < request.history().size(); i++) {
+                EditorChatHistoryItem item = request.history().get(i);
+                if (item == null || !StringUtils.hasText(item.content())) {
+                    continue;
+                }
+                String clipped = item.content().trim();
+                if (clipped.length() > 800) {
+                    clipped = clipped.substring(0, 800);
+                }
+                if ("assistant".equalsIgnoreCase(item.role())) {
+                    messages.add(AiModelGateway.GatewayMessage.assistant(clipped, List.of()));
+                } else {
+                    String prefix = StringUtils.hasText(item.targetLabel())
+                            ? "[Target: " + item.targetLabel().trim() + "] "
+                            : "";
+                    messages.add(AiModelGateway.GatewayMessage.user(prefix + clipped));
+                }
+            }
+        }
+        messages.add(AiModelGateway.GatewayMessage.user(
+                "<untrusted_page_content>\n" + serializedContext + "\n</untrusted_page_content>\n\n"
+                        + "Merchant instruction: " + request.prompt().trim()
+        ));
 
         long startMs = System.currentTimeMillis();
         AiModelGateway gateway = selectGateway();
@@ -291,6 +311,13 @@ public class EditorAiService {
     ) {
     }
 
+    public record EditorChatHistoryItem(
+            @Size(max = 20) String role,
+            @Size(max = 1000) String content,
+            @Size(max = 120) String targetLabel
+    ) {
+    }
+
     public record EditorSuggestRequest(
             UUID pageId,
             @Size(max = 120) String pageSlug,
@@ -301,7 +328,8 @@ public class EditorAiService {
             @Size(max = 160) String model,
             Object targetSubtree,
             List<Map<String, Object>> pageOutline,
-            Map<String, Object> themeTokens
+            Map<String, Object> themeTokens,
+            List<EditorChatHistoryItem> history
     ) {
     }
 

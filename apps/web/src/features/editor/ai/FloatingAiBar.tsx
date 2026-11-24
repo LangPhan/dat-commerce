@@ -3,10 +3,14 @@
 import { useMutation } from "@tanstack/react-query";
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   LoaderCircle,
+  MessageSquare,
   RotateCcw,
   Settings2,
   Sparkles,
+  Trash2,
   Wand2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -40,14 +44,17 @@ import {
 } from "@/features/builder/operations";
 import { useEditorStore } from "@/features/builder/store/editor-store";
 import { resolveStylesForViewport } from "@/features/builder/style-compiler";
-import type { ElementNode } from "@/features/builder/types";
+import type {
+  AiChatTurn,
+  AiScopeMode,
+  ElementNode,
+} from "@/features/builder/types";
 import { useAiModels } from "@/hooks/use-ai-models";
 import { aiAdminApi } from "@/lib/cms-ai-api";
 import type { AIModelId } from "@/types/ai";
+import type { EditorChatHistoryItem } from "@/types/api-cms-ai";
 
-type AiScope = "element" | "section" | "page";
-
-const SCOPE_OPTIONS: { value: AiScope; label: string }[] = [
+const SCOPE_OPTIONS: { value: AiScopeMode; label: string }[] = [
   { value: "element", label: "Element" },
   { value: "section", label: "Section" },
   { value: "page", label: "Entire Page" },
@@ -103,10 +110,9 @@ export function FloatingAiBar({
   const [selectedModel, setSelectedModel] = useState<AIModelId>(defaultModelId);
   const manualModelRef = useRef(false);
 
-  const [scope, setScope] = useState<AiScope>("element");
-  const [prompt, setPrompt] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [threadCollapsed, setThreadCollapsed] = useState(false);
 
   const pageId = useEditorStore((s) => s.pageId);
   const pageSlug = useEditorStore((s) => s.pageSlug);
@@ -115,11 +121,30 @@ export function FloatingAiBar({
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const themeTokens = useEditorStore((s) => s.themeTokens);
   const aiPreview = useEditorStore((s) => s.aiPreview);
+  const aiBarOpen = useEditorStore((s) => s.aiBarOpen);
+  const prompt = useEditorStore((s) => s.aiDraftPrompt);
+  const scope = useEditorStore((s) => s.aiScope);
+  const aiChatByPage = useEditorStore((s) => s.aiChatByPage);
+
   const startAiPreview = useEditorStore((s) => s.startAiPreview);
   const applyAiPreview = useEditorStore((s) => s.applyAiPreview);
   const revertAiPreview = useEditorStore((s) => s.revertAiPreview);
+  const setAiBarOpen = useEditorStore((s) => s.setAiBarOpen);
+  const setAiDraftPrompt = useEditorStore((s) => s.setAiDraftPrompt);
+  const setAiScope = useEditorStore((s) => s.setAiScope);
+  const appendAiChatTurn = useEditorStore((s) => s.appendAiChatTurn);
+  const clearAiChatForPage = useEditorStore((s) => s.clearAiChatForPage);
+  const selectNode = useEditorStore((s) => s.selectNode);
+  const expandAncestors = useEditorStore((s) => s.expandAncestors);
+
+  const pageKey = pageId || pageSlug || "home";
+  const turns = useMemo(
+    () => aiChatByPage[pageKey] ?? [],
+    [aiChatByPage, pageKey]
+  );
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const threadEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!manualModelRef.current || !models.some((m) => m.id === selectedModel)) {
@@ -127,12 +152,23 @@ export function FloatingAiBar({
     }
   }, [defaultModelId, models, selectedModel]);
 
+  useEffect(() => {
+    if (
+      turns.length &&
+      !threadCollapsed &&
+      aiBarOpen &&
+      typeof threadEndRef.current?.scrollIntoView === "function"
+    ) {
+      threadEndRef.current.scrollIntoView({ block: "nearest" });
+    }
+  }, [turns.length, threadCollapsed, aiBarOpen]);
+
   const primaryNode = useMemo(() => {
     if (!selectedIds.length) return null;
     return findNode(nodes, selectedIds[0]);
   }, [nodes, selectedIds]);
 
-  const effectiveScope: AiScope = !primaryNode ? "page" : scope;
+  const effectiveScope: AiScopeMode = !primaryNode ? "page" : scope;
 
   const currentPropertyChips = useMemo(() => {
     if (!primaryNode) return [];
@@ -152,15 +188,21 @@ export function FloatingAiBar({
   const quickChips = useMemo(() => quickChipsForNode(primaryNode), [primaryNode]);
 
   const suggestMutation = useMutation({
-    mutationFn: async (userPrompt: string) => {
-      const path = primaryNode ? findNodePath(nodes, primaryNode.id) : [];
+    mutationFn: async (vars: {
+      userPrompt: string;
+      targetNode: ElementNode | null;
+      reqScope: AiScopeMode;
+      reqSelectedIds: string[];
+      historyPayload: EditorChatHistoryItem[];
+    }) => {
+      const path = vars.targetNode ? findNodePath(nodes, vars.targetNode.id) : [];
       const rootSection = path[0] || null;
       const targetSubtree =
-        effectiveScope === "page"
+        vars.reqScope === "page"
           ? nodes
-          : effectiveScope === "section"
-            ? rootSection || primaryNode
-            : primaryNode;
+          : vars.reqScope === "section"
+            ? rootSection || vars.targetNode
+            : vars.targetNode;
 
       const pageOutline = flattenTree(nodes).map((item) => ({
         id: item.node.id,
@@ -174,40 +216,75 @@ export function FloatingAiBar({
         pageId: pageId || undefined,
         pageSlug,
         viewport,
-        scope: effectiveScope,
+        scope: vars.reqScope,
         selectedNodeIds:
-          effectiveScope === "section" && rootSection
+          vars.reqScope === "section" && rootSection
             ? [rootSection.id]
-            : selectedIds,
-        prompt: userPrompt,
+            : vars.reqSelectedIds,
+        prompt: vars.userPrompt,
         model: selectedModel,
         targetSubtree,
         pageOutline,
         themeTokens: themeTokens || undefined,
+        history: vars.historyPayload,
       });
     },
-    onSuccess: (res) => {
+    onSuccess: (res, vars) => {
       setErrorMsg(null);
-      if (!res.operations.length) {
-        setErrorMsg(
-          res.explanation ||
-            "AI could not determine a concrete operation. Try specifying exact styles or wording."
-        );
-        return;
-      }
+      const targetLabel = vars.targetNode
+        ? vars.targetNode.label
+        : `${pageSlug} (page)`;
       const normalizedOps = normalizeApiOperations(res.operations);
       const previewNodes = applyOperations(nodes, normalizedOps);
       const diffs = computeNodeDiffs(nodes, previewNodes);
-      if (!diffs.length) {
-        setErrorMsg("AI suggestion produced no visual change against the current state.");
+      const turnId = `ai-turn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+      if (!normalizedOps.length || !diffs.length) {
+        const message = !normalizedOps.length
+          ? res.explanation ||
+            "AI could not determine a concrete operation. Try specifying exact styles or wording."
+          : "AI suggestion produced no visual change against the current state.";
+        setErrorMsg(message);
+        appendAiChatTurn(pageKey, {
+          id: turnId,
+          timestamp: new Date().toISOString(),
+          prompt: vars.userPrompt,
+          summary: res.summary || "No changes generated",
+          explanation: message,
+          model: res.model,
+          scope: vars.reqScope,
+          targetLabel,
+          targetNodeIds: vars.reqSelectedIds,
+          status: "error",
+          diffCount: 0,
+          error: message,
+        });
         return;
       }
-      startAiPreview({
-        prompt,
+
+      const turn: AiChatTurn = {
+        id: turnId,
+        timestamp: new Date().toISOString(),
+        prompt: vars.userPrompt,
         summary: res.summary,
         explanation: res.explanation,
         model: res.model,
-        scope: effectiveScope,
+        scope: vars.reqScope,
+        targetLabel,
+        targetNodeIds: res.targetNodeIds,
+        status: "previewing",
+        diffCount: diffs.length,
+      };
+      appendAiChatTurn(pageKey, turn);
+      setThreadCollapsed(false);
+
+      startAiPreview({
+        turnId,
+        prompt: vars.userPrompt,
+        summary: res.summary,
+        explanation: res.explanation,
+        model: res.model,
+        scope: vars.reqScope,
         targetNodeIds: res.targetNodeIds,
         operations: normalizedOps,
         diffs,
@@ -215,24 +292,96 @@ export function FloatingAiBar({
         beforeNodes: nodes,
       });
     },
-    onError: (err) => {
-      setErrorMsg(err instanceof Error ? err.message : "AI suggestion failed");
+    onError: (err, vars) => {
+      const msg = err instanceof Error ? err.message : "AI suggestion failed";
+      setErrorMsg(msg);
+      appendAiChatTurn(pageKey, {
+        id: `ai-err-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        prompt: vars.userPrompt,
+        summary: "Request failed",
+        model: selectedModel,
+        scope: vars.reqScope,
+        targetLabel: vars.targetNode
+          ? vars.targetNode.label
+          : `${pageSlug} (page)`,
+        targetNodeIds: vars.reqSelectedIds,
+        status: "error",
+        diffCount: 0,
+        error: msg,
+      });
     },
   });
 
   const submitPrompt = (text = prompt) => {
     const trimmed = text.trim();
     if (!trimmed || !canUseAi || !canWrite || suggestMutation.isPending) return;
-    setPrompt(trimmed);
-    suggestMutation.mutate(trimmed);
+    setAiDraftPrompt(trimmed);
+
+    const historyPayload: EditorChatHistoryItem[] = [];
+    for (const turn of turns.slice(-6)) {
+      historyPayload.push({
+        role: "user",
+        content: turn.prompt,
+        targetLabel: turn.targetLabel,
+      });
+      if (turn.summary || turn.explanation) {
+        historyPayload.push({
+          role: "assistant",
+          content: [turn.summary, turn.explanation].filter(Boolean).join(" — "),
+        });
+      }
+    }
+
+    suggestMutation.mutate({
+      userPrompt: trimmed,
+      targetNode: primaryNode,
+      reqScope: effectiveScope,
+      reqSelectedIds: selectedIds,
+      historyPayload,
+    });
   };
 
   if (!canUseAi) {
     return null;
   }
 
+  if (!aiBarOpen) {
+    return (
+      <button
+        type="button"
+        className="ed-ai-minimized-pill"
+        aria-label="Show AI chat"
+        title="Open Contextual AI Chat"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          setAiBarOpen(true);
+        }}
+      >
+        <Sparkles size={13} />
+        <span>AI Chat</span>
+        {primaryNode ? (
+          <Badge tone="neutral">{primaryNode.label}</Badge>
+        ) : null}
+        {aiPreview ? (
+          <Badge tone="green">Preview active</Badge>
+        ) : turns.length > 0 ? (
+          <Badge tone="accent">{turns.length}</Badge>
+        ) : null}
+        <ChevronUp size={13} />
+      </button>
+    );
+  }
+
   return (
-    <div className="ed-floating-ai-dock" role="region" aria-label="Contextual AI Editor">
+    <div
+      className="ed-floating-ai-dock"
+      role="region"
+      aria-label="Contextual AI Editor"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
       {aiPreview ? (
         <div className="ed-ai-preview-card">
           <div className="ed-ai-preview-head">
@@ -257,8 +406,9 @@ export function FloatingAiBar({
                 size="sm"
                 variant="primary"
                 onClick={() => {
+                  const summary = aiPreview.summary;
                   applyAiPreview();
-                  onNotify(`Applied AI change: ${aiPreview.summary}`);
+                  onNotify(`Applied AI change: ${summary}`);
                 }}
               >
                 <Check size={12} /> Apply Changes
@@ -272,7 +422,10 @@ export function FloatingAiBar({
 
           <div className="ed-ai-diff-strip">
             {aiPreview.diffs.slice(0, 6).map((diff, i) => (
-              <div key={`${diff.nodeId}-${diff.field}-${i}`} className="ed-ai-diff-pill">
+              <div
+                key={`${diff.nodeId}-${diff.field}-${i}`}
+                className="ed-ai-diff-pill"
+              >
                 <span className="ed-ai-diff-node">{diff.nodeLabel}</span>
                 <code>{diff.field}</code>
                 <span className="muted">{diff.before}</span>
@@ -281,6 +434,80 @@ export function FloatingAiBar({
               </div>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {turns.length > 0 ? (
+        <div className="ed-ai-thread-card">
+          <div className="ed-ai-thread-head">
+            <span className="ed-ai-thread-label">
+              <MessageSquare size={12} />
+              <strong>Context History</strong>
+              <Badge tone="neutral">{turns.length}</Badge>
+            </span>
+            <div className="ed-ai-thread-actions">
+              <button
+                type="button"
+                className="ed-mini-link"
+                onClick={() => setThreadCollapsed((v) => !v)}
+              >
+                {threadCollapsed ? "Expand" : "Collapse"}
+              </button>
+              <button
+                type="button"
+                className="ed-mini-link"
+                aria-label="Clear AI chat history"
+                onClick={() => clearAiChatForPage(pageKey)}
+              >
+                <Trash2 size={11} /> Clear
+              </button>
+            </div>
+          </div>
+
+          {!threadCollapsed ? (
+            <div className="ed-ai-thread" role="log" aria-live="polite">
+              {turns.map((turn) => (
+                <div key={turn.id} className="ed-ai-turn">
+                  <div className="ed-ai-turn-user">
+                    <button
+                      type="button"
+                      className="ed-ai-turn-target"
+                      title="Focus this target element on canvas"
+                      disabled={!turn.targetNodeIds.length}
+                      onClick={() => {
+                        const targetId = turn.targetNodeIds[0];
+                        if (targetId && findNode(nodes, targetId)) {
+                          selectNode(targetId);
+                          expandAncestors([targetId]);
+                        }
+                      }}
+                    >
+                      {turn.targetLabel}
+                    </button>
+                    <span className="ed-ai-turn-prompt">{turn.prompt}</span>
+                    <Badge
+                      tone={
+                        turn.status === "applied"
+                          ? "green"
+                          : turn.status === "previewing"
+                            ? "accent"
+                            : "neutral"
+                      }
+                    >
+                      {turn.status}
+                    </Badge>
+                  </div>
+                  {turn.summary || turn.error ? (
+                    <div className="ed-ai-turn-reply">
+                      <span>{turn.error || turn.summary}</span>
+                      <small className="muted"> · {turn.model}</small>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              <div ref={threadEndRef} />
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -314,10 +541,14 @@ export function FloatingAiBar({
               value={effectiveScope}
               disabled={!primaryNode || suggestMutation.isPending}
               onValueChange={(next) => {
-                if (next) setScope(next as AiScope);
+                if (next) setAiScope(next as AiScopeMode);
               }}
             >
-              <SelectTrigger aria-label="AI edit scope" size="sm" className="ed-ai-scope-trigger">
+              <SelectTrigger
+                aria-label="AI edit scope"
+                size="sm"
+                className="ed-ai-scope-trigger"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -347,6 +578,14 @@ export function FloatingAiBar({
             >
               <Settings2 size={14} />
             </IconButton>
+
+            <IconButton
+              label="Hide AI chat"
+              title="Hide AI chat bar"
+              onClick={() => setAiBarOpen(false)}
+            >
+              <ChevronDown size={14} />
+            </IconButton>
           </div>
         </div>
 
@@ -370,7 +609,7 @@ export function FloatingAiBar({
             }
             disabled={!canWrite || suggestMutation.isPending}
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => setAiDraftPrompt(e.target.value)}
           />
           <Button
             variant="primary"
