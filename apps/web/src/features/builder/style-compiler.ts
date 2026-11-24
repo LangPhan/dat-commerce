@@ -117,7 +117,11 @@ function escapeSelectorAttr(id: string): string {
  * Generates deterministic, sanitized scoped CSS rules for live storefront rendering
  * so tablet, mobile, hover, and responsive visibility work via native media queries.
  */
-export function compileLivePageCss(nodes: ElementNode[]): string {
+export function compileLivePageCss(
+  nodes: ElementNode[],
+  opts?: { hoverOnly?: boolean }
+): string {
+  const hoverOnly = Boolean(opts?.hoverOnly);
   const baseRules: string[] = [];
   const hoverRules: string[] = [];
   const tabletRules: string[] = [];
@@ -127,11 +131,14 @@ export function compileLivePageCss(nodes: ElementNode[]): string {
     for (const node of list) {
       const safeId = escapeSelectorAttr(node.id);
       if (safeId) {
-        const selector = `[data-builder-node="${safeId}"]`;
+        // Specificity (0,3,0) cleanly overrides base/variant classes (.bldr-button.variant-outline, .btn.primary) without !important
+        const selector = `.bldr-page-root [data-builder-node="${safeId}"][data-builder-node="${safeId}"]`;
 
-        const baseDecl = serializeDeclarations(node.styles?.base || {});
-        if (baseDecl) {
-          baseRules.push(`${selector} { ${baseDecl} }`);
+        if (!hoverOnly) {
+          const baseDecl = serializeDeclarations(node.styles?.base || {});
+          if (baseDecl) {
+            baseRules.push(`${selector} { ${baseDecl} }`);
+          }
         }
 
         const hoverDecl = serializeDeclarations(node.styles?.hover || {});
@@ -139,26 +146,28 @@ export function compileLivePageCss(nodes: ElementNode[]): string {
           hoverRules.push(`${selector}:hover { ${hoverDecl} }`);
         }
 
-        const tabletDecl = serializeDeclarations(node.styles?.tablet || {});
-        if (tabletDecl) {
-          tabletRules.push(`  ${selector} { ${tabletDecl} }`);
-        }
-
-        const mobileDecl = serializeDeclarations(node.styles?.mobile || {});
-        if (mobileDecl) {
-          mobileRules.push(`  ${selector} { ${mobileDecl} }`);
-        }
-
-        const vis = node.visibility;
-        if (vis) {
-          if (vis.desktop === false) {
-            baseRules.push(`@media (min-width: 1025px) { ${selector} { display: none !important; } }`);
+        if (!hoverOnly) {
+          const tabletDecl = serializeDeclarations(node.styles?.tablet || {});
+          if (tabletDecl) {
+            tabletRules.push(`  ${selector} { ${tabletDecl} }`);
           }
-          if (vis.tablet === false) {
-            tabletRules.push(`  ${selector} { display: none !important; }`);
+
+          const mobileDecl = serializeDeclarations(node.styles?.mobile || {});
+          if (mobileDecl) {
+            mobileRules.push(`  ${selector} { ${mobileDecl} }`);
           }
-          if (vis.mobile === false) {
-            mobileRules.push(`  ${selector} { display: none !important; }`);
+
+          const vis = node.visibility;
+          if (vis) {
+            if (vis.desktop === false) {
+              baseRules.push(`@media (min-width: 1025px) { ${selector} { display: none !important; } }`);
+            }
+            if (vis.tablet === false) {
+              tabletRules.push(`  ${selector} { display: none !important; }`);
+            }
+            if (vis.mobile === false) {
+              mobileRules.push(`  ${selector} { display: none !important; }`);
+            }
           }
         }
       }

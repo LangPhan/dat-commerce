@@ -80,6 +80,11 @@ describe("builder sanitizers & responsive CSS compiler", () => {
     const css = compileLivePageCss([h]);
     expect(css).toContain('@media (max-width: 1024px)');
     expect(css).toContain('@media (max-width: 640px)');
-    expect(css).toContain('[data-builder-node="h-resp"]');
+    expect(css).toContain(
+      '.bldr-page-root [data-builder-node="h-resp"][data-builder-node="h-resp"]'
+    );
+
+    const hoverOnlyCss = compileLivePageCss([h], { hoverOnly: true });
+    expect(hoverOnlyCss).toBe("");
   });
 });

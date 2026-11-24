@@ -1,10 +1,11 @@
 "use client";
 
-import { Lock, EyeOff } from "lucide-react";
-import type { ReactNode } from "react";
+import { EyeOff, Lock } from "lucide-react";
+import { Fragment, type ReactNode } from "react";
 import type { StoreCategoryItem, StoreProductItem } from "@/features/storefront/blocks";
 import { cn } from "@/lib/format";
-import { renderElementContent } from "../registry/elements";
+import { renderElementContent, type BuilderNodeAttrs } from "../registry/elements";
+import { sanitizeHtmlAttributes } from "../sanitizers";
 import {
   compileLivePageCss,
   compileNodeInlineStyle,
@@ -27,6 +28,7 @@ export function PageRenderer({
   nodes,
   mode,
   viewport = "desktop",
+  forceViewport,
   showOutlines = false,
   selectedIds = [],
   hoveredId = null,
@@ -43,6 +45,7 @@ export function PageRenderer({
   nodes: ElementNode[];
   mode: "edit" | "live";
   viewport?: ViewportMode;
+  forceViewport?: ViewportMode;
   showOutlines?: boolean;
   selectedIds?: string[];
   hoveredId?: string | null;
@@ -56,7 +59,10 @@ export function PageRenderer({
   wrapEditNode?: (args: EditNodeWrapperProps) => ReactNode;
   renderContainerEndSlot?: (parentId: string | null, childCount: number) => ReactNode;
 }) {
-  const liveCss = mode === "live" ? compileLivePageCss(nodes) : "";
+  const liveCss =
+    mode === "live"
+      ? compileLivePageCss(nodes, { hoverOnly: Boolean(forceViewport) })
+      : "";
   const selectedSet = new Set(selectedIds);
 
   const renderNodeList = (
@@ -66,13 +72,34 @@ export function PageRenderer({
   ): ReactNode => (
     <>
       {list.map((node, index) => {
+        const sanitizedAttrs = sanitizeHtmlAttributes(node.htmlAttributes);
+        const customClass = node.customCssClasses?.join(" ");
+
         if (mode === "live") {
-          if (!node.visible) return null;
+          if (forceViewport) {
+            if (!isVisibleForViewport(node.visible, node.visibility, forceViewport)) {
+              return null;
+            }
+          } else if (!node.visible) {
+            return null;
+          }
+
+          const liveInlineStyle = forceViewport
+            ? compileNodeInlineStyle(node.styles, forceViewport)
+            : {};
+
+          const nodeAttrs: BuilderNodeAttrs = {
+            ...sanitizedAttrs,
+            "data-builder-node": node.id,
+            "data-builder-type": node.type,
+            ...(customClass ? { className: customClass } : {}),
+          };
+
           const inner = renderElementContent(
             node,
             {
               mode: "live",
-              viewport: "desktop",
+              viewport: forceViewport || "desktop",
               catalog,
               categories,
               onAddToCart,
@@ -82,20 +109,11 @@ export function PageRenderer({
                   ? renderNodeList(containerNode.children, containerNode.id, depth + 1)
                   : null,
             },
-            {}
+            liveInlineStyle,
+            nodeAttrs
           );
 
-          return (
-            <div
-              key={node.id}
-              data-builder-node={node.id}
-              data-builder-type={node.type}
-              className={cn("bldr-live-node", node.customCssClasses?.join(" "))}
-              {...(node.htmlAttributes || {})}
-            >
-              {inner}
-            </div>
-          );
+          return <Fragment key={node.id}>{inner}</Fragment>;
         }
 
         const visibleInViewport = isVisibleForViewport(
@@ -107,6 +125,11 @@ export function PageRenderer({
         const isHovered = hoveredId === node.id;
         const isAiAffected = Boolean(aiAffectedIds?.has(node.id));
         const compiledStyle = compileNodeInlineStyle(node.styles, viewport);
+
+        const editNodeAttrs: BuilderNodeAttrs = {
+          ...sanitizedAttrs,
+          ...(customClass ? { className: customClass } : {}),
+        };
 
         const elementBody = renderElementContent(
           node,
@@ -124,7 +147,8 @@ export function PageRenderer({
                 depth + 1
               ),
           },
-          compiledStyle
+          compiledStyle,
+          editNodeAttrs
         );
 
         const interactiveBox = (

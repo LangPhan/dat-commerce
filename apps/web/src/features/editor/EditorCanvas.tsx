@@ -123,6 +123,7 @@ export function EditorCanvas({
                 nodes={renderedNodes}
                 mode={previewMode ? "live" : "edit"}
                 viewport={viewport}
+                forceViewport={previewMode ? viewport : undefined}
                 showOutlines={showOutlines}
                 selectedIds={selectedIds}
                 hoveredId={hoveredId}

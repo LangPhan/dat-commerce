@@ -509,15 +509,23 @@ function InteractiveForm({
   );
 }
 
+export type BuilderNodeAttrs = {
+  "data-builder-node"?: string;
+  "data-builder-type"?: string;
+  className?: string;
+} & Record<string, string | undefined>;
+
 export function renderElementContent(
   node: ElementNode,
   ctx: BuilderRenderContext,
-  compiledStyle: CSSProperties
+  compiledStyle: CSSProperties,
+  nodeAttrs?: BuilderNodeAttrs
 ): ReactNode {
   const props = node.props || {};
   const isEdit = ctx.mode === "edit";
   const catalog = ctx.catalog.length ? ctx.catalog : initialProducts;
   const categories = ctx.categories.length ? ctx.categories : initialCategories;
+  const { className: extraClassName, ...domAttrs } = nodeAttrs || {};
 
   const stopLinkInEdit = (e: React.MouseEvent<HTMLElement>) => {
     if (isEdit) {
@@ -555,8 +563,9 @@ export function renderElementContent(
           className={cn(
             "bldr-container-inner",
             `bldr-type-${node.type}`,
-            node.customCssClasses?.join(" ")
+            extraClassName
           )}
+          {...domAttrs}
           style={{ ...compiledStyle, ...ratioStyle }}
         >
           {hasChildren ? (
@@ -573,7 +582,8 @@ export function renderElementContent(
     case "spacer":
       return (
         <div
-          className={cn("bldr-spacer", isEdit && "bldr-spacer-edit")}
+          className={cn("bldr-spacer", isEdit && "bldr-spacer-edit", extraClassName)}
+          {...domAttrs}
           style={compiledStyle}
           aria-hidden="true"
         />
@@ -587,7 +597,11 @@ export function renderElementContent(
       const HeadingTag =
         tag === "h1" || tag === "h3" || tag === "h4" || tag === "p" ? tag : "h2";
       const inner = (
-        <HeadingTag className="bldr-heading" style={compiledStyle}>
+        <HeadingTag
+          className={cn("bldr-heading", extraClassName)}
+          {...domAttrs}
+          style={compiledStyle}
+        >
           {text}
         </HeadingTag>
       );
@@ -602,7 +616,11 @@ export function renderElementContent(
 
     case "text_editor":
       return (
-        <div className="bldr-text" style={compiledStyle}>
+        <div
+          className={cn("bldr-text", extraClassName)}
+          {...domAttrs}
+          style={compiledStyle}
+        >
           {strProp(props, "text", "")}
         </div>
       );
@@ -618,7 +636,8 @@ export function renderElementContent(
           <img
             src={src}
             alt={alt}
-            className="bldr-image"
+            className={cn("bldr-image", extraClassName)}
+            {...domAttrs}
             style={compiledStyle}
           />
           {caption ? <figcaption className="bldr-figcaption">{caption}</figcaption> : null}
@@ -635,7 +654,7 @@ export function renderElementContent(
 
     case "video":
       return (
-        <div style={compiledStyle}>
+        <div className={extraClassName} {...domAttrs} style={compiledStyle}>
           <InteractiveVideo
             title={strProp(props, "title", "Studio Film")}
             caption={strProp(props, "caption", "")}
@@ -653,27 +672,13 @@ export function renderElementContent(
       const variant = strProp(props, "variant", "primary");
       const iconKey = strProp(props, "icon", "");
       const IconComp = BUILDER_ICON_MAP[iconKey];
-      const baseVariantStyle: CSSProperties =
-        variant === "outline"
-          ? {
-              backgroundColor: "transparent",
-              color: "var(--store-text, #111318)",
-              borderWidth: "1px",
-              borderStyle: "solid",
-              borderColor: "var(--store-border, #D1D5DB)",
-            }
-          : variant === "ghost"
-            ? {
-                backgroundColor: "transparent",
-                color: "var(--accent, #5B46E8)",
-              }
-            : {};
       return (
         <Link
           href={href}
           onClick={stopLinkInEdit}
-          className={cn("bldr-button", `variant-${variant}`)}
-          style={{ ...baseVariantStyle, ...compiledStyle }}
+          className={cn("bldr-button", `variant-${variant}`, extraClassName)}
+          {...domAttrs}
+          style={compiledStyle}
         >
           <span>{label}</span>
           {IconComp ? <IconComp size={15} /> : null}
@@ -687,7 +692,11 @@ export function renderElementContent(
       const caption = strProp(props, "caption", "");
       const size = Math.max(12, Math.min(80, numProp(props, "size", 28)));
       return (
-        <div className="bldr-icon-box" style={compiledStyle}>
+        <div
+          className={cn("bldr-icon-box", extraClassName)}
+          {...domAttrs}
+          style={compiledStyle}
+        >
           <IconComp size={size} />
           {caption ? <span>{caption}</span> : null}
         </div>
@@ -697,9 +706,9 @@ export function renderElementContent(
     case "divider":
       return (
         <hr
-          className="bldr-divider"
+          className={cn("bldr-divider", extraClassName)}
+          {...domAttrs}
           style={{
-            border: 0,
             borderTopWidth: strProp(props, "thickness", "1px"),
             borderTopStyle:
               (strProp(props, "style", "solid") as "solid" | "dashed" | "dotted") ||
@@ -715,7 +724,8 @@ export function renderElementContent(
       const cols = Math.max(2, Math.min(4, numProp(props, "columns", 3)));
       return (
         <div
-          className={cn("bldr-icon-list", layout === "grid" && "is-grid")}
+          className={cn("bldr-icon-list", layout === "grid" && "is-grid", extraClassName)}
+          {...domAttrs}
           style={{
             ...(layout === "grid"
               ? {
@@ -752,7 +762,8 @@ export function renderElementContent(
       const cols = Math.max(2, Math.min(4, numProp(props, "columns", 3)));
       return (
         <div
-          className="bldr-gallery"
+          className={cn("bldr-gallery", extraClassName)}
+          {...domAttrs}
           style={{
             gridTemplateColumns:
               ctx.viewport === "mobile"
@@ -788,6 +799,8 @@ export function renderElementContent(
       }
       return (
         <div
+          className={extraClassName}
+          {...domAttrs}
           style={compiledStyle}
           onClickCapture={(e) => {
             if (isEdit) e.preventDefault();
@@ -818,7 +831,7 @@ export function renderElementContent(
       const actionLabel = strProp(props, "actionLabel", "");
       const actionUrl = sanitizeUrl(props.actionUrl, "/store/shop");
       return (
-        <div style={compiledStyle}>
+        <div className={extraClassName} {...domAttrs} style={compiledStyle}>
           <div
             className="bldr-product-grid"
             style={{
@@ -863,7 +876,8 @@ export function renderElementContent(
       const shown = list.slice(0, limit);
       return (
         <div
-          className="bldr-product-carousel"
+          className={cn("bldr-product-carousel", extraClassName)}
+          {...domAttrs}
           style={compiledStyle}
           onClickCapture={(e) => {
             if (isEdit) e.preventDefault();
@@ -884,7 +898,8 @@ export function renderElementContent(
       const shown = categories.slice(0, limit);
       return (
         <div
-          className="bldr-category-grid"
+          className={cn("bldr-category-grid", extraClassName)}
+          {...domAttrs}
           style={{
             gridTemplateColumns:
               ctx.viewport === "mobile"
@@ -939,7 +954,11 @@ export function renderElementContent(
       if (!resolved) return <p className="muted">No products available.</p>;
       const { raw, info } = resolved;
       return (
-        <div className="bldr-featured-product" style={compiledStyle}>
+        <div
+          className={cn("bldr-featured-product", extraClassName)}
+          {...domAttrs}
+          style={compiledStyle}
+        >
           <img
             src={sanitizeMediaUrl(info.image)}
             alt={info.name}
@@ -994,7 +1013,11 @@ export function renderElementContent(
         ? resolved.info.compareAtPrice
         : Number(strProp(props, "compareAt", "0")) || 0;
       return (
-        <div className="bldr-price-tag" style={compiledStyle}>
+        <div
+          className={cn("bldr-price-tag", extraClassName)}
+          {...domAttrs}
+          style={compiledStyle}
+        >
           <strong>{usd(amount)}</strong>
           {compareAt > amount ? (
             <del className="bldr-compare-price">{usd(compareAt)}</del>
@@ -1009,7 +1032,8 @@ export function renderElementContent(
       return (
         <button
           type="button"
-          className="btn primary bldr-add-cart-btn"
+          className={cn("btn primary bldr-add-cart-btn", extraClassName)}
+          {...domAttrs}
           style={compiledStyle}
           onClick={(e) => {
             if (isEdit) {
@@ -1035,7 +1059,11 @@ export function renderElementContent(
       if (!resolved) return <p className="muted">Select a product in the Inspector.</p>;
       const { info } = resolved;
       return (
-        <div className="bldr-product-info" style={compiledStyle}>
+        <div
+          className={cn("bldr-product-info", extraClassName)}
+          {...domAttrs}
+          style={compiledStyle}
+        >
           <div className="bldr-product-info-head">
             <span className="muted">
               {info.brand} · {info.categoryLabel}
@@ -1058,7 +1086,11 @@ export function renderElementContent(
 
     case "promotion_banner":
       return (
-        <div className="bldr-promo-banner" style={compiledStyle}>
+        <div
+          className={cn("bldr-promo-banner", extraClassName)}
+          {...domAttrs}
+          style={compiledStyle}
+        >
           <div>
             {strProp(props, "kicker") ? (
               <span className="bldr-kicker">{strProp(props, "kicker")}</span>
@@ -1080,28 +1112,28 @@ export function renderElementContent(
 
     case "tabs":
       return (
-        <div style={compiledStyle}>
+        <div className={extraClassName} {...domAttrs} style={compiledStyle}>
           <InteractiveTabs items={itemsProp(props, "items")} mode={ctx.mode} />
         </div>
       );
 
     case "accordion":
       return (
-        <div style={compiledStyle}>
+        <div className={extraClassName} {...domAttrs} style={compiledStyle}>
           <InteractiveAccordion items={itemsProp(props, "items")} mode={ctx.mode} />
         </div>
       );
 
     case "carousel":
       return (
-        <div style={compiledStyle}>
+        <div className={extraClassName} {...domAttrs} style={compiledStyle}>
           <InteractiveCarousel slides={itemsProp(props, "slides")} mode={ctx.mode} />
         </div>
       );
 
     case "countdown":
       return (
-        <div style={compiledStyle}>
+        <div className={extraClassName} {...domAttrs} style={compiledStyle}>
           <InteractiveCountdown
             heading={strProp(props, "heading", "Upcoming Release")}
             targetIso={strProp(props, "targetIso", "2027-01-01T00:00:00Z")}
@@ -1122,7 +1154,7 @@ export function renderElementContent(
           required: Boolean(f.required),
         }));
       return (
-        <div style={compiledStyle}>
+        <div className={extraClassName} {...domAttrs} style={compiledStyle}>
           <InteractiveForm
             heading={strProp(props, "heading", "")}
             submitLabel={strProp(props, "submitLabel", "Submit")}
@@ -1138,7 +1170,8 @@ export function renderElementContent(
       const cleanHtml = sanitizeHtmlSubset(strProp(props, "html", ""));
       return (
         <div
-          className="bldr-custom-html"
+          className={cn("bldr-custom-html", extraClassName)}
+          {...domAttrs}
           style={compiledStyle}
           dangerouslySetInnerHTML={{ __html: cleanHtml }}
         />

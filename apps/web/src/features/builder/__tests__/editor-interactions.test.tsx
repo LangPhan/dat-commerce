@@ -56,6 +56,27 @@ describe("nested element selection and Floating AI focus preservation", () => {
     });
   });
 
+  it("renders live CTA button without a .bldr-live-node wrapper and applies forceViewport styles directly on the inner element", () => {
+    const btn = createElementNode("button");
+    btn.id = "hero-cta-test";
+    btn.props = { label: "Shop collection", href: "/store/shop", variant: "primary" };
+    btn.styles = {
+      base: { backgroundColor: "#FFFFFF", color: "#111318" },
+      mobile: { fontSize: "13px" },
+    };
+
+    const { container } = render(
+      <PageRenderer mode="live" forceViewport="mobile" nodes={[btn]} />
+    );
+
+    expect(container.querySelector(".bldr-live-node")).toBeNull();
+    const link = screen.getByText("Shop collection").closest("a");
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute("data-builder-node")).toBe("hero-cta-test");
+    expect(link?.style.backgroundColor).toBe("rgb(255, 255, 255)");
+    expect(link?.style.fontSize).toBe("13px");
+  });
+
   it("keeps active selection when clicking inside FloatingAiBar and preserves chat across hide/show and focus changes", () => {
     const sec = createElementNode("section");
     sec.id = "hero-sec";
