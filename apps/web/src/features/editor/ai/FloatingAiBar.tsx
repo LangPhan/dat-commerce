@@ -52,8 +52,14 @@ import { resolveStylesForViewport } from "@/features/builder/style-compiler";
 import type {
   AiChatTurn,
   AiScopeMode,
+  DiffRow,
   ElementNode,
 } from "@/features/builder/types";
+import {
+  applyTypographyOperations,
+  partitionAiOperations,
+} from "@/features/typography/ai-operations";
+import { normalizeGlobalTypography } from "@/features/typography/defaults";
 import { useAiModels } from "@/hooks/use-ai-models";
 import { aiAdminApi } from "@/lib/cms-ai-api";
 import type { AIModelId } from "@/types/ai";
@@ -63,12 +69,22 @@ const SCOPE_OPTIONS: { value: AiScopeMode; label: string }[] = [
   { value: "element", label: "Element" },
   { value: "section", label: "Section" },
   { value: "page", label: "Entire Page" },
+  { value: "typography", label: "Global Typography" },
 ];
 
 function quickChipsForNode(
   node: ElementNode | null,
-  partKey?: string | null
+  partKey?: string | null,
+  scope?: AiScopeMode
 ): string[] {
+  if (scope === "typography") {
+    return [
+      "Use Playfair Display for headings and Inter for body",
+      "Make all headings slightly smaller and use weight 600",
+      "Make typography feel like a luxury editorial brand",
+      "Increase body line height to 1.7 for readability",
+    ];
+  }
   if (node && partKey) {
     const partDef = getElementPart(node.type, partKey);
     if (partDef) {
@@ -212,7 +228,8 @@ export function FloatingAiBar({
     return findNode(nodes, selectedIds[0]);
   }, [nodes, selectedIds]);
 
-  const effectiveScope: AiScopeMode = !primaryNode ? "page" : scope;
+  const effectiveScope: AiScopeMode =
+    scope === "typography" ? "typography" : !primaryNode ? "page" : scope;
 
   const currentPropertyChips = useMemo(() => {
     if (!primaryNode) return [];
@@ -239,8 +256,8 @@ export function FloatingAiBar({
       : null;
 
   const quickChips = useMemo(
-    () => quickChipsForNode(primaryNode, activePartKey),
-    [primaryNode, activePartKey]
+    () => quickChipsForNode(primaryNode, activePartKey, effectiveScope),
+    [primaryNode, activePartKey, effectiveScope]
   );
 
   const suggestMutation = useMutation({
@@ -292,7 +309,12 @@ export function FloatingAiBar({
         model: selectedModel,
         targetSubtree,
         pageOutline,
-        themeTokens: themeTokens || undefined,
+        themeTokens: themeTokens
+          ? {
+              ...themeTokens,
+              typography: normalizeGlobalTypography(themeTokens.typography),
+            }
+          : undefined,
         history: vars.historyPayload,
         selectedPart: vars.reqSelectedPart || undefined,
         editableParts: Object.keys(editableParts).length
@@ -305,16 +327,56 @@ export function FloatingAiBar({
       const partLabel = vars.targetNode && vars.reqSelectedPart
         ? getElementPart(vars.targetNode.type, vars.reqSelectedPart)?.label
         : undefined;
-      const targetLabel = vars.targetNode
-        ? `${vars.targetNode.label}${partLabel ? ` › ${partLabel}` : ""}`
-        : `${pageSlug} (page)`;
-      const normalizedOps = normalizeApiOperations(res.operations);
-      const previewNodes = applyOperations(nodes, normalizedOps);
-      const diffs = computeNodeDiffs(nodes, previewNodes);
+      const targetLabel =
+        vars.reqScope === "typography"
+          ? "Global Typography"
+          : vars.targetNode
+            ? `${vars.targetNode.label}${partLabel ? ` › ${partLabel}` : ""}`
+            : `${pageSlug} (page)`;
+
+      const { nodeOps, typographyOps } = partitionAiOperations(res.operations || []);
+      const normalizedOps = nodeOps.length ? normalizeApiOperations(nodeOps) : [];
+      const previewNodes = normalizedOps.length ? applyOperations(nodes, normalizedOps) : nodes;
+      const nodeDiffs = normalizedOps.length ? computeNodeDiffs(nodes, previewNodes) : [];
+
+      let previewThemeTokens = themeTokens;
+      let affectedPresets: string[] = [];
+      const typoDiffRows: DiffRow[] = [];
+      if (typographyOps.length && themeTokens) {
+        const applied = applyTypographyOperations(themeTokens, typographyOps);
+        if (applied.diffs.length) {
+          previewThemeTokens = applied.nextTokens;
+          affectedPresets = applied.affectedPresets;
+          for (const d of applied.diffs) {
+            const arrowIdx = d.indexOf(" -> ");
+            const colonIdx = d.indexOf(":");
+            if (colonIdx > 0 && arrowIdx > colonIdx) {
+              typoDiffRows.push({
+                nodeId: "global-typography",
+                nodeLabel: d.slice(0, colonIdx).trim(),
+                field: "typography",
+                before: d.slice(colonIdx + 1, arrowIdx).trim(),
+                after: d.slice(arrowIdx + 4).trim(),
+              });
+            } else {
+              typoDiffRows.push({
+                nodeId: "global-typography",
+                nodeLabel: "Global Typography",
+                field: "token",
+                before: "Current",
+                after: d,
+              });
+            }
+          }
+        }
+      }
+
+      const diffs = [...nodeDiffs, ...typoDiffRows];
+      const totalOps = normalizedOps.length + typographyOps.length;
       const turnId = `ai-turn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-      if (!normalizedOps.length || !diffs.length) {
-        const message = !normalizedOps.length
+      if (!totalOps || !diffs.length) {
+        const message = !totalOps
           ? res.explanation ||
             "AI could not determine a concrete operation. Try specifying exact styles or wording."
           : "AI suggestion produced no visual change against the current state.";
@@ -361,9 +423,13 @@ export function FloatingAiBar({
         scope: vars.reqScope,
         targetNodeIds: res.targetNodeIds,
         operations: normalizedOps,
+        typographyOperations: typographyOps,
         diffs,
         previewNodes,
         beforeNodes: nodes,
+        beforeThemeTokens: themeTokens,
+        previewThemeTokens: previewThemeTokens !== themeTokens ? previewThemeTokens : undefined,
+        affectedPresets,
         viewMode: "after",
       });
     },
@@ -465,6 +531,11 @@ export function FloatingAiBar({
               <Sparkles size={14} />
               <strong>{aiPreview.summary}</strong>
               <Badge tone="accent">{aiPreview.model}</Badge>
+              {aiPreview.affectedPresets?.map((p) => (
+                <Badge key={p} tone="neutral">
+                  {p}
+                </Badge>
+              ))}
             </div>
             <div className="ed-ai-preview-actions">
               <div
@@ -655,7 +726,11 @@ export function FloatingAiBar({
             <span className="ed-ai-spark">
               <Wand2 size={13} />
             </span>
-            {primaryNode ? (
+            {effectiveScope === "typography" ? (
+              <strong className="ed-ai-target">
+                Global Typography <small>store-wide tokens</small>
+              </strong>
+            ) : primaryNode ? (
               <strong className="ed-ai-target">
                 {primaryNode.label}
                 {activePartDef ? ` › ${activePartDef.label}` : ""}{" "}
@@ -681,7 +756,7 @@ export function FloatingAiBar({
             <Select
               items={SCOPE_OPTIONS}
               value={effectiveScope}
-              disabled={!primaryNode || suggestMutation.isPending}
+              disabled={suggestMutation.isPending}
               onValueChange={(next) => {
                 if (next) setAiScope(next as AiScopeMode);
               }}
@@ -695,7 +770,11 @@ export function FloatingAiBar({
               </SelectTrigger>
               <SelectContent>
                 {SCOPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
+                  <SelectItem
+                    key={opt.value}
+                    value={opt.value}
+                    disabled={!primaryNode && (opt.value === "element" || opt.value === "section")}
+                  >
                     Scope: {opt.label}
                   </SelectItem>
                 ))}

@@ -131,11 +131,11 @@ describe("builder tree operations & history", () => {
       findNode(useEditorStore.getState().nodes, "head-a")?.styles.mobile?.fontSize
     ).toBe("24px");
 
-    // Undo AI batch cleanly (restoring default mobile fontSize "26px"), then undo manual edit, then redo
+    // Undo AI batch cleanly (restoring inherited global preset state), then undo manual edit, then redo
     useEditorStore.getState().undo();
     expect(
       findNode(useEditorStore.getState().nodes, "head-a")?.styles.mobile?.fontSize
-    ).toBe("26px");
+    ).toBeUndefined();
 
     useEditorStore.getState().undo();
     expect(findNode(useEditorStore.getState().nodes, "head-a")?.styles.base.color).not.toBe(

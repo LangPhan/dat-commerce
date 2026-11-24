@@ -191,4 +191,83 @@ class EditorOperationValidatorTest {
                 )
         );
     }
+
+
+    @Test
+    void validatesGlobalTypographyAiOperationsAndEnforcesScope() {
+        Map<String, Object> customTheme = Map.of(
+                "typography", Map.of(
+                        "fonts", Map.of(
+                                "heading", Map.of("family", "CustomBrandSans", "source", "custom")
+                        ),
+                        "presets", Map.of(
+                                "hero_display", Map.of("name", "Hero Display")
+                        )
+                )
+        );
+
+        List<Map<String, Object>> okOps = validator.validateAndNormalize(
+                List.of(
+                        Map.of(
+                                "type", "update_typography_font",
+                                "role", "heading",
+                                "family", "Playfair Display",
+                                "fallback", "serif"
+                        ),
+                        Map.of(
+                                "type", "update_typography_preset",
+                                "target", "h1",
+                                "property", "fontSize",
+                                "responsiveValues", Map.of("desktop", "48px", "tablet", "38px", "mobile", "30px")
+                        ),
+                        Map.of(
+                                "type", "update_typography_preset",
+                                "target", "hero_display",
+                                "patch", Map.of("fontFamily", "CustomBrandSans", "fontWeight", 600)
+                        ),
+                        Map.of(
+                                "type", "reset_typography_preset",
+                                "target", "h2"
+                        )
+                ),
+                "typography",
+                Set.of(),
+                Set.of(),
+                customTheme
+        );
+        assertEquals(4, okOps.size());
+        assertEquals("Playfair Display", okOps.get(0).get("family"));
+
+        assertThrows(
+                ApiException.class,
+                () -> validator.validateAndNormalize(
+                        List.of(Map.of(
+                                "type", "update_typography_preset",
+                                "target", "h1",
+                                "property", "fontWeight",
+                                "value", 600
+                        )),
+                        "element",
+                        Set.of("node-1"),
+                        Set.of("node-1"),
+                        customTheme
+                )
+        );
+
+        assertThrows(
+                ApiException.class,
+                () -> validator.validateAndNormalize(
+                        List.of(Map.of(
+                                "type", "update_typography_preset",
+                                "target", "nonexistent_preset",
+                                "property", "fontWeight",
+                                "value", 600
+                        )),
+                        "typography",
+                        Set.of(),
+                        Set.of(),
+                        customTheme
+                )
+        );
+    }
 }

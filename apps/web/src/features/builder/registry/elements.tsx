@@ -532,6 +532,7 @@ function InteractiveForm({
 export type BuilderNodeAttrs = {
   "data-builder-node"?: string;
   "data-builder-type"?: string;
+  "data-typography-preset"?: string;
   className?: string;
 } & Record<string, string | undefined>;
 
@@ -615,7 +616,14 @@ export function renderElementContent(
       const href = strProp(props, "href", "");
       const safeHref = href ? sanitizeUrl(href, "") : "";
       const HeadingTag =
-        tag === "h1" || tag === "h3" || tag === "h4" || tag === "p" ? tag : "h2";
+        tag === "h1" ||
+        tag === "h3" ||
+        tag === "h4" ||
+        tag === "h5" ||
+        tag === "h6" ||
+        tag === "p"
+          ? tag
+          : "h2";
       const inner = (
         <HeadingTag
           className={cn("bldr-heading", extraClassName)}

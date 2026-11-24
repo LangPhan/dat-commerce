@@ -2269,3 +2269,18 @@ label.ed-media-dropzone > input[type="file"]:not([aria-hidden="true"]),
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
+
+.ed-typo-preset-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ed-typo-inherit-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}

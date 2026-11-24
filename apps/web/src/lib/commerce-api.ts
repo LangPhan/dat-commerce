@@ -1,3 +1,4 @@
+import type { FontUploadResponse } from "@/types/api-cms-ai";
 import { apiFetch } from "@/lib/api-client";
 import type {
   AdjustStockRequest,
@@ -185,6 +186,14 @@ export const adminMediaApi = {
       form.append("altText", altText);
     }
     return apiFetch<MediaAssetResponse>("/api/v1/admin/media", {
+      method: "POST",
+      body: form,
+    });
+  },
+  uploadFont: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<FontUploadResponse>("/api/v1/admin/media/fonts", {
       method: "POST",
       body: form,
     });

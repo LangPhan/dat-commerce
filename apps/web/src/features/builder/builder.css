@@ -103,13 +103,19 @@
   border-radius: 6px;
 }
 
-.bldr-heading {
-  margin: 0;
+:where(.bldr-heading) {
   font-family: var(--store-font-heading, Georgia), serif;
 }
 
-.bldr-text {
+.bldr-heading {
+  margin: 0;
+}
+
+:where(.bldr-text) {
   font-family: var(--store-font-body, Inter), sans-serif;
+}
+
+.bldr-text {
   white-space: pre-line;
 }
 
@@ -138,12 +144,16 @@
   text-decoration: none;
   border-radius: var(--store-radius-button, 8px);
   padding: 10px 18px;
-  font-weight: 600;
-  font-size: 14px;
   background: var(--accent, #5b46e8);
   color: #ffffff;
   transition: transform 0.12s ease, opacity 0.15s ease;
   cursor: pointer;
+}
+
+:where(.bldr-button) {
+  font-family: var(--font-primary, Inter, sans-serif);
+  font-weight: 600;
+  font-size: 14px;
 }
 
 .bldr-button.variant-outline {

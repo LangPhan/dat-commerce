@@ -34,7 +34,8 @@ public class EditorAiService {
             3. Modify ONLY nodeIds allowed by `scope`:
                - "element": `selectedNodeIds` AND all of their child/descendant nodes present inside `targetSubtree` (also listed in `allowedNodeIds`). When a container or section (such as a hero banner) is selected, you ARE allowed to modify its nested child nodes (headings, text, buttons, images, inner containers) to fulfill the merchant's request. Never modify nodes outside `allowedNodeIds`.
                - "section": the enclosing top-level section in `targetSubtree` and all of its descendants (listed in `allowedNodeIds`).
-               - "page": any node in `pageOutline`.
+               - "page": any node in `pageOutline` AND global typography (`update_typography_*` / `reset_typography_preset`) when the merchant asks for global font or typography changes across the store.
+               - "typography": global typography system ONLY (`update_typography_font`, `update_typography_preset`, `reset_typography_preset`). Do not emit node operations in "typography" scope.
             4. Allowed operation schemas:
                - {"type":"update_styles","nodeId":"...","breakpoint":"base|tablet|mobile|hover","styles":{"cssCamelCaseProp":"value"}}
                - {"type":"update_part_styles","nodeId":"...","part":"...","breakpoint":"base|tablet|mobile|hover","styles":{"cssCamelCaseProp":"value"}}
@@ -45,9 +46,18 @@ public class EditorAiService {
                - {"type":"move_node","nodeId":"...","targetParentId":"containerIdOrNull","index":0}
                - {"type":"duplicate_node","nodeId":"..."}
                - {"type":"delete_node","nodeId":"..."}
-            5. Allowed CSS style keys (camelCase): display, flexDirection, justifyContent, alignItems, flexWrap, gap, rowGap, columnGap, gridTemplateColumns, gridTemplateRows, width, minWidth, maxWidth, height, minHeight, maxHeight, margin, marginTop, marginRight, marginBottom, marginLeft, padding, paddingTop, paddingRight, paddingBottom, paddingLeft, position, zIndex, overflow, textAlign, color, backgroundColor, backgroundImage, fontFamily, fontSize, fontWeight, lineHeight, letterSpacing, textTransform, borderWidth, borderStyle, borderColor, borderRadius, boxShadow, opacity, aspectRatio, objectFit.
+               - {"type":"update_typography_font","role":"primary|secondary|heading|body|monospace","family":"Playfair Display","weights":[400,500,600,700],"style":"normal","fallback":"serif"}
+               - {"type":"update_typography_preset","target":"h1|h2|h3|h4|h5|h6|body_large|body|body_small|caption|overline|link|button|label|<customPresetId>","property":"fontFamily|fontSize|fluidSize|useFluid|fontWeight|fontStyle|fontStretch|color|textTransform|textDecoration|textAlign|lineHeight|letterSpacing|wordSpacing|textShadow|textIndent|textWrap|textOverflow","value":"..."}
+                 OR responsive value form: {"type":"update_typography_preset","target":"h1","property":"fontSize","responsiveValues":{"desktop":"48px","tablet":"38px","mobile":"30px"}}
+                 OR multi-property form: {"type":"update_typography_preset","target":"h1","patch":{"fontWeight":600,"lineHeight":1.2}}
+               - {"type":"reset_typography_preset","target":"h1|...|all"}
+            5. Allowed CSS style keys (camelCase): display, flexDirection, justifyContent, alignItems, flexWrap, gap, rowGap, columnGap, gridTemplateColumns, gridTemplateRows, width, minWidth, maxWidth, height, minHeight, maxHeight, margin, marginTop, marginRight, marginBottom, marginLeft, padding, paddingTop, paddingRight, paddingBottom, paddingLeft, position, zIndex, overflow, textAlign, color, backgroundColor, backgroundImage, fontFamily, fontSize, fontWeight, fontStyle, fontStretch, lineHeight, letterSpacing, wordSpacing, textTransform, textDecoration, textShadow, textIndent, textWrap, textOverflow, borderWidth, borderStyle, borderColor, borderRadius, boxShadow, opacity, aspectRatio, objectFit.
             6. Never output <script>, on* handlers, javascript:, or style values containing ';' or '{' or '}'.
             7. Deep styling for compound & repeating widgets: When modifying inner sub-elements inside compound widgets (such as `product_grid`, `product_carousel`, `product_card`, `category_grid`, `form`, `promotion_banner`, `featured_product`, `icon_list`, `image_gallery`, `tabs`, `accordion`, `carousel`, `countdown`, `product_info`, `add_to_cart`), you MUST emit `update_part_styles` with the widget's `nodeId` and a valid `part` key listed in `editableParts` (prioritizing `selectedPart` when provided in context). Modifying a `part` automatically updates ALL repeating items uniformly (e.g., all product cards' `card`, `title`, `price`, `image`, `badge`, `rating` in a `product_grid`, or all `field`, `label`, `input`, `submit` parts in a `form`).
+            8. Global Typography rules:
+               - Built-in Google/System font families: Inter, Plus Jakarta Sans, DM Sans, Poppins, Montserrat, Manrope, Outfit, Work Sans, Lato, Open Sans, Roboto, Nunito, Source Sans 3, Rubik, Space Grotesk, Syne, Sora, Urbanist, Figtree, Geist, Playfair Display, Cormorant Garamond, Fraunces, Lora, Merriweather, Libre Baskerville, DM Serif Display, Bodoni Moda, EB Garamond, Crimson Pro, Georgia, Times New Roman, JetBrains Mono, Fira Code, IBM Plex Mono, Space Mono, Source Code Pro, System UI, Arial, Helvetica, Verdana, Trebuchet MS, Courier New (plus any custom uploaded font present in `themeTokens.typography.fonts`).
+               - When updating "all headings", emit `update_typography_preset` for `h1`, `h2`, `h3`, `h4`, `h5`, `h6` cleanly without altering `body`, `body_small`, or `caption` unless requested.
+               - Preserve local element style overrides and semantic HTML tags; keep WCAG-friendly font contrast and readable line heights.
 
             Output JSON shape:
             {
@@ -87,8 +97,8 @@ public class EditorAiService {
         String scope = StringUtils.hasText(request.scope())
                 ? request.scope().trim().toLowerCase(Locale.ROOT)
                 : "element";
-        if (!Set.of("element", "section", "page").contains(scope)) {
-            throw new ApiException(ErrorCode.VALIDATION_ERROR, "scope must be element, section, or page");
+        if (!Set.of("element", "section", "page", "typography").contains(scope)) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, "scope must be element, section, page, or typography");
         }
 
         String viewport = StringUtils.hasText(request.viewport())
@@ -180,7 +190,8 @@ public class EditorAiService {
                 parsed.operations(),
                 scope,
                 allowedTargetIds,
-                existingPageIds
+                existingPageIds,
+                request.themeTokens()
         );
 
         auditLogService.record(

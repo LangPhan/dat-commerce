@@ -70,8 +70,9 @@ public class BlockSchemaValidator {
             "position", "top", "right", "bottom", "left", "zIndex", "overflow",
             "textAlign", "color", "backgroundColor", "backgroundImage", "backgroundSize",
             "backgroundPosition", "backgroundRepeat", "backgroundAttachment",
-            "fontFamily", "fontSize", "fontWeight", "lineHeight",
-            "letterSpacing", "textTransform", "textDecoration", "borderWidth",
+            "fontFamily", "fontSize", "fontWeight", "fontStyle", "fontStretch", "lineHeight",
+            "letterSpacing", "wordSpacing", "textTransform", "textDecoration", "textShadow",
+            "textIndent", "textWrap", "textOverflow", "borderWidth",
             "borderStyle", "borderColor", "borderRadius", "boxShadow", "opacity",
             "aspectRatio", "objectFit", "objectPosition", "cursor"
     );
@@ -334,6 +335,35 @@ public class BlockSchemaValidator {
         for (String urlKey : URL_KEYS) {
             if (props.get(urlKey) instanceof String u && StringUtils.hasText(u)) {
                 validateSafeUrl(u, id + ".props." + urlKey, MEDIA_URL_KEYS.contains(urlKey));
+            }
+        }
+
+        if ("heading".equals(type) && props.get("tag") instanceof String tagVal && StringUtils.hasText(tagVal)) {
+            String normalizedTag = tagVal.trim().toLowerCase(Locale.ROOT);
+            if (!Set.of("h1", "h2", "h3", "h4", "h5", "h6", "p").contains(normalizedTag)) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_ERROR,
+                        "Element '" + id + "' heading tag must be h1-h6 or p"
+                );
+            }
+            props.put("tag", normalizedTag);
+        }
+        if (props.containsKey("typographyPreset")) {
+            Object rawPreset = props.get("typographyPreset");
+            if (rawPreset == null) {
+                props.remove("typographyPreset");
+            } else {
+                String presetId = String.valueOf(rawPreset).trim().toLowerCase(Locale.ROOT);
+                if (presetId.isEmpty()) {
+                    props.remove("typographyPreset");
+                } else if (!presetId.matches("^[a-z0-9_-]{1,48}$")) {
+                    throw new ApiException(
+                            ErrorCode.VALIDATION_ERROR,
+                            "Element '" + id + "' has invalid typographyPreset identifier: " + presetId
+                    );
+                } else {
+                    props.put("typographyPreset", presetId);
+                }
             }
         }
 

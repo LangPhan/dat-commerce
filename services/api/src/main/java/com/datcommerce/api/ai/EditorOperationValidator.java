@@ -1,6 +1,7 @@
 package com.datcommerce.api.ai;
 
 import com.datcommerce.api.cms.BlockSchemaValidator;
+import com.datcommerce.api.cms.ThemeTokenValidator;
 import com.datcommerce.api.common.exception.ApiException;
 import com.datcommerce.api.common.exception.ErrorCode;
 import java.util.ArrayList;
@@ -31,7 +32,10 @@ public class EditorOperationValidator {
             "move_node",
             "duplicate_node",
             "delete_node",
-            "replace_subtree"
+            "replace_subtree",
+            "update_typography_font",
+            "update_typography_preset",
+            "reset_typography_preset"
     );
     private static final Set<String> ALLOWED_BREAKPOINTS = Set.of("base", "tablet", "mobile", "hover");
 
@@ -40,6 +44,16 @@ public class EditorOperationValidator {
             String scope,
             Set<String> allowedTargetIds,
             Set<String> existingPageIds
+    ) {
+        return validateAndNormalize(rawOps, scope, allowedTargetIds, existingPageIds, null);
+    }
+
+    public List<Map<String, Object>> validateAndNormalize(
+            List<Map<String, Object>> rawOps,
+            String scope,
+            Set<String> allowedTargetIds,
+            Set<String> existingPageIds,
+            Map<String, Object> themeTokens
     ) {
         if (rawOps == null || rawOps.isEmpty()) {
             return List.of();
@@ -57,6 +71,8 @@ public class EditorOperationValidator {
                 ? scope.trim().toLowerCase(Locale.ROOT)
                 : "element";
 
+        Set<String> customFonts = extractCustomFonts(themeTokens);
+        Set<String> availablePresets = extractPresetIds(themeTokens);
         List<Map<String, Object>> cleaned = new ArrayList<>();
         Set<String> insertedIds = new HashSet<>();
 
@@ -283,6 +299,87 @@ public class EditorOperationValidator {
                     String nodeId = requireTargetNode(raw.get("nodeId"), normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
                     opOut.put("nodeId", nodeId);
                 }
+                case "update_typography_font" -> {
+                    requireTypographyScope(normalizedScope, opType);
+                    String role = str(raw.get("role")).toLowerCase(Locale.ROOT);
+                    if (!ThemeTokenValidator.ALLOWED_FONT_ROLES.contains(role)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid typography font role: " + role);
+                    }
+                    String family = str(raw.get("family"));
+                    if (!ThemeTokenValidator.ALLOWED_BUILTIN_FONTS.contains(family) && !customFonts.contains(family)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Unsupported font family: " + family);
+                    }
+                    opOut.put("role", role);
+                    opOut.put("family", family);
+                    if (raw.get("source") != null) {
+                        String source = str(raw.get("source")).toLowerCase(Locale.ROOT);
+                        if (ThemeTokenValidator.ALLOWED_FONT_SOURCES.contains(source) && !"custom".equals(source)) {
+                            opOut.put("source", source);
+                        }
+                    }
+                    if (raw.get("fallback") != null && StringUtils.hasText(str(raw.get("fallback")))) {
+                        opOut.put("fallback", str(raw.get("fallback")));
+                    }
+                    if (raw.get("style") != null) {
+                        opOut.put("style", ThemeTokenValidator.validateEnum(str(raw.get("style")), Set.of("normal", "italic"), "style", "ai.update_typography_font"));
+                    }
+                    if (raw.get("weights") instanceof List<?> rawWeights && !rawWeights.isEmpty()) {
+                        List<Integer> cleanW = new ArrayList<>();
+                        for (Object w : rawWeights) {
+                            cleanW.add(ThemeTokenValidator.parseFontWeightInt(w, "ai.update_typography_font.weights"));
+                        }
+                        opOut.put("weights", cleanW);
+                    }
+                }
+                case "update_typography_preset" -> {
+                    requireTypographyScope(normalizedScope, opType);
+                    String target = str(raw.get("target")).toLowerCase(Locale.ROOT);
+                    if (!availablePresets.contains(target)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Unknown typography preset target: " + target);
+                    }
+                    opOut.put("target", target);
+                    if (raw.get("patch") instanceof Map<?, ?> rawPatch && !rawPatch.isEmpty()) {
+                        Map<String, Object> cleanPatch = new LinkedHashMap<>();
+                        for (Map.Entry<?, ?> entry : rawPatch.entrySet()) {
+                            String prop = str(entry.getKey());
+                            if (!ThemeTokenValidator.ALLOWED_PRESET_PROPERTIES.contains(prop)) {
+                                throw new ApiException(ErrorCode.VALIDATION_ERROR, "Unsupported typography preset property: " + prop);
+                            }
+                            Object cleanVal = ThemeTokenValidator.validatePresetPropertyValue(prop, entry.getValue(), customFonts, "ai.update_typography_preset." + target);
+                            if (cleanVal != null) {
+                                cleanPatch.put(prop, cleanVal);
+                            }
+                        }
+                        if (cleanPatch.isEmpty()) {
+                            continue;
+                        }
+                        opOut.put("patch", cleanPatch);
+                    } else {
+                        String prop = str(raw.get("property"));
+                        if (!ThemeTokenValidator.ALLOWED_PRESET_PROPERTIES.contains(prop)) {
+                            throw new ApiException(ErrorCode.VALIDATION_ERROR, "Unsupported typography preset property: " + prop);
+                        }
+                        Object valSource = raw.get("responsiveValues") != null ? raw.get("responsiveValues") : raw.get("value");
+                        if (valSource == null) {
+                            throw new ApiException(ErrorCode.VALIDATION_ERROR, "update_typography_preset requires value or responsiveValues");
+                        }
+                        Object cleanVal = ThemeTokenValidator.validatePresetPropertyValue(prop, valSource, customFonts, "ai.update_typography_preset." + target);
+                        opOut.put("property", prop);
+                        if (cleanVal instanceof Map<?, ?>) {
+                            opOut.put("responsiveValues", cleanVal);
+                        } else {
+                            opOut.put("value", cleanVal);
+                        }
+                    }
+                }
+                case "reset_typography_preset" -> {
+                    requireTypographyScope(normalizedScope, opType);
+                    String target = str(raw.get("target")).toLowerCase(Locale.ROOT);
+                    if (!"all".equals(target) && !availablePresets.contains(target)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Unknown typography preset reset target: " + target);
+                    }
+                    opOut.put("target", target);
+                }
             }
 
             cleaned.add(opOut);
@@ -351,6 +448,42 @@ public class EditorOperationValidator {
                 out.put(String.valueOf(k), v);
             }
         });
+        return out;
+    }
+
+    private static void requireTypographyScope(String scope, String opType) {
+        if (!"typography".equals(scope) && !"page".equals(scope)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "AI operation '" + opType + "' requires typography or page scope (current scope: " + scope + ")"
+            );
+        }
+    }
+
+    private static Set<String> extractCustomFonts(Map<String, Object> themeTokens) {
+        Set<String> out = new HashSet<>();
+        if (themeTokens != null && themeTokens.get("typography") instanceof Map<?, ?> typo
+                && typo.get("fonts") instanceof Map<?, ?> fonts) {
+            for (Object cfgObj : fonts.values()) {
+                if (cfgObj instanceof Map<?, ?> cfg && "custom".equals(String.valueOf(cfg.get("source")))
+                        && cfg.get("family") instanceof String f && StringUtils.hasText(f)) {
+                    out.add(f.trim());
+                }
+            }
+        }
+        return out;
+    }
+
+    private static Set<String> extractPresetIds(Map<String, Object> themeTokens) {
+        Set<String> out = new HashSet<>(ThemeTokenValidator.DEFAULT_PRESET_IDS);
+        if (themeTokens != null && themeTokens.get("typography") instanceof Map<?, ?> typo
+                && typo.get("presets") instanceof Map<?, ?> presets) {
+            for (Object key : presets.keySet()) {
+                if (key != null) {
+                    out.add(String.valueOf(key).trim().toLowerCase(Locale.ROOT));
+                }
+            }
+        }
         return out;
     }
 

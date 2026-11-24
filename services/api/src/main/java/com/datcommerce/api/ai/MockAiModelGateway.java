@@ -464,8 +464,13 @@ public class MockAiModelGateway implements AiModelGateway {
         if (!StringUtils.hasText(targetId) && ctx.get("targetSubtree") instanceof Map<?, ?> map && map.get("id") != null) {
             targetId = String.valueOf(map.get("id")).trim();
         }
+        String scope = ctx.get("scope") != null ? String.valueOf(ctx.get("scope")).toLowerCase(Locale.ROOT) : "element";
         String viewport = ctx.get("viewport") != null ? String.valueOf(ctx.get("viewport")) : "desktop";
         String bp = lower.contains("mobile") ? "mobile" : ("tablet".equals(viewport) ? "tablet" : ("mobile".equals(viewport) ? "mobile" : "base"));
+
+        if ("typography".equals(scope) || (("page".equals(scope)) && (lower.contains("all headings") || lower.contains("global font") || lower.contains("typography preset")))) {
+            return generateTypographySuggestTurn(lower);
+        }
 
         Map<String, Object> styles = new LinkedHashMap<>();
         String summary = "Apply contextual visual update";
@@ -524,6 +529,41 @@ public class MockAiModelGateway implements AiModelGateway {
             return textResponse(objectMapper.writeValueAsString(jsonOut), 180, 95);
         } catch (Exception ex) {
             return textResponse("{\"summary\":\"Update styles\",\"explanation\":\"\",\"operations\":[]}", 100, 40);
+        }
+    }
+
+    private GatewayTurnResponse generateTypographySuggestTurn(String lower) {
+        List<Map<String, Object>> ops = new ArrayList<>();
+        String summary;
+        String explanation;
+        if (lower.contains("luxury") || lower.contains("editorial") || lower.contains("fashion") || lower.contains("playfair")) {
+            ops.add(Map.of("type", "update_typography_font", "role", "heading", "family", "Playfair Display", "fallback", "serif"));
+            ops.add(Map.of("type", "update_typography_font", "role", "body", "family", "Inter", "fallback", "sans-serif"));
+            ops.add(Map.of("type", "update_typography_preset", "target", "h1", "property", "fontWeight", "value", 600));
+            summary = "Apply editorial Playfair Display & Inter typography";
+            explanation = "Updated Heading font to Playfair Display, Body font to Inter, and refined H1 weight to 600.";
+        } else if (lower.contains("all headings") || lower.contains("headings")) {
+            Map<String, String> h1Sizes = Map.of("desktop", "42px", "tablet", "34px", "mobile", "28px");
+            Map<String, String> h2Sizes = Map.of("desktop", "32px", "tablet", "26px", "mobile", "22px");
+            Map<String, String> h3Sizes = Map.of("desktop", "24px", "tablet", "21px", "mobile", "19px");
+            ops.add(Map.of("type", "update_typography_preset", "target", "h1", "property", "fontSize", "responsiveValues", h1Sizes));
+            ops.add(Map.of("type", "update_typography_preset", "target", "h2", "property", "fontSize", "responsiveValues", h2Sizes));
+            ops.add(Map.of("type", "update_typography_preset", "target", "h3", "property", "fontSize", "responsiveValues", h3Sizes));
+            for (String h : List.of("h1", "h2", "h3", "h4", "h5", "h6")) {
+                ops.add(Map.of("type", "update_typography_preset", "target", h, "property", "fontWeight", "value", 600));
+            }
+            summary = "Scale down headings and set weight 600";
+            explanation = "Updated H1-H3 responsive sizes, set H1-H6 weight to 600, and preserved body and caption styles.";
+        } else {
+            ops.add(Map.of("type", "update_typography_preset", "target", "body", "property", "lineHeight", "value", 1.7));
+            summary = "Refine global body line height";
+            explanation = "Updated Body line height to 1.7 for improved storefront readability.";
+        }
+        Map<String, Object> jsonOut = Map.of("summary", summary, "explanation", explanation, "operations", ops);
+        try {
+            return textResponse(objectMapper.writeValueAsString(jsonOut), 190, 110);
+        } catch (Exception ex) {
+            return textResponse("{\"summary\":\"Update typography\",\"explanation\":\"\",\"operations\":[]}", 100, 40);
         }
     }
 

@@ -283,15 +283,7 @@ export const ELEMENT_DEFINITIONS: Record<ElementType, ElementDefinition> = {
       href: "",
     },
     defaultStyles: {
-      base: {
-        fontSize: "34px",
-        fontWeight: "700",
-        lineHeight: "1.18",
-        color: "#111318",
-      },
-      mobile: {
-        fontSize: "26px",
-      },
+      base: {},
     },
     inspectorFields: [
       { key: "text", label: "Heading Text", type: "textarea" },
@@ -304,6 +296,8 @@ export const ELEMENT_DEFINITIONS: Record<ElementType, ElementDefinition> = {
           { value: "h2", label: "H2" },
           { value: "h3", label: "H3" },
           { value: "h4", label: "H4" },
+          { value: "h5", label: "H5" },
+          { value: "h6", label: "H6" },
           { value: "p", label: "Paragraph" },
         ],
       },
@@ -321,11 +315,7 @@ export const ELEMENT_DEFINITIONS: Record<ElementType, ElementDefinition> = {
       text: "Field-tested materials, balanced weight distribution, and repairable hardware built to last multiple seasons.",
     },
     defaultStyles: {
-      base: {
-        fontSize: "15px",
-        lineHeight: "1.65",
-        color: "#5C6270",
-      },
+      base: {},
     },
     inspectorFields: [{ key: "text", label: "Paragraph Text", type: "textarea" }],
   },

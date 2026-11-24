@@ -26,6 +26,7 @@ import type { OrderDto } from "@/types/api-commerce";
 import type { CustomerProfile } from "@/types/commerce";
 import { isV2Content } from "@/features/builder/migration";
 import { PageRenderer } from "@/features/builder/renderer/PageRenderer";
+import { GlobalTypographyStyleTag } from "@/features/typography/GlobalTypographyStyleTag";
 import { ProductCard, StoreBlock, type StoreProductItem } from "./blocks";
 import { CartPage, CheckoutPage, ConfirmationPage } from "./cart-checkout";
 import { StoreFooter, StoreHeader } from "./header-footer";
@@ -234,6 +235,7 @@ export function Storefront({ route }: { route: string[] }) {
         <PageRenderer
           mode="live"
           nodes={cmsPageQuery.data.content.nodes}
+          typography={themeQuery.data?.tokens?.typography}
           catalog={catalog}
           categories={categories}
           onAddToCart={handleQuickAddToCart}
@@ -530,6 +532,7 @@ export function Storefront({ route }: { route: string[] }) {
         <PageRenderer
           mode="live"
           nodes={cmsPageQuery.data.content.nodes}
+          typography={themeQuery.data?.tokens?.typography}
           catalog={catalog}
           categories={categories}
           onAddToCart={handleQuickAddToCart}
@@ -612,6 +615,7 @@ export function Storefront({ route }: { route: string[] }) {
         <PageRenderer
           mode="live"
           nodes={cmsPageQuery.data.content.nodes}
+          typography={themeQuery.data?.tokens?.typography}
           catalog={catalog}
           categories={categories}
           onAddToCart={handleQuickAddToCart}
@@ -649,6 +653,10 @@ export function Storefront({ route }: { route: string[] }) {
       className="store public-store"
       style={themeTokensToCssVars(themeQuery.data?.tokens)}
     >
+      <GlobalTypographyStyleTag
+        scopeId="storefront"
+        scopeSelector=".store.public-store"
+      />
       <StorePageReveal ready={pageReady} preloadImageUrls={preloadImageUrls}>
         <StoreHeader
           cart={cartCount}

@@ -266,4 +266,111 @@ class BlockSchemaValidatorV2Test {
         tooManyTokens.put("customPalette", oversized);
         assertThrows(ApiException.class, () -> themeValidator.validateAndNormalize(tooManyTokens));
     }
+
+
+    @Test
+    void validatesGlobalTypographyPresetsCustomFontsAndFluidClamp() {
+        Map<String, Object> heading = Map.of(
+                "id", "h-typo",
+                "type", "heading",
+                "label", "Hero Heading",
+                "props", Map.of("text", "Discover Your Style", "tag", "h5", "typographyPreset", "h1"),
+                "styles", Map.of("base", Map.of("fontStyle", "italic", "textWrap", "balance"))
+        );
+        Map<String, Object> cleanPage = validator.validateAndNormalizeContent(Map.of(
+                "version", 2,
+                "nodes", List.of(heading)
+        ));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> nodes = (List<Map<String, Object>>) cleanPage.get("nodes");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> hProps = (Map<String, Object>) nodes.get(0).get("props");
+        assertEquals("h5", hProps.get("tag"));
+        assertEquals("h1", hProps.get("typographyPreset"));
+
+        Map<String, Object> typoTokens = new LinkedHashMap<>();
+        typoTokens.put("colors", Map.of("primary", "#5B46E8", "background", "#FFFFFF", "text", "#111318"));
+        typoTokens.put("typography", Map.of(
+                "schemaVersion", 1,
+                "headingFont", "Playfair Display",
+                "bodyFont", "Inter",
+                "fonts", Map.of(
+                        "heading", Map.of(
+                                "family", "Playfair Display",
+                                "source", "google",
+                                "weights", List.of(400, 600, 700),
+                                "style", "normal",
+                                "fallback", "Georgia, serif"
+                        ),
+                        "secondary", Map.of(
+                                "family", "StudioDisplay",
+                                "source", "custom",
+                                "weights", List.of(400, 700),
+                                "style", "normal",
+                                "fallback", "sans-serif",
+                                "url", "/storage/dat-commerce/stores/1/fonts/studio.woff2",
+                                "format", "woff2"
+                        )
+                ),
+                "presets", Map.of(
+                        "h1", Map.ofEntries(
+                                Map.entry("id", "h1"),
+                                Map.entry("name", "Heading 1"),
+                                Map.entry("category", "headings"),
+                                Map.entry("builtIn", true),
+                                Map.entry("fontFamily", "heading"),
+                                Map.entry("fontSize", Map.of("desktop", "48px", "tablet", "38px", "mobile", "30px")),
+                                Map.entry("fluidSize", "clamp(1.875rem, 1.5vw + 1.2rem, 3rem)"),
+                                Map.entry("useFluid", true),
+                                Map.entry("fontWeight", 700),
+                                Map.entry("lineHeight", Map.of("desktop", 1.2, "mobile", 1.3)),
+                                Map.entry("letterSpacing", Map.of("desktop", "-1px", "mobile", "0px"))
+                        ),
+                        "editorial_kicker", Map.of(
+                                "id", "editorial_kicker",
+                                "name", "Editorial Kicker",
+                                "category", "custom",
+                                "builtIn", false,
+                                "fontFamily", "StudioDisplay",
+                                "fontSize", "12px",
+                                "fontWeight", 600,
+                                "lineHeight", 1.4,
+                                "textTransform", "uppercase"
+                        )
+                )
+        ));
+        Map<String, Object> cleanTheme = themeValidator.validateAndNormalize(typoTokens);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> cleanTypo = (Map<String, Object>) cleanTheme.get("typography");
+        assertEquals("Playfair Display", cleanTypo.get("headingFont"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> cleanPresets = (Map<String, Object>) cleanTypo.get("presets");
+        assertTrue(cleanPresets.containsKey("editorial_kicker"));
+
+        Map<String, Object> badFont = Map.of(
+                "colors", Map.of("primary", "#5B46E8", "background", "#FFFFFF", "text", "#111318"),
+                "typography", Map.of("headingFont", "Comic Sans", "bodyFont", "Inter")
+        );
+        assertThrows(ApiException.class, () -> themeValidator.validateAndNormalize(badFont));
+
+        Map<String, Object> badLetterSpacing = Map.of(
+                "colors", Map.of("primary", "#5B46E8", "background", "#FFFFFF", "text", "#111318"),
+                "typography", Map.of(
+                        "headingFont", "Inter",
+                        "bodyFont", "Inter",
+                        "presets", Map.of(
+                                "h1", Map.of(
+                                        "id", "h1",
+                                        "name", "H1",
+                                        "fontFamily", "heading",
+                                        "fontSize", "48px",
+                                        "fontWeight", 700,
+                                        "lineHeight", 1.2,
+                                        "letterSpacing", "1px;alert(1)"
+                                )
+                        )
+                )
+        );
+        assertThrows(ApiException.class, () -> themeValidator.validateAndNormalize(badLetterSpacing));
+    }
 }

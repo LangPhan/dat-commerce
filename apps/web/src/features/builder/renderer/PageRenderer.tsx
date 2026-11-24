@@ -13,6 +13,9 @@ import {
   compileNodeInlineStyle,
   isVisibleForViewport,
 } from "../style-compiler";
+import { normalizeGlobalTypography } from "@/features/typography/defaults";
+import { getEffectivePresetId } from "@/features/typography/resolve";
+import type { GlobalTypographyTokens, NormalizedGlobalTypography } from "@/features/typography/types";
 import type { ElementNode, ViewportMode } from "../types";
 
 function resolveOwnPartKey(
@@ -50,6 +53,7 @@ export function PageRenderer({
   selectedPart = null,
   hoveredPart = null,
   aiAffectedIds,
+  typography,
   catalog = [],
   categories = [],
   onSelectNode,
@@ -71,6 +75,7 @@ export function PageRenderer({
   selectedPart?: { nodeId: string; partKey: string } | null;
   hoveredPart?: { nodeId: string; partKey: string } | null;
   aiAffectedIds?: Set<string>;
+  typography?: GlobalTypographyTokens | NormalizedGlobalTypography | null;
   catalog?: StoreProductItem[];
   categories?: StoreCategoryItem[];
   onSelectNode?: (nodeId: string, opts?: { additive?: boolean }) => void;
@@ -90,6 +95,7 @@ export function PageRenderer({
         })
       : compileEditPartCss(nodes, viewport, { selectedPart, hoveredPart });
   const selectedSet = new Set(selectedIds);
+  const normalizedTypo = typography ? normalizeGlobalTypography(typography) : null;
 
   const renderNodeList = (
     list: ElementNode[],
@@ -114,10 +120,12 @@ export function PageRenderer({
             ? compileNodeInlineStyle(node.styles, forceViewport)
             : {};
 
+          const effectivePreset = getEffectivePresetId(node, normalizedTypo?.presets);
           const nodeAttrs: BuilderNodeAttrs = {
             ...sanitizedAttrs,
             "data-builder-node": node.id,
             "data-builder-type": node.type,
+            ...(effectivePreset ? { "data-typography-preset": effectivePreset } : {}),
             ...(customClass ? { className: customClass } : {}),
           };
 
@@ -152,8 +160,10 @@ export function PageRenderer({
         const isAiAffected = Boolean(aiAffectedIds?.has(node.id));
         const compiledStyle = compileNodeInlineStyle(node.styles, viewport);
 
+        const editEffectivePreset = getEffectivePresetId(node, normalizedTypo?.presets);
         const editNodeAttrs: BuilderNodeAttrs = {
           ...sanitizedAttrs,
+          ...(editEffectivePreset ? { "data-typography-preset": editEffectivePreset } : {}),
           ...(customClass ? { className: customClass } : {}),
         };
 

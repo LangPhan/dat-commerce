@@ -18,6 +18,7 @@ import {
   Trash2,
   Unlock,
 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
@@ -51,6 +52,25 @@ import type {
   ViewportMode,
 } from "@/features/builder/types";
 import { ALLOWED_FONTS } from "@/lib/cms-schema";
+import {
+  DEFAULT_TYPOGRAPHY_PRESETS,
+  FONT_ROLE_METADATA,
+  getOrderedPresetList,
+  normalizeGlobalTypography,
+  resetSinglePreset,
+} from "@/features/typography/defaults";
+import { findCatalogFont } from "@/features/typography/font-catalog";
+import {
+  ELEMENT_TYPOGRAPHY_STYLE_KEYS,
+  resetResponsiveMetricViewport,
+  resolveElementTypographyState,
+  resolvePresetValuesForViewport,
+  updateResponsiveMetricValue,
+} from "@/features/typography/resolve";
+import type {
+  TypographyFontRole,
+  TypographyPreset,
+} from "@/features/typography/types";
 import { ApiError } from "@/lib/api-client";
 import { adminMediaApi } from "@/lib/commerce-api";
 import { cn } from "@/lib/format";
@@ -129,7 +149,10 @@ function GlobalThemePanel({
   canPublish: boolean;
   savingTheme: boolean;
   publishingTheme: boolean;
-  onChangeTokens: (next: ThemeTokens) => void;
+  onChangeTokens: (
+    next: ThemeTokens,
+    opts?: { summary?: string; presetId?: string; breakpoint?: ViewportMode | "all" }
+  ) => void;
   onSaveTheme: () => void;
   onPublishTheme: () => void;
   onAddBrandColor?: (name: string, hex: string) => void;
@@ -138,6 +161,18 @@ function GlobalThemePanel({
   const [newBrandName, setNewBrandName] = useState("");
   const [newBrandHex, setNewBrandHex] = useState("#C85A32");
   const [paletteErr, setPaletteErr] = useState("");
+  const [typoVp, setTypoVp] = useState<ViewportMode>("desktop");
+  const [selectedPresetId, setSelectedPresetId] = useState("h1");
+
+  const globalTypo = normalizeGlobalTypography(tokens.typography);
+  const presetList = getOrderedPresetList(globalTypo.presets);
+  const activeGlobalPreset =
+    globalTypo.presets[selectedPresetId] || presetList[0];
+  const activeGlobalResolved = resolvePresetValuesForViewport(
+    activeGlobalPreset,
+    globalTypo,
+    typoVp
+  );
 
   const updateColor = (key: keyof ThemeTokens["colors"], val: string) => {
     onChangeTokens({
@@ -303,30 +338,328 @@ function GlobalThemePanel({
       </div>
 
       <div className="ed-inspector-section">
-        <strong>Typography & Radii</strong>
+        <div className="ed-inspector-sec-head">
+          <strong>Global Typography</strong>
+          <Link
+            href="/admin/theme?section=typography"
+            className="ed-mini-link"
+          >
+            Full Studio
+          </Link>
+        </div>
         <div className="ed-control-stack">
-          <SelectControl
-            label="Heading Font"
-            value={tokens.typography.headingFont}
-            options={FONT_OPTIONS}
-            onChange={(v) =>
-              onChangeTokens({
-                ...tokens,
-                typography: { ...tokens.typography, headingFont: v },
-              })
-            }
-          />
-          <SelectControl
-            label="Body Font"
-            value={tokens.typography.bodyFont}
-            options={FONT_OPTIONS}
-            onChange={(v) =>
-              onChangeTokens({
-                ...tokens,
-                typography: { ...tokens.typography, bodyFont: v },
-              })
-            }
-          />
+          <PropertyPopoverRow
+            label="Font Families"
+            summary={`${globalTypo.fonts.heading.family} / ${globalTypo.fonts.body.family}`}
+            popoverWidth="w-[296px]"
+            disabled={!canWrite}
+          >
+            <div className="ed-popover-stack">
+              {(
+                ["primary", "secondary", "heading", "body", "monospace"] as TypographyFontRole[]
+              ).map((role) => (
+                <SelectControl
+                  key={role}
+                  label={FONT_ROLE_METADATA[role].label}
+                  value={globalTypo.fonts[role].family}
+                  options={FONT_OPTIONS}
+                  onChange={(family) => {
+                    if (!family) return;
+                    const cat = findCatalogFont(family);
+                    const nextFonts = {
+                      ...globalTypo.fonts,
+                      [role]: {
+                        ...globalTypo.fonts[role],
+                        family,
+                        source: cat?.source || globalTypo.fonts[role].source,
+                        fallback: cat?.fallback || globalTypo.fonts[role].fallback,
+                        weights: cat?.weights || globalTypo.fonts[role].weights,
+                      },
+                    };
+                    onChangeTokens(
+                      {
+                        ...tokens,
+                        typography: {
+                          ...globalTypo,
+                          fonts: nextFonts,
+                          headingFont:
+                            role === "heading" ? family : globalTypo.headingFont,
+                          bodyFont: role === "body" ? family : globalTypo.bodyFont,
+                        },
+                      },
+                      {
+                        summary: `Set global ${role} font to ${family}`,
+                      }
+                    );
+                  }}
+                />
+              ))}
+            </div>
+          </PropertyPopoverRow>
+
+          <PropertyPopoverRow
+            label="Typography Presets"
+            summary={`${activeGlobalPreset.name} · ${activeGlobalResolved.fontSize} · w${activeGlobalPreset.fontWeight}`}
+            popoverWidth="w-[308px]"
+            disabled={!canWrite}
+          >
+            <div className="ed-popover-stack">
+              <SelectControl
+                label="Preset"
+                value={activeGlobalPreset.id}
+                options={presetList.map((p) => ({ value: p.id, label: p.name }))}
+                onChange={(id) => id && setSelectedPresetId(id)}
+              />
+              <div className="ed-control-grid-2">
+                <SelectControl
+                  label="Breakpoint"
+                  value={typoVp}
+                  options={[
+                    { value: "desktop", label: "Desktop" },
+                    { value: "tablet", label: "Tablet" },
+                    { value: "mobile", label: "Mobile" },
+                  ]}
+                  onChange={(vp) => vp && setTypoVp(vp as ViewportMode)}
+                />
+                <SelectControl
+                  label="Font Role"
+                  value={activeGlobalPreset.fontFamily}
+                  options={[
+                    ...(
+                      ["primary", "secondary", "heading", "body", "monospace"] as TypographyFontRole[]
+                    ).map((r) => ({
+                      value: r,
+                      label: `${FONT_ROLE_METADATA[r].label} (${globalTypo.fonts[r].family})`,
+                    })),
+                    ...FONT_OPTIONS,
+                  ]}
+                  onChange={(v) => {
+                    if (!v) return;
+                    const updated: TypographyPreset = {
+                      ...activeGlobalPreset,
+                      fontFamily: v,
+                    };
+                    onChangeTokens(
+                      {
+                        ...tokens,
+                        typography: {
+                          ...globalTypo,
+                          presets: {
+                            ...globalTypo.presets,
+                            [updated.id]: updated,
+                          },
+                        },
+                      },
+                      {
+                        summary: `Update ${activeGlobalPreset.name} fontFamily`,
+                        presetId: activeGlobalPreset.id,
+                        breakpoint: typoVp,
+                      }
+                    );
+                  }}
+                />
+              </div>
+              <div className="ed-control-grid-2">
+                <UnitControl
+                  label={`Size (${typoVp})`}
+                  value={activeGlobalResolved.fontSizeMeta.value}
+                  overridden={activeGlobalResolved.fontSizeMeta.isCustomized}
+                  viewport={typoVp}
+                  onReset={
+                    typoVp !== "desktop" &&
+                    activeGlobalResolved.fontSizeMeta.isCustomized
+                      ? () => {
+                          const updated: TypographyPreset = {
+                            ...activeGlobalPreset,
+                            fontSize: resetResponsiveMetricViewport(
+                              activeGlobalPreset.fontSize,
+                              typoVp,
+                              activeGlobalResolved.fontSizeMeta.value
+                            ),
+                          };
+                          onChangeTokens(
+                            {
+                              ...tokens,
+                              typography: {
+                                ...globalTypo,
+                                presets: {
+                                  ...globalTypo.presets,
+                                  [updated.id]: updated,
+                                },
+                              },
+                            },
+                            {
+                              summary: `Reset ${activeGlobalPreset.name} ${typoVp} size`,
+                              presetId: activeGlobalPreset.id,
+                              breakpoint: typoVp,
+                            }
+                          );
+                        }
+                      : undefined
+                  }
+                  onChange={(v) => {
+                    if (!v) return;
+                    const updated: TypographyPreset = {
+                      ...activeGlobalPreset,
+                      fontSize: updateResponsiveMetricValue(
+                        activeGlobalPreset.fontSize,
+                        typoVp,
+                        v,
+                        activeGlobalResolved.fontSizeMeta.value
+                      ),
+                    };
+                    onChangeTokens(
+                      {
+                        ...tokens,
+                        typography: {
+                          ...globalTypo,
+                          presets: {
+                            ...globalTypo.presets,
+                            [updated.id]: updated,
+                          },
+                        },
+                      },
+                      {
+                        summary: `Update ${activeGlobalPreset.name} ${typoVp} size`,
+                        presetId: activeGlobalPreset.id,
+                        breakpoint: typoVp,
+                      }
+                    );
+                  }}
+                />
+                <SelectControl
+                  label="Weight"
+                  value={String(activeGlobalPreset.fontWeight)}
+                  options={[300, 400, 500, 600, 700, 800].map((w) => ({
+                    value: String(w),
+                    label: String(w),
+                  }))}
+                  onChange={(w) => {
+                    if (!w) return;
+                    const updated: TypographyPreset = {
+                      ...activeGlobalPreset,
+                      fontWeight: Number(w),
+                    };
+                    onChangeTokens(
+                      {
+                        ...tokens,
+                        typography: {
+                          ...globalTypo,
+                          presets: {
+                            ...globalTypo.presets,
+                            [updated.id]: updated,
+                          },
+                        },
+                      },
+                      {
+                        summary: `Update ${activeGlobalPreset.name} weight`,
+                        presetId: activeGlobalPreset.id,
+                        breakpoint: "all",
+                      }
+                    );
+                  }}
+                />
+              </div>
+              <div className="ed-control-grid-2">
+                <ControlField label={`Line Height (${typoVp})`}>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0.8"
+                    max="3.5"
+                    value={String(activeGlobalResolved.lineHeightMeta.value)}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (!Number.isFinite(n)) return;
+                      const updated: TypographyPreset = {
+                        ...activeGlobalPreset,
+                        lineHeight: updateResponsiveMetricValue(
+                          activeGlobalPreset.lineHeight,
+                          typoVp,
+                          n,
+                          activeGlobalResolved.lineHeightMeta.value
+                        ),
+                      };
+                      onChangeTokens(
+                        {
+                          ...tokens,
+                          typography: {
+                            ...globalTypo,
+                            presets: {
+                              ...globalTypo.presets,
+                              [updated.id]: updated,
+                            },
+                          },
+                        },
+                        {
+                          summary: `Update ${activeGlobalPreset.name} ${typoVp} lineHeight`,
+                          presetId: activeGlobalPreset.id,
+                          breakpoint: typoVp,
+                        }
+                      );
+                    }}
+                  />
+                </ControlField>
+                <UnitControl
+                  label={`Spacing (${typoVp})`}
+                  value={activeGlobalResolved.letterSpacingMeta.value}
+                  overridden={activeGlobalResolved.letterSpacingMeta.isCustomized}
+                  viewport={typoVp}
+                  onChange={(v) => {
+                    const updated: TypographyPreset = {
+                      ...activeGlobalPreset,
+                      letterSpacing: updateResponsiveMetricValue(
+                        activeGlobalPreset.letterSpacing,
+                        typoVp,
+                        v || "0px",
+                        activeGlobalResolved.letterSpacingMeta.value
+                      ),
+                    };
+                    onChangeTokens(
+                      {
+                        ...tokens,
+                        typography: {
+                          ...globalTypo,
+                          presets: {
+                            ...globalTypo.presets,
+                            [updated.id]: updated,
+                          },
+                        },
+                      },
+                      {
+                        summary: `Update ${activeGlobalPreset.name} ${typoVp} letterSpacing`,
+                        presetId: activeGlobalPreset.id,
+                        breakpoint: typoVp,
+                      }
+                    );
+                  }}
+                />
+              </div>
+              {DEFAULT_TYPOGRAPHY_PRESETS[activeGlobalPreset.id] ? (
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    onChangeTokens(
+                      {
+                        ...tokens,
+                        typography: resetSinglePreset(
+                          globalTypo,
+                          activeGlobalPreset.id
+                        ),
+                      },
+                      {
+                        summary: `Reset ${activeGlobalPreset.name} preset`,
+                        presetId: activeGlobalPreset.id,
+                        breakpoint: "all",
+                      }
+                    )
+                  }
+                >
+                  <RotateCcw size={12} /> Reset {activeGlobalPreset.name}
+                </Button>
+              ) : null}
+            </div>
+          </PropertyPopoverRow>
           <div className="ed-control-grid-2">
             <UnitControl
               label="Card Radius"
@@ -695,6 +1028,7 @@ export function VisualInspector({
   const themeTokens = useEditorStore((s) => s.themeTokens);
   const themeDirty = useEditorStore((s) => s.themeDirty);
   const setThemeTokens = useEditorStore((s) => s.setThemeTokens);
+  const updateThemeTokens = useEditorStore((s) => s.updateThemeTokens);
   const selectPart = useEditorStore((s) => s.selectPart);
   const updateNodeProps = useEditorStore((s) => s.updateNodeProps);
   const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
@@ -826,7 +1160,20 @@ export function VisualInspector({
           canPublish={canPublish}
           savingTheme={savingTheme}
           publishingTheme={publishingTheme}
-          onChangeTokens={(next) => setThemeTokens(next, true)}
+          onChangeTokens={(next, meta) =>
+            updateThemeTokens(next, {
+              summary: meta?.summary || "Update design tokens",
+              source: "manual",
+              typographyMeta: meta?.presetId
+                ? {
+                    presetId: meta.presetId,
+                    breakpoint: meta.breakpoint || "all",
+                    source: "manual",
+                    timestamp: new Date().toISOString(),
+                  }
+                : undefined,
+            })
+          }
           onSaveTheme={onSaveTheme}
           onPublishTheme={onPublishTheme}
           onAddBrandColor={onAddBrandColor || handleFallbackAddPalette}
@@ -952,6 +1299,62 @@ export function VisualInspector({
             editStyles.opacity !== undefined && editStyles.opacity !== ""
               ? Math.max(0, Math.min(1, Number(editStyles.opacity)))
               : 1;
+          const normalizedGlobalTypo = normalizeGlobalTypography(themeTokens?.typography);
+          const elementTypoState = resolveElementTypographyState(
+            primary,
+            normalizedGlobalTypo,
+            viewport
+          );
+          const elementPresetOptions = [
+            {
+              value: "",
+              label: elementTypoState.defaultPresetId
+                ? `Inherit Default (${
+                    normalizedGlobalTypo.presets[elementTypoState.defaultPresetId]?.name ||
+                    elementTypoState.defaultPresetId
+                  })`
+                : "Inherit Global Styles",
+            },
+            ...getOrderedPresetList(normalizedGlobalTypo.presets).map((p) => ({
+              value: p.id,
+              label: p.name,
+            })),
+          ];
+          const resetAllElementTypography = () => {
+            const ops: Array<
+              | { type: "update_props"; nodeId: string; props: Record<string, unknown> }
+              | {
+                  type: "reset_style_keys";
+                  nodeId: string;
+                  breakpoint: "base" | "tablet" | "mobile" | "hover";
+                  keys: StylePropertyKey[];
+                }
+            > = [
+              {
+                type: "update_props",
+                nodeId: primary.id,
+                props: { typographyPreset: "" },
+              },
+            ];
+            for (const bp of ["base", "tablet", "mobile", "hover"] as const) {
+              const bpStyles = primary.styles?.[bp] as StyleValues | undefined;
+              if (!bpStyles) continue;
+              const keysToReset = ELEMENT_TYPOGRAPHY_STYLE_KEYS.filter(
+                (k) => bpStyles[k] !== undefined && bpStyles[k] !== ""
+              );
+              if (keysToReset.length) {
+                ops.push({
+                  type: "reset_style_keys",
+                  nodeId: primary.id,
+                  breakpoint: bp,
+                  keys: keysToReset,
+                });
+              }
+            }
+            executeBatch(ops, {
+              summary: `Reset ${primary.label} to Global Typography`,
+            });
+          };
 
           return (
             <>
@@ -1912,80 +2315,274 @@ export function VisualInspector({
                       <PropertyPopoverRow
                         label="Typography"
                         summary={[
-                          editStyles.fontFamily || "Inter",
-                          editStyles.fontSize || "16px",
-                          editStyles.fontWeight || "400",
-                        ].join(" · ")}
-                        popoverWidth="w-[300px]"
+                          !activePartKey && elementTypoState.preset
+                            ? elementTypoState.preset.name
+                            : null,
+                          editStyles.fontFamily || elementTypoState.effective.fontFamily || "Inter",
+                          editStyles.fontSize || elementTypoState.effective.fontSize || "16px",
+                          `w${editStyles.fontWeight || elementTypoState.effective.fontWeight || "400"}`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                        popoverWidth="w-[330px]"
                         disabled={primary.locked}
                         overridden={
-                          overriddenKeys.has("fontFamily") ||
-                          overriddenKeys.has("fontSize") ||
-                          overriddenKeys.has("fontWeight") ||
-                          overriddenKeys.has("textAlign")
+                          activePartKey
+                            ? overriddenKeys.has("fontFamily") ||
+                              overriddenKeys.has("fontSize") ||
+                              overriddenKeys.has("fontWeight") ||
+                              overriddenKeys.has("textAlign")
+                            : elementTypoState.localOverriddenKeys.length > 0 ||
+                              elementTypoState.isExplicitPreset
                         }
                         viewport={viewport}
+                        onClear={
+                          !activePartKey &&
+                          (elementTypoState.hasAnyBreakpointLocalTypography ||
+                            elementTypoState.isExplicitPreset)
+                            ? resetAllElementTypography
+                            : undefined
+                        }
+                        clearLabel="Reset to Global Typography"
                       >
                         <div className="ed-popover-stack">
+                          {!activePartKey ? (
+                            <div className="ed-typo-preset-bar">
+                              <SelectControl
+                                label="Global Typography Preset"
+                                value={
+                                  typeof primary.props?.typographyPreset === "string"
+                                    ? primary.props.typographyPreset
+                                    : ""
+                                }
+                                options={elementPresetOptions}
+                                onChange={(val) =>
+                                  updateNodeProps(
+                                    primary.id,
+                                    { typographyPreset: val || "" },
+                                    "Set typography preset"
+                                  )
+                                }
+                              />
+                              <div className="ed-typo-inherit-status">
+                                <Badge
+                                  tone={
+                                    elementTypoState.localOverriddenKeys.length
+                                      ? "accent"
+                                      : "green"
+                                  }
+                                >
+                                  {elementTypoState.localOverriddenKeys.length
+                                    ? `${elementTypoState.localOverriddenKeys.length} local override(s)`
+                                    : elementTypoState.preset
+                                      ? `Inheriting ${elementTypoState.preset.name}`
+                                      : "Default Typography"}
+                                </Badge>
+                                <Link
+                                  href="/admin/theme?section=typography"
+                                  className="ed-mini-link"
+                                >
+                                  Manage Presets
+                                </Link>
+                              </div>
+                            </div>
+                          ) : null}
+
                           <div className="ed-control-grid-2">
                             <SelectControl
                               label="Font Family"
-                              value={editStyles.fontFamily || "Inter"}
-                              options={FONT_OPTIONS}
+                              value={editStyles.fontFamily || ""}
+                              options={[
+                                {
+                                  value: "",
+                                  label: `Global (${
+                                    elementTypoState.presetResolved?.fontFamilyName ||
+                                    "Inherit"
+                                  })`,
+                                },
+                                ...FONT_OPTIONS,
+                              ]}
+                              overridden={Boolean(editStyles.fontFamily)}
+                              viewport={viewport}
+                              onReset={() => resetKey("fontFamily")}
                               onChange={(v) => setStyle("fontFamily", v)}
                             />
                             <UnitControl
                               label="Font Size"
                               value={editStyles.fontSize || ""}
-                              placeholder="16px"
-                              overridden={overriddenKeys.has("fontSize")}
+                              placeholder={
+                                elementTypoState.presetResolved?.fontSize || "16px"
+                              }
+                              overridden={Boolean(editStyles.fontSize)}
                               viewport={viewport}
                               onReset={() => resetKey("fontSize")}
                               onChange={(v) => setStyle("fontSize", v)}
                             />
                           </div>
+
                           <div className="ed-control-grid-2">
                             <SelectControl
                               label="Font Weight"
-                              value={editStyles.fontWeight || "400"}
+                              value={editStyles.fontWeight || ""}
                               options={[
+                                {
+                                  value: "",
+                                  label: `Global (${
+                                    elementTypoState.presetResolved?.fontWeight ||
+                                    "400"
+                                  })`,
+                                },
+                                { value: "300", label: "Light (300)" },
                                 { value: "400", label: "Regular (400)" },
                                 { value: "500", label: "Medium (500)" },
                                 { value: "600", label: "Semibold (600)" },
                                 { value: "700", label: "Bold (700)" },
+                                { value: "800", label: "Extrabold (800)" },
                               ]}
+                              overridden={Boolean(editStyles.fontWeight)}
+                              viewport={viewport}
+                              onReset={() => resetKey("fontWeight")}
                               onChange={(v) => setStyle("fontWeight", v)}
                             />
                             <SelectControl
                               label="Text Align"
-                              value={editStyles.textAlign || "left"}
+                              value={editStyles.textAlign || ""}
                               options={[
+                                { value: "", label: "Global / Inherit" },
                                 { value: "left", label: "Left" },
                                 { value: "center", label: "Center" },
                                 { value: "right", label: "Right" },
+                                { value: "justify", label: "Justify" },
                               ]}
-                              overridden={overriddenKeys.has("textAlign")}
+                              overridden={Boolean(editStyles.textAlign)}
                               viewport={viewport}
                               onReset={() => resetKey("textAlign")}
                               onChange={(v) => setStyle("textAlign", v)}
                             />
                           </div>
+
                           <div className="ed-control-grid-2">
-                            <ControlField label="Line Height">
+                            <ControlField
+                              label="Line Height"
+                              overridden={Boolean(editStyles.lineHeight)}
+                              viewport={viewport}
+                              onReset={() => resetKey("lineHeight")}
+                            >
                               <input
                                 type="text"
                                 value={editStyles.lineHeight || ""}
-                                placeholder="1.5"
+                                placeholder={
+                                  elementTypoState.presetResolved?.lineHeight || "1.5"
+                                }
                                 onChange={(e) => setStyle("lineHeight", e.target.value)}
                               />
                             </ControlField>
                             <UnitControl
                               label="Letter Spacing"
                               value={editStyles.letterSpacing || ""}
-                              placeholder="0px"
+                              placeholder={
+                                elementTypoState.presetResolved?.letterSpacing || "0px"
+                              }
+                              overridden={Boolean(editStyles.letterSpacing)}
+                              viewport={viewport}
+                              onReset={() => resetKey("letterSpacing")}
                               onChange={(v) => setStyle("letterSpacing", v)}
                             />
                           </div>
+
+                          <div className="ed-control-grid-2">
+                            <SelectControl
+                              label="Transform"
+                              value={editStyles.textTransform || ""}
+                              options={[
+                                { value: "", label: "Global / Inherit" },
+                                { value: "none", label: "None" },
+                                { value: "uppercase", label: "Uppercase" },
+                                { value: "lowercase", label: "Lowercase" },
+                                { value: "capitalize", label: "Capitalize" },
+                              ]}
+                              overridden={Boolean(editStyles.textTransform)}
+                              viewport={viewport}
+                              onReset={() => resetKey("textTransform")}
+                              onChange={(v) => setStyle("textTransform", v)}
+                            />
+                            <SelectControl
+                              label="Font Style"
+                              value={editStyles.fontStyle || ""}
+                              options={[
+                                { value: "", label: "Global / Inherit" },
+                                { value: "normal", label: "Normal" },
+                                { value: "italic", label: "Italic" },
+                              ]}
+                              overridden={Boolean(editStyles.fontStyle)}
+                              viewport={viewport}
+                              onReset={() => resetKey("fontStyle")}
+                              onChange={(v) => setStyle("fontStyle", v)}
+                            />
+                          </div>
+
+                          <div className="ed-control-grid-2">
+                            <SelectControl
+                              label="Decoration"
+                              value={editStyles.textDecoration || ""}
+                              options={[
+                                { value: "", label: "Global / Inherit" },
+                                { value: "none", label: "None" },
+                                { value: "underline", label: "Underline" },
+                                { value: "line-through", label: "Line Through" },
+                              ]}
+                              overridden={Boolean(editStyles.textDecoration)}
+                              viewport={viewport}
+                              onReset={() => resetKey("textDecoration")}
+                              onChange={(v) => setStyle("textDecoration", v)}
+                            />
+                            <UnitControl
+                              label="Word Spacing"
+                              value={editStyles.wordSpacing || ""}
+                              placeholder="normal"
+                              overridden={Boolean(editStyles.wordSpacing)}
+                              viewport={viewport}
+                              onReset={() => resetKey("wordSpacing")}
+                              onChange={(v) => setStyle("wordSpacing", v)}
+                            />
+                          </div>
+
+                          <div className="ed-control-grid-2">
+                            <SelectControl
+                              label="Text Wrap"
+                              value={editStyles.textWrap || ""}
+                              options={[
+                                { value: "", label: "Default" },
+                                { value: "wrap", label: "Wrap" },
+                                { value: "balance", label: "Balance" },
+                                { value: "pretty", label: "Pretty" },
+                                { value: "nowrap", label: "No Wrap" },
+                              ]}
+                              onChange={(v) => setStyle("textWrap", v)}
+                            />
+                            <SelectControl
+                              label="Overflow"
+                              value={editStyles.textOverflow || ""}
+                              options={[
+                                { value: "", label: "Default" },
+                                { value: "clip", label: "Clip" },
+                                { value: "ellipsis", label: "Ellipsis" },
+                              ]}
+                              onChange={(v) => setStyle("textOverflow", v)}
+                            />
+                          </div>
+
+                          {!activePartKey &&
+                          (elementTypoState.hasAnyBreakpointLocalTypography ||
+                            elementTypoState.isExplicitPreset) ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={resetAllElementTypography}
+                            >
+                              <RotateCcw size={12} /> Reset to Global Typography
+                            </Button>
+                          ) : null}
                         </div>
                       </PropertyPopoverRow>
 

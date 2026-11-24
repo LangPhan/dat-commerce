@@ -1,3 +1,5 @@
+import type { GlobalTypographyTokens } from "@/features/typography/types";
+
 export type BlockTypeSlug =
   | "hero"
   | "image_with_text"
@@ -113,10 +115,7 @@ export type ThemeTokens = {
     border?: string;
   };
   customPalette?: BrandPaletteColor[];
-  typography: {
-    headingFont: string;
-    bodyFont: string;
-  };
+  typography: GlobalTypographyTokens;
   radius: {
     card: string;
     button: string;
@@ -285,7 +284,7 @@ export type EditorSuggestRequest = {
   pageId?: string;
   pageSlug?: string;
   viewport?: "desktop" | "tablet" | "mobile";
-  scope?: "element" | "section" | "page";
+  scope?: "element" | "section" | "page" | "typography";
   selectedNodeIds?: string[];
   prompt: string;
   model?: string;
@@ -310,4 +309,12 @@ export type EditorSuggestResponse = {
   promptTokens: number;
   completionTokens: number;
   latencyMs: number;
+};
+
+export type FontUploadResponse = {
+  url: string;
+  originalFilename: string;
+  mimeType: string;
+  format: "woff2" | "woff" | "truetype" | string;
+  sizeBytes: number;
 };

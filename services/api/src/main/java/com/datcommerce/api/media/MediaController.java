@@ -45,6 +45,16 @@ public class MediaController {
         return mediaStorageService.upload(user, file, altText);
     }
 
+    @PostMapping(value = "/fonts", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyAuthority('media:write', 'content:write')")
+    public MediaStorageService.FontUploadResponse uploadFont(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestPart("file") MultipartFile file
+    ) {
+        return mediaStorageService.uploadFont(user, file);
+    }
+
     @DeleteMapping("/{mediaId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAuthority('media:write')")

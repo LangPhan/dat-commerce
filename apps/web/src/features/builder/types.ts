@@ -1,4 +1,6 @@
 import type { CSSProperties } from "react";
+import type { ThemeTokens } from "@/types/api-cms-ai";
+import type { TypographyAiOperation, TypographyHistoryMeta } from "@/features/typography/types";
 
 export type ViewportMode = "desktop" | "tablet" | "mobile";
 
@@ -100,10 +102,17 @@ export type StylePropertyKey =
   | "fontFamily"
   | "fontSize"
   | "fontWeight"
+  | "fontStyle"
+  | "fontStretch"
   | "lineHeight"
   | "letterSpacing"
+  | "wordSpacing"
   | "textTransform"
   | "textDecoration"
+  | "textShadow"
+  | "textIndent"
+  | "textWrap"
+  | "textOverflow"
   | "borderWidth"
   | "borderStyle"
   | "borderColor"
@@ -229,6 +238,9 @@ export type HistoryEntry = {
   afterNodes: ElementNode[];
   beforeSelectedIds: string[];
   afterSelectedIds: string[];
+  beforeThemeTokens?: ThemeTokens | null;
+  afterThemeTokens?: ThemeTokens | null;
+  typographyMeta?: TypographyHistoryMeta;
 };
 
 export type DiffRow = {
@@ -241,7 +253,7 @@ export type DiffRow = {
 
 export type AiChatTurnStatus = "previewing" | "applied" | "reverted" | "error";
 
-export type AiScopeMode = "element" | "section" | "page";
+export type AiScopeMode = "element" | "section" | "page" | "typography";
 
 export type AiChatTurn = {
   id: string;
@@ -270,6 +282,10 @@ export type AiPreviewSession = {
   diffs: DiffRow[];
   previewNodes: ElementNode[];
   beforeNodes: ElementNode[];
+  beforeThemeTokens?: ThemeTokens | null;
+  previewThemeTokens?: ThemeTokens | null;
+  affectedPresets?: string[];
+  typographyOperations?: TypographyAiOperation[];
   viewMode?: "after" | "before";
 };
 
@@ -279,6 +295,9 @@ export type LastAppliedAiCompare = {
   model?: string;
   beforeNodes: ElementNode[];
   afterNodes: ElementNode[];
+  beforeThemeTokens?: ThemeTokens | null;
+  afterThemeTokens?: ThemeTokens | null;
+  affectedPresets?: string[];
   viewingBefore: boolean;
 };
 

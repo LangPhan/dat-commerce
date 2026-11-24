@@ -2,6 +2,7 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { PageRenderer } from "@/features/builder/renderer/PageRenderer";
+import { GlobalTypographyStyleTag } from "@/features/typography/GlobalTypographyStyleTag";
 import { useEditorStore } from "@/features/builder/store/editor-store";
 import { StoreFooter, StoreHeader } from "@/features/storefront/header-footer";
 import type { StoreCategoryItem, StoreProductItem } from "@/features/storefront/blocks";
@@ -60,6 +61,13 @@ export function EditorCanvas({
     : viewingBeforeApplied && lastAppliedAiCompare
       ? lastAppliedAiCompare.beforeNodes
       : nodes;
+
+  const activeThemeTokens = aiPreview
+    ? (viewingBeforePreview ? aiPreview.beforeThemeTokens : aiPreview.previewThemeTokens) ||
+      themeTokens
+    : viewingBeforeApplied && lastAppliedAiCompare
+      ? lastAppliedAiCompare.beforeThemeTokens || themeTokens
+      : themeTokens;
   const aiAffectedIds =
     aiPreview && !viewingBeforePreview
       ? new Set(aiPreview.diffs.map((d) => d.nodeId))
@@ -118,8 +126,14 @@ export function EditorCanvas({
 
           <div
             className="store public-store ed-store-surface"
-            style={themeTokensToCssVars(themeTokens)}
+            style={themeTokensToCssVars(activeThemeTokens)}
           >
+            <GlobalTypographyStyleTag
+              typography={activeThemeTokens?.typography}
+              scopeId="editor-canvas"
+              scopeSelector=".ed-store-surface"
+              forceViewport={viewport}
+            />
             <div className={previewMode ? undefined : "ed-chrome-muted"}>
               <StoreHeader
                 cart={0}
@@ -144,6 +158,7 @@ export function EditorCanvas({
             ) : (
               <PageRenderer
                 nodes={renderedNodes}
+                typography={activeThemeTokens?.typography}
                 mode={previewMode ? "live" : "edit"}
                 viewport={viewport}
                 forceViewport={previewMode ? viewport : undefined}

@@ -1,4 +1,8 @@
 import type { CSSProperties } from "react";
+import { BUILTIN_FONT_NAMES } from "@/features/typography/font-catalog";
+import { normalizeGlobalTypography } from "@/features/typography/defaults";
+import { formatCssFontStack } from "@/features/typography/resolve";
+import { globalTypographySchema } from "@/features/typography/schema";
 import { z } from "zod";
 import type {
   ApiPageBlock,
@@ -40,14 +44,7 @@ const SLUG_TO_KIND: Record<string, BlockKind> = Object.fromEntries(
   Object.entries(KIND_TO_SLUG).map(([k, v]) => [v, k as BlockKind])
 );
 
-export const ALLOWED_FONTS = [
-  "Inter",
-  "Georgia",
-  "Plus Jakarta Sans",
-  "DM Sans",
-  "Merriweather",
-  "JetBrains Mono",
-] as const;
+export const ALLOWED_FONTS = BUILTIN_FONT_NAMES;
 
 export const safeUrlSchema = z
   .string()
@@ -107,10 +104,7 @@ export const themeTokensSchema = z.object({
     border: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   }),
   customPalette: z.array(brandPaletteColorSchema).max(24).optional(),
-  typography: z.object({
-    headingFont: z.enum(ALLOWED_FONTS),
-    bodyFont: z.enum(ALLOWED_FONTS),
-  }),
+  typography: globalTypographySchema,
   radius: z.object({
     card: z.string().regex(/^(?:[0-9]|1[0-9]|2[0-4])px$/),
     button: z.string().regex(/^\d{1,3}px$/),
@@ -215,6 +209,26 @@ export function themeTokensToCssVars(tokens?: ThemeTokens | null): CSSProperties
     "--store-secondary": tokens.colors.secondary || "#1F2937",
     "--store-accent": tokens.colors.accent || "#18794E",
     "--store-border": tokens.colors.border || "#E5E7EB",
+    "--font-primary": (() => {
+      const t = normalizeGlobalTypography(tokens.typography);
+      return formatCssFontStack(t.fonts.primary.family, t.fonts.primary.fallback);
+    })(),
+    "--font-secondary": (() => {
+      const t = normalizeGlobalTypography(tokens.typography);
+      return formatCssFontStack(t.fonts.secondary.family, t.fonts.secondary.fallback);
+    })(),
+    "--font-heading": (() => {
+      const t = normalizeGlobalTypography(tokens.typography);
+      return formatCssFontStack(t.fonts.heading.family, t.fonts.heading.fallback);
+    })(),
+    "--font-body": (() => {
+      const t = normalizeGlobalTypography(tokens.typography);
+      return formatCssFontStack(t.fonts.body.family, t.fonts.body.fallback);
+    })(),
+    "--font-monospace": (() => {
+      const t = normalizeGlobalTypography(tokens.typography);
+      return formatCssFontStack(t.fonts.monospace.family, t.fonts.monospace.fallback);
+    })(),
     "--store-font-heading": tokens.typography?.headingFont || "Georgia",
     "--store-font-body": tokens.typography?.bodyFont || "Inter",
     "--store-radius-card": tokens.radius?.card || "10px",

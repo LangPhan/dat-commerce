@@ -330,7 +330,7 @@ html[data-theme="dark"]:has(.public-store) {
 
 .store-hero h1,
 .store-hero h2 {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-heading, Georgia, "Times New Roman", serif);
   font-size: clamp(38px, 6.2cqw, 82px);
   line-height: 1.02;
   font-weight: 500;
@@ -461,7 +461,7 @@ html[data-theme="dark"]:has(.public-store) {
 
 .store-section-head h2,
 .store-text h2 {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-heading, Georgia, "Times New Roman", serif);
   font-size: clamp(24px, 3.2cqw, 40px);
   line-height: 1.08;
   font-weight: 500;
@@ -620,7 +620,7 @@ html[data-theme="dark"]:has(.public-store) {
 }
 
 .store-split-editorial h2 {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-heading, Georgia, "Times New Roman", serif);
   font-size: clamp(26px, 3.4cqw, 42px);
   line-height: 1.08;
   font-weight: 500;
@@ -880,7 +880,7 @@ html[data-theme="dark"]:has(.public-store) {
 }
 
 .store-container h1 {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-heading, Georgia, "Times New Roman", serif);
   font-size: clamp(32px, 4.5vw, 52px);
   font-weight: 500;
   line-height: 1.05;

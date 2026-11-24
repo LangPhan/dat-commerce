@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { TypographyHistoryMeta } from "@/features/typography/types";
 import type { ThemeTokens } from "@/types/api-cms-ai";
 import {
   applyOperation,
@@ -97,6 +98,15 @@ export interface EditorStoreState {
   setSaveStatus: (status: SaveStatus, error?: string | null) => void;
 
   setThemeTokens: (tokens: ThemeTokens, markDirty?: boolean) => void;
+  updateThemeTokens: (
+    nextTokens: ThemeTokens,
+    opts?: {
+      summary?: string;
+      source?: "manual" | "ai" | "system";
+      model?: string;
+      typographyMeta?: TypographyHistoryMeta;
+    }
+  ) => void;
   markThemeSaved: () => void;
 
   selectNode: (id: string | null, opts?: { additive?: boolean }) => void;
@@ -284,6 +294,34 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       themeTokens: tokens,
       themeDirty: markDirty ? true : s.themeDirty,
     })),
+
+  updateThemeTokens: (nextTokens, opts) => {
+    const state = get();
+    const entry: HistoryEntry = {
+      id: makeHistoryId(),
+      timestamp: new Date().toISOString(),
+      source: opts?.source || "manual",
+      summary: opts?.summary || "Update Global Typography",
+      model: opts?.model,
+      beforeNodes: state.nodes,
+      afterNodes: state.nodes,
+      beforeSelectedIds: state.selectedIds,
+      afterSelectedIds: state.selectedIds,
+      beforeThemeTokens: state.themeTokens,
+      afterThemeTokens: nextTokens,
+      typographyMeta: opts?.typographyMeta,
+    };
+    const truncated = state.history.slice(0, state.historyIndex + 1);
+    const appended = [...truncated, entry].slice(-MAX_HISTORY);
+    set({
+      themeTokens: nextTokens,
+      themeDirty: true,
+      history: appended,
+      historyIndex: appended.length - 1,
+      aiPreview: null,
+      lastAppliedAiCompare: null,
+    });
+  },
 
   markThemeSaved: () => set({ themeDirty: false }),
 
@@ -605,6 +643,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     }
     if (state.historyIndex < 0) return;
     const entry = state.history[state.historyIndex];
+    const nodesChanged = entry.beforeNodes !== entry.afterNodes;
+    const hasTheme = entry.beforeThemeTokens !== undefined;
     set({
       nodes: entry.beforeNodes,
       selectedIds: entry.beforeSelectedIds,
@@ -614,9 +654,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
         entry.beforeSelectedIds[0] === state.selectedPart.nodeId
           ? state.selectedPart
           : null,
+      themeTokens: hasTheme ? (entry.beforeThemeTokens ?? state.themeTokens) : state.themeTokens,
+      themeDirty: hasTheme ? true : state.themeDirty,
       historyIndex: state.historyIndex - 1,
-      dirty: true,
-      saveStatus: "unsaved",
+      dirty: nodesChanged ? true : state.dirty,
+      saveStatus: nodesChanged ? "unsaved" : state.saveStatus,
       lastAppliedAiCompare: null,
     });
   },
@@ -625,6 +667,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     const state = get();
     if (state.historyIndex >= state.history.length - 1) return;
     const entry = state.history[state.historyIndex + 1];
+    const nodesChanged = entry.beforeNodes !== entry.afterNodes;
+    const hasTheme = entry.afterThemeTokens !== undefined;
     set({
       nodes: entry.afterNodes,
       selectedIds: entry.afterSelectedIds,
@@ -634,9 +678,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
         entry.afterSelectedIds[0] === state.selectedPart.nodeId
           ? state.selectedPart
           : null,
+      themeTokens: hasTheme ? (entry.afterThemeTokens ?? state.themeTokens) : state.themeTokens,
+      themeDirty: hasTheme ? true : state.themeDirty,
       historyIndex: state.historyIndex + 1,
-      dirty: true,
-      saveStatus: "unsaved",
+      dirty: nodesChanged ? true : state.dirty,
+      saveStatus: nodesChanged ? "unsaved" : state.saveStatus,
       lastAppliedAiCompare: null,
     });
   },
@@ -647,25 +693,33 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     if (index === -1) {
       const first = state.history[0];
       if (!first) return;
+      const nodesChanged = first.beforeNodes !== first.afterNodes;
+      const hasTheme = first.beforeThemeTokens !== undefined;
       set({
         nodes: first.beforeNodes,
         selectedIds: first.beforeSelectedIds,
         selectedPart: null,
+        themeTokens: hasTheme ? (first.beforeThemeTokens ?? state.themeTokens) : state.themeTokens,
+        themeDirty: hasTheme ? true : state.themeDirty,
         historyIndex: -1,
-        dirty: true,
-        saveStatus: "unsaved",
+        dirty: nodesChanged ? true : state.dirty,
+        saveStatus: nodesChanged ? "unsaved" : state.saveStatus,
         lastAppliedAiCompare: null,
       });
       return;
     }
     const target = state.history[index];
+    const nodesChanged = target.beforeNodes !== target.afterNodes;
+    const hasTheme = target.afterThemeTokens !== undefined;
     set({
       nodes: target.afterNodes,
       selectedIds: target.afterSelectedIds,
       selectedPart: null,
+      themeTokens: hasTheme ? (target.afterThemeTokens ?? state.themeTokens) : state.themeTokens,
+      themeDirty: hasTheme ? true : state.themeDirty,
       historyIndex: index,
-      dirty: true,
-      saveStatus: "unsaved",
+      dirty: nodesChanged ? true : state.dirty,
+      saveStatus: nodesChanged ? "unsaved" : state.saveStatus,
       lastAppliedAiCompare: null,
     });
   },
@@ -692,6 +746,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     const resolvedSelectedIds = nextSelectedIds.length
       ? nextSelectedIds
       : state.selectedIds;
+    const hasThemeChange = Boolean(
+      preview.previewThemeTokens && preview.previewThemeTokens !== state.themeTokens
+    );
+    const nodesChanged = preview.previewNodes !== state.nodes;
     const entry: HistoryEntry = {
       id: makeHistoryId(),
       timestamp: new Date().toISOString(),
@@ -702,6 +760,17 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       afterNodes: preview.previewNodes,
       beforeSelectedIds: state.selectedIds,
       afterSelectedIds: resolvedSelectedIds,
+      beforeThemeTokens: hasThemeChange
+        ? (preview.beforeThemeTokens ?? state.themeTokens)
+        : undefined,
+      afterThemeTokens: hasThemeChange ? preview.previewThemeTokens : undefined,
+      typographyMeta: hasThemeChange
+        ? {
+            presetId: preview.affectedPresets?.[0],
+            source: "ai",
+            timestamp: new Date().toISOString(),
+          }
+        : undefined,
     };
     const truncated = state.history.slice(0, state.historyIndex + 1);
     const appended = [...truncated, entry].slice(-MAX_HISTORY);
@@ -720,10 +789,14 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
         resolvedSelectedIds[0] === state.selectedPart.nodeId
           ? state.selectedPart
           : null,
+      themeTokens: hasThemeChange
+        ? (preview.previewThemeTokens ?? state.themeTokens)
+        : state.themeTokens,
+      themeDirty: hasThemeChange ? true : state.themeDirty,
       history: appended,
       historyIndex: appended.length - 1,
-      dirty: true,
-      saveStatus: "unsaved",
+      dirty: nodesChanged ? true : state.dirty,
+      saveStatus: nodesChanged ? "unsaved" : state.saveStatus,
       aiPreview: null,
       lastAppliedAiCompare: {
         historyEntryId: entry.id,
@@ -731,6 +804,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
         model: preview.model,
         beforeNodes: state.nodes,
         afterNodes: preview.previewNodes,
+        beforeThemeTokens: hasThemeChange
+          ? (preview.beforeThemeTokens ?? state.themeTokens)
+          : undefined,
+        afterThemeTokens: hasThemeChange ? preview.previewThemeTokens : undefined,
+        affectedPresets: preview.affectedPresets,
         viewingBefore: false,
       },
       aiChatByPage: {
