@@ -88,16 +88,25 @@ export const apiBlockSchema = z.object({
     ),
 });
 
+export const brandPaletteColorSchema = z.object({
+  id: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/),
+  name: z.string().trim().min(1).max(32),
+  hex: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+});
+
 export const themeTokensSchema = z.object({
-  version: z.literal(1).default(1),
+  version: z.union([z.literal(1), z.literal(2)]).default(1),
   colors: z.object({
     primary: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+    secondary: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
     background: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
     surface: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
     text: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
     muted: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
     accent: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+    border: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   }),
+  customPalette: z.array(brandPaletteColorSchema).max(24).optional(),
   typography: z.object({
     headingFont: z.enum(ALLOWED_FONTS),
     bodyFont: z.enum(ALLOWED_FONTS),
@@ -109,6 +118,18 @@ export const themeTokensSchema = z.object({
   container: z.object({
     maxWidth: z.string().regex(/^(102[4-9]|10[3-9]\d|1[1-4]\d\d|15[0-2]\d|153[0-6])px$/),
   }),
+  spacing: z
+    .object({
+      sectionY: z.string().optional(),
+      blockGap: z.string().optional(),
+    })
+    .optional(),
+  shadows: z
+    .object({
+      card: z.string().optional(),
+      elevated: z.string().optional(),
+    })
+    .optional(),
 });
 
 export function apiBlocksToEditorBlocks(content?: PageContentPayload | null): Block[] {
@@ -203,5 +224,10 @@ export function themeTokensToCssVars(tokens?: ThemeTokens | null): CSSProperties
     "--store-block-gap": tokens.spacing?.blockGap || "24px",
     "--store-shadow-card": tokens.shadows?.card || "0 1px 3px rgba(15, 23, 42, 0.08)",
     "--store-shadow-elevated": tokens.shadows?.elevated || "0 12px 32px rgba(15, 23, 42, 0.14)",
+    ...Object.fromEntries(
+      (tokens.customPalette || [])
+        .filter((item) => /^[A-Za-z0-9_-]{1,40}$/.test(item.id))
+        .map((item) => [`--store-palette-${item.id}`, item.hex])
+    ),
   } as CSSProperties;
 }

@@ -45,6 +45,8 @@ const ALLOWED_STYLE_KEYS: ReadonlySet<string> = new Set<StylePropertyKey>([
   "backgroundImage",
   "backgroundSize",
   "backgroundPosition",
+  "backgroundRepeat",
+  "backgroundAttachment",
   "fontFamily",
   "fontSize",
   "fontWeight",
@@ -110,7 +112,7 @@ export function sanitizeMediaUrl(
 export function sanitizeCssValue(value: unknown): string | null {
   if (typeof value !== "string" && typeof value !== "number") return null;
   const trimmed = String(value).trim();
-  if (!trimmed || trimmed.length > 300) return null;
+  if (!trimmed || trimmed.length > 500) return null;
   if (UNSAFE_CSS_VALUE.test(trimmed)) return null;
   return trimmed;
 }

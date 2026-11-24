@@ -1,5 +1,6 @@
 "use client";
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
   ArrowUp,
@@ -7,6 +8,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  FolderOpen,
   Lock,
   Palette,
   Plus,
@@ -19,6 +21,10 @@ import {
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
+import {
+  buildBackgroundImageCss,
+  parseBackgroundImage,
+} from "@/features/builder/background-image";
 import {
   canAcceptChild,
   createElementId,
@@ -45,10 +51,21 @@ import type {
   ViewportMode,
 } from "@/features/builder/types";
 import { ALLOWED_FONTS } from "@/lib/cms-schema";
+import { ApiError } from "@/lib/api-client";
+import { adminMediaApi } from "@/lib/commerce-api";
 import { cn } from "@/lib/format";
 import type { CategoryDto, ProductDto } from "@/types/api-commerce";
 import type { ThemeTokens } from "@/types/api-cms-ai";
+import { MediaPickerModal } from "./MediaPickerModal";
 import {
+  createCustomPaletteColor,
+  getBrandPaletteOptions,
+  isValidHex6,
+  normalizeHexColor,
+  type BrandPaletteOption,
+} from "./brand-palette";
+import {
+  BackgroundImageControl,
   ColorControl,
   ControlField,
   SelectControl,
@@ -102,6 +119,8 @@ function GlobalThemePanel({
   onChangeTokens,
   onSaveTheme,
   onPublishTheme,
+  onAddBrandColor,
+  onRemoveBrandColor,
 }: {
   tokens: ThemeTokens;
   dirty: boolean;
@@ -112,7 +131,13 @@ function GlobalThemePanel({
   onChangeTokens: (next: ThemeTokens) => void;
   onSaveTheme: () => void;
   onPublishTheme: () => void;
+  onAddBrandColor?: (name: string, hex: string) => void;
+  onRemoveBrandColor?: (id: string) => void;
 }) {
+  const [newBrandName, setNewBrandName] = useState("");
+  const [newBrandHex, setNewBrandHex] = useState("#C85A32");
+  const [paletteErr, setPaletteErr] = useState("");
+
   const updateColor = (key: keyof ThemeTokens["colors"], val: string) => {
     onChangeTokens({
       ...tokens,
@@ -121,6 +146,21 @@ function GlobalThemePanel({
         [key]: val,
       },
     });
+  };
+
+  const handleAddSwatch = () => {
+    const cleanName = newBrandName.trim();
+    if (!cleanName) {
+      setPaletteErr("Enter a color name.");
+      return;
+    }
+    if (!isValidHex6(newBrandHex)) {
+      setPaletteErr("Enter a 6-digit hex code (e.g. #C85A32).");
+      return;
+    }
+    onAddBrandColor?.(cleanName, normalizeHexColor(newBrandHex));
+    setNewBrandName("");
+    setPaletteErr("");
   };
 
   return (
@@ -171,6 +211,93 @@ function GlobalThemePanel({
             value={tokens.colors.border || "#E5E7EB"}
             onChange={(v) => updateColor("border", v)}
           />
+        </div>
+
+        <div className="ed-custom-palette-block">
+          <div className="ed-ctrl-head">
+            <span className="ed-ctrl-label">
+              Custom Brand Colors ({tokens.customPalette?.length || 0})
+            </span>
+          </div>
+          {(tokens.customPalette || []).length > 0 ? (
+            <div className="ed-custom-palette-list">
+              {(tokens.customPalette || []).map((swatch) => (
+                <div key={swatch.id} className="ed-custom-palette-row">
+                  <span
+                    className="ed-custom-palette-dot"
+                    style={{ backgroundColor: swatch.hex }}
+                  />
+                  <span className="ed-custom-palette-name">{swatch.name}</span>
+                  <code className="ed-custom-palette-hex">{swatch.hex}</code>
+                  {canWrite && onRemoveBrandColor ? (
+                    <button
+                      type="button"
+                      className="ed-attr-row-remove"
+                      aria-label={`Remove ${swatch.name} from Brand Palette`}
+                      onClick={() => onRemoveBrandColor(swatch.id)}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="ed-hint">
+              Add reusable brand colors below to surface them first in every color picker.
+            </p>
+          )}
+          {canWrite && onAddBrandColor ? (
+            <div className="ed-palette-add-form">
+              <div className="ed-palette-add-inputs">
+                <input
+                  type="text"
+                  aria-label="Global brand color name"
+                  placeholder="Color name (e.g. Terracotta)"
+                  maxLength={32}
+                  value={newBrandName}
+                  onChange={(e) => {
+                    setNewBrandName(e.target.value);
+                    if (paletteErr) setPaletteErr("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddSwatch();
+                    }
+                  }}
+                />
+                <input
+                  type="color"
+                  aria-label="Global brand color picker"
+                  value={isValidHex6(newBrandHex) ? normalizeHexColor(newBrandHex) : "#C85A32"}
+                  onChange={(e) => {
+                    setNewBrandHex(e.target.value.toUpperCase());
+                    if (paletteErr) setPaletteErr("");
+                  }}
+                />
+                <input
+                  type="text"
+                  aria-label="Global brand color hex"
+                  value={newBrandHex}
+                  onChange={(e) => {
+                    setNewBrandHex(e.target.value);
+                    if (paletteErr) setPaletteErr("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddSwatch();
+                    }
+                  }}
+                />
+              </div>
+              {paletteErr ? <small className="ed-palette-error">{paletteErr}</small> : null}
+              <Button size="sm" onClick={handleAddSwatch}>
+                <Plus size={12} /> Add to Brand Palette
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -291,6 +418,8 @@ function GlobalThemePanel({
 function BulkMultiSelectPanel({
   selectedNodes,
   viewport,
+  palette,
+  onAddPaletteColor,
   onDuplicateAll,
   onDeleteAll,
   onWrapInContainer,
@@ -298,6 +427,8 @@ function BulkMultiSelectPanel({
 }: {
   selectedNodes: ElementNode[];
   viewport: ViewportMode;
+  palette: BrandPaletteOption[];
+  onAddPaletteColor?: (name: string, hex: string) => void;
   onDuplicateAll: () => void;
   onDeleteAll: () => void;
   onWrapInContainer: () => void;
@@ -341,6 +472,8 @@ function BulkMultiSelectPanel({
           <ColorControl
             label="Text Color"
             value={batchColor}
+            palette={palette}
+            onAddPaletteColor={onAddPaletteColor}
             onChange={(v) => {
               setBatchColor(v);
               onApplyBatchStyles({ color: v });
@@ -349,6 +482,8 @@ function BulkMultiSelectPanel({
           <ColorControl
             label="Background Color"
             value={batchBg}
+            palette={palette}
+            onAddPaletteColor={onAddPaletteColor}
             onChange={(v) => {
               setBatchBg(v);
               onApplyBatchStyles({ backgroundColor: v });
@@ -495,31 +630,62 @@ function ItemsRepeaterControl({
   );
 }
 
+type MediaPickerTarget =
+  | {
+      kind: "background";
+      nodeId: string;
+      nodeLabel: string;
+      partKey: string | null;
+      partLabel: string | null;
+      breakpoint: "base" | "tablet" | "mobile" | "hover";
+      currentBg: string;
+      backgroundColor?: string;
+      hasSize: boolean;
+      hasPosition: boolean;
+      hasRepeat: boolean;
+    }
+  | {
+      kind: "prop";
+      nodeId: string;
+      propKey: string;
+      currentUrl: string;
+    };
+
 export function VisualInspector({
   products,
   categories,
   canWrite,
   canPublish,
+  canUploadMedia = false,
   savingTheme,
   publishingTheme,
   onSaveTheme,
   onPublishTheme,
+  onAddBrandColor,
+  onRemoveBrandColor,
+  onNotify,
 }: {
   products: ProductDto[];
   categories: CategoryDto[];
   canWrite: boolean;
   canPublish: boolean;
+  canUploadMedia?: boolean;
   savingTheme: boolean;
   publishingTheme: boolean;
   onSaveTheme: () => void;
   onPublishTheme: () => void;
+  onAddBrandColor?: (name: string, hex: string) => void;
+  onRemoveBrandColor?: (id: string) => void;
+  onNotify?: (msg: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<InspectorTab>("content");
   const [inspectGlobalTheme, setInspectGlobalTheme] = useState(false);
   const [newClassInput, setNewClassInput] = useState("");
   const [newAttrKey, setNewAttrKey] = useState("");
   const [newAttrVal, setNewAttrVal] = useState("");
   const [editHoverState, setEditHoverState] = useState(false);
+  const [mediaTarget, setMediaTarget] = useState<MediaPickerTarget | null>(null);
 
   const nodes = useEditorStore((s) => s.nodes);
   const selectedIds = useEditorStore((s) => s.selectedIds);
@@ -540,6 +706,75 @@ export function VisualInspector({
   const executeBatch = useEditorStore((s) => s.executeBatch);
   const duplicateSelected = useEditorStore((s) => s.duplicateSelected);
   const deleteSelected = useEditorStore((s) => s.deleteSelected);
+
+  const brandPalette = getBrandPaletteOptions(themeTokens);
+
+  const handleFallbackAddPalette = (name: string, hex: string) => {
+    if (onAddBrandColor) {
+      onAddBrandColor(name, hex);
+      return;
+    }
+    if (!themeTokens || !canWrite) return;
+    const existing = themeTokens.customPalette || [];
+    if (existing.length >= 24) return;
+    const entry = createCustomPaletteColor(name, hex, existing);
+    setThemeTokens({ ...themeTokens, customPalette: [...existing, entry] }, true);
+  };
+
+  const quickUploadMutation = useMutation({
+    mutationFn: async (vars: {
+      file: File;
+      target: MediaPickerTarget;
+    }) => {
+      const uploaded = await adminMediaApi.upload(vars.file, vars.file.name);
+      return { uploaded, target: vars.target };
+    },
+    onSuccess: ({ uploaded, target }) => {
+      void queryClient.invalidateQueries({ queryKey: ["admin-media"] });
+      applySelectedMediaUrl(target, uploaded.url);
+      onNotify?.(`Uploaded ${uploaded.originalFilename}`);
+    },
+    onError: (err) => {
+      onNotify?.(err instanceof ApiError ? err.message : "Failed to upload image");
+    },
+  });
+
+  const applySelectedMediaUrl = (target: MediaPickerTarget, url: string) => {
+    if (target.kind === "prop") {
+      updateNodeProps(target.nodeId, { [target.propKey]: url });
+      return;
+    }
+    const parsed = parseBackgroundImage(
+      target.currentBg,
+      target.backgroundColor || "#111318"
+    );
+    const nextBg = buildBackgroundImageCss({
+      imageUrl: url,
+      imageOpacity: parsed.imageOpacity,
+      overlayColor: parsed.overlayColor,
+    });
+    if (!nextBg) return;
+    const patch: StyleValues = { backgroundImage: nextBg };
+    if (!target.hasSize) patch.backgroundSize = "cover";
+    if (!target.hasPosition) patch.backgroundPosition = "center";
+    if (!target.hasRepeat) patch.backgroundRepeat = "no-repeat";
+    if (target.partKey && target.partLabel) {
+      updateNodePartStyles(
+        target.nodeId,
+        target.partKey,
+        patch,
+        target.breakpoint,
+        `Update background image on ${target.nodeLabel} › ${target.partLabel}`
+      );
+    } else {
+      updateNodeStyles(
+        target.nodeId,
+        patch,
+        target.breakpoint,
+        `Update background image on ${target.nodeLabel}`
+      );
+    }
+  };
 
   const selectedNodes = selectedIds
     .map((id) => findNode(nodes, id))
@@ -593,11 +828,15 @@ export function VisualInspector({
           onChangeTokens={(next) => setThemeTokens(next, true)}
           onSaveTheme={onSaveTheme}
           onPublishTheme={onPublishTheme}
+          onAddBrandColor={onAddBrandColor || handleFallbackAddPalette}
+          onRemoveBrandColor={onRemoveBrandColor}
         />
       ) : selectedNodes.length > 1 ? (
         <BulkMultiSelectPanel
           selectedNodes={selectedNodes}
           viewport={viewport}
+          palette={brandPalette}
+          onAddPaletteColor={canWrite ? handleFallbackAddPalette : undefined}
           onDuplicateAll={duplicateSelected}
           onDeleteAll={deleteSelected}
           onWrapInContainer={() => {
@@ -662,6 +901,24 @@ export function VisualInspector({
               { [key]: val },
               activeBreakpoint,
               `Update ${key} on ${primary.label}`
+            );
+          };
+          const setStyleBatch = (patch: StyleValues) => {
+            if (activePartKey && activePartDef) {
+              updateNodePartStyles(
+                primary.id,
+                activePartKey,
+                patch,
+                activeBreakpoint,
+                `Update background on ${primary.label} › ${activePartDef.label}`
+              );
+              return;
+            }
+            updateNodeStyles(
+              primary.id,
+              patch,
+              activeBreakpoint,
+              `Update background on ${primary.label}`
             );
           };
           const resetKey = (key: StylePropertyKey) => {
@@ -1108,17 +1365,48 @@ export function VisualInspector({
                           );
                         }
 
+                        if (field.type === "media") {
+                          return (
+                            <ControlField key={field.key} label={field.label}>
+                              <div className="ed-media-prop-row">
+                                <input
+                                  type="text"
+                                  disabled={primary.locked}
+                                  value={strVal}
+                                  placeholder="/media/terrain-fallback.jpg"
+                                  onChange={(e) =>
+                                    updateNodeProps(primary.id, {
+                                      [field.key]: e.target.value,
+                                    })
+                                  }
+                                />
+                                <Button
+                                  size="sm"
+                                  disabled={primary.locked}
+                                  onClick={() =>
+                                    setMediaTarget({
+                                      kind: "prop",
+                                      nodeId: primary.id,
+                                      propKey: field.key,
+                                      currentUrl: strVal,
+                                    })
+                                  }
+                                >
+                                  <FolderOpen size={12} />
+                                  <span>Library</span>
+                                </Button>
+                              </div>
+                            </ControlField>
+                          );
+                        }
+
                         return (
                           <ControlField key={field.key} label={field.label}>
                             <input
                               type="text"
                               disabled={primary.locked}
                               value={strVal}
-                              placeholder={
-                                field.type === "media"
-                                  ? "/media/terrain-fallback.jpg"
-                                  : field.placeholder
-                              }
+                              placeholder={field.placeholder}
                               onChange={(e) =>
                                 updateNodeProps(primary.id, {
                                   [field.key]: e.target.value,
@@ -1466,6 +1754,8 @@ export function VisualInspector({
                         label="Text Color"
                         value={editStyles.color || ""}
                         placeholder="#111318"
+                        palette={brandPalette}
+                        onAddPaletteColor={canWrite ? handleFallbackAddPalette : undefined}
                         overridden={overriddenKeys.has("color")}
                         viewport={viewport}
                         onReset={() => resetKey("color")}
@@ -1475,10 +1765,67 @@ export function VisualInspector({
                         label="Background Color"
                         value={editStyles.backgroundColor || ""}
                         placeholder="transparent"
+                        palette={brandPalette}
+                        onAddPaletteColor={canWrite ? handleFallbackAddPalette : undefined}
                         overridden={overriddenKeys.has("backgroundColor")}
                         viewport={viewport}
                         onReset={() => resetKey("backgroundColor")}
                         onChange={(v) => setStyle("backgroundColor", v)}
+                      />
+                      <BackgroundImageControl
+                        backgroundImage={editStyles.backgroundImage}
+                        backgroundColor={editStyles.backgroundColor}
+                        backgroundPosition={editStyles.backgroundPosition}
+                        backgroundSize={editStyles.backgroundSize}
+                        backgroundRepeat={editStyles.backgroundRepeat}
+                        backgroundAttachment={editStyles.backgroundAttachment}
+                        palette={brandPalette}
+                        onAddPaletteColor={canWrite ? handleFallbackAddPalette : undefined}
+                        canUploadMedia={canUploadMedia}
+                        uploading={quickUploadMutation.isPending}
+                        disabled={primary.locked}
+                        onChangeStyles={setStyleBatch}
+                        onOpenLibrary={() =>
+                          setMediaTarget({
+                            kind: "background",
+                            nodeId: primary.id,
+                            nodeLabel: primary.label,
+                            partKey: activePartKey,
+                            partLabel: activePartDef?.label ?? null,
+                            breakpoint: activeBreakpoint,
+                            currentBg: editStyles.backgroundImage || "",
+                            backgroundColor: editStyles.backgroundColor,
+                            hasSize: Boolean(editStyles.backgroundSize),
+                            hasPosition: Boolean(editStyles.backgroundPosition),
+                            hasRepeat: Boolean(editStyles.backgroundRepeat),
+                          })
+                        }
+                        onQuickUpload={(file) => {
+                          if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes((file.type || "").toLowerCase())) {
+                            onNotify?.("Only JPEG, PNG, WebP, and GIF images are allowed");
+                            return;
+                          }
+                          if (file.size > 5_000_000) {
+                            onNotify?.("Choose an image under 5 MB");
+                            return;
+                          }
+                          quickUploadMutation.mutate({
+                            file,
+                            target: {
+                              kind: "background",
+                              nodeId: primary.id,
+                              nodeLabel: primary.label,
+                              partKey: activePartKey,
+                              partLabel: activePartDef?.label ?? null,
+                              breakpoint: activeBreakpoint,
+                              currentBg: editStyles.backgroundImage || "",
+                              backgroundColor: editStyles.backgroundColor,
+                              hasSize: Boolean(editStyles.backgroundSize),
+                              hasPosition: Boolean(editStyles.backgroundPosition),
+                              hasRepeat: Boolean(editStyles.backgroundRepeat),
+                            },
+                          });
+                        }}
                       />
                       <SelectControl
                         label="Background Gradient"
@@ -1582,6 +1929,8 @@ export function VisualInspector({
                         label="Border Color"
                         value={editStyles.borderColor || ""}
                         placeholder="#E5E7EB"
+                        palette={brandPalette}
+                        onAddPaletteColor={canWrite ? handleFallbackAddPalette : undefined}
                         onChange={(v) => setStyle("borderColor", v)}
                       />
 
@@ -1768,6 +2117,26 @@ export function VisualInspector({
           );
         })()
       ) : null}
+
+      <MediaPickerModal
+        open={Boolean(mediaTarget)}
+        currentUrl={
+          mediaTarget
+            ? mediaTarget.kind === "prop"
+              ? mediaTarget.currentUrl
+              : parseBackgroundImage(mediaTarget.currentBg).imageUrl
+            : ""
+        }
+        canUploadMedia={canUploadMedia}
+        onOpenChange={(open) => {
+          if (!open) setMediaTarget(null);
+        }}
+        onSelect={(url) => {
+          if (!mediaTarget) return;
+          applySelectedMediaUrl(mediaTarget, url);
+        }}
+        onNotify={onNotify}
+      />
     </aside>
   );
 }

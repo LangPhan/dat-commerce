@@ -16,6 +16,7 @@ import { EditorCanvas } from "./EditorCanvas";
 import { EditorTopBar } from "./EditorTopBar";
 import { LeftSidebar } from "./LeftSidebar";
 import { VisualInspector } from "./VisualInspector";
+import { createCustomPaletteColor } from "./brand-palette";
 import { EditorDndProvider } from "./dnd/EditorDndProvider";
 
 export function Editor() {
@@ -24,6 +25,7 @@ export function Editor() {
   const canWrite = hasPermission("content:write");
   const canPublish = hasPermission("content:publish");
   const canUseAi = hasPermission("ai:use");
+  const canUploadMedia = hasPermission("media:write");
 
   const pageAdapter = useMemo(() => createRestPageAdapter(), []);
   const commerceAdapter = useMemo(() => createRestCommerceAdapter(), []);
@@ -239,7 +241,8 @@ export function Editor() {
       if (!themeTokens) throw new Error("No theme loaded");
       return pageAdapter.saveThemeDraft(themeTokens, "Updated in Visual Editor");
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      hydratedThemeIdRef.current = saved.id;
       markThemeSaved();
       void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
       setToast("Theme tokens saved as draft");
@@ -258,7 +261,8 @@ export function Editor() {
       );
       return pageAdapter.publishTheme(saved.id);
     },
-    onSuccess: () => {
+    onSuccess: (published) => {
+      hydratedThemeIdRef.current = published.id;
       markThemeSaved();
       void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
       void queryClient.invalidateQueries({ queryKey: ["store-theme"] });
@@ -268,6 +272,63 @@ export function Editor() {
       setToast(err instanceof Error ? err.message : "Theme publish failed");
     },
   });
+
+  const handleAddBrandColor = (name: string, hex: string) => {
+    const current = useEditorStore.getState().themeTokens;
+    if (!current) return;
+    const existing = current.customPalette || [];
+    if (existing.length >= 24) {
+      setToast("Brand Palette supports up to 24 custom colors");
+      return;
+    }
+    const createdSwatch = createCustomPaletteColor(name, hex, existing);
+    const nextTokens = {
+      ...current,
+      customPalette: [...existing, createdSwatch],
+    };
+    setThemeTokens(nextTokens, true);
+    if (!canWrite) return;
+    void pageAdapter
+      .saveThemeDraft(nextTokens, `Added brand color ${createdSwatch.name}`)
+      .then((saved) => {
+        hydratedThemeIdRef.current = saved.id;
+        if (useEditorStore.getState().themeTokens === nextTokens) {
+          markThemeSaved();
+        }
+        void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
+        setToast(`Added "${createdSwatch.name}" (${createdSwatch.hex}) to Brand Palette`);
+      })
+      .catch((err) => {
+        setToast(err instanceof Error ? err.message : "Failed to save brand color");
+      });
+  };
+
+  const handleRemoveBrandColor = (id: string) => {
+    const current = useEditorStore.getState().themeTokens;
+    if (!current) return;
+    const existing = current.customPalette || [];
+    const target = existing.find((item) => item.id === id);
+    if (!target) return;
+    const nextTokens = {
+      ...current,
+      customPalette: existing.filter((item) => item.id !== id),
+    };
+    setThemeTokens(nextTokens, true);
+    if (!canWrite) return;
+    void pageAdapter
+      .saveThemeDraft(nextTokens, `Removed brand color ${target.name}`)
+      .then((saved) => {
+        hydratedThemeIdRef.current = saved.id;
+        if (useEditorStore.getState().themeTokens === nextTokens) {
+          markThemeSaved();
+        }
+        void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
+        setToast(`Removed "${target.name}" from Brand Palette`);
+      })
+      .catch((err) => {
+        setToast(err instanceof Error ? err.message : "Failed to remove brand color");
+      });
+  };
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -404,10 +465,14 @@ export function Editor() {
               categories={categoriesQuery.data || []}
               canWrite={canWrite}
               canPublish={canPublish}
+              canUploadMedia={canUploadMedia}
               savingTheme={saveThemeMutation.isPending}
               publishingTheme={publishThemeMutation.isPending}
               onSaveTheme={() => saveThemeMutation.mutate()}
               onPublishTheme={() => publishThemeMutation.mutate()}
+              onAddBrandColor={handleAddBrandColor}
+              onRemoveBrandColor={handleRemoveBrandColor}
+              onNotify={setToast}
             />
           ) : null}
         </div>

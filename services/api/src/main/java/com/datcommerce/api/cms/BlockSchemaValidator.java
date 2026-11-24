@@ -69,7 +69,8 @@ public class BlockSchemaValidator {
             "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
             "position", "top", "right", "bottom", "left", "zIndex", "overflow",
             "textAlign", "color", "backgroundColor", "backgroundImage", "backgroundSize",
-            "backgroundPosition", "fontFamily", "fontSize", "fontWeight", "lineHeight",
+            "backgroundPosition", "backgroundRepeat", "backgroundAttachment",
+            "fontFamily", "fontSize", "fontWeight", "lineHeight",
             "letterSpacing", "textTransform", "textDecoration", "borderWidth",
             "borderStyle", "borderColor", "borderRadius", "boxShadow", "opacity",
             "aspectRatio", "objectFit", "objectPosition", "cursor"
@@ -455,7 +456,7 @@ public class BlockSchemaValidator {
             if (val.isEmpty()) {
                 continue;
             }
-            if (val.length() > 300 || UNSAFE_STYLE_VALUE.matcher(val).find()) {
+            if (val.length() > 500 || UNSAFE_STYLE_VALUE.matcher(val).find()) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_ERROR,
                         "Unsafe or overly long CSS value for '" + prop + "' at " + context

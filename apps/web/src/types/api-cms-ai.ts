@@ -94,6 +94,12 @@ export type StorePageResponse = {
   publishedAt: string;
 };
 
+export type BrandPaletteColor = {
+  id: string;
+  name: string;
+  hex: string;
+};
+
 export type ThemeTokens = {
   version: number;
   colors: {
@@ -106,6 +112,7 @@ export type ThemeTokens = {
     accent?: string;
     border?: string;
   };
+  customPalette?: BrandPaletteColor[];
   typography: {
     headingFont: string;
     bodyFont: string;

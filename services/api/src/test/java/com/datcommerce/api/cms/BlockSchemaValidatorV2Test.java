@@ -210,4 +210,60 @@ class BlockSchemaValidatorV2Test {
         );
         assertThrows(ApiException.class, () -> validator.validateAndNormalizeContent(Map.of("version", 2, "nodes", List.of(unsafeCss))));
     }
+
+    @Test
+    void validatesExtendedBackgroundPropertiesAndCustomThemePalette() {
+        Map<String, Object> section = Map.of(
+                "id", "bg-hero",
+                "type", "section",
+                "label", "Hero",
+                "props", Map.of(),
+                "styles", Map.of(
+                        "base", Map.of(
+                                "backgroundImage", "linear-gradient(rgba(17,19,24,0.35), rgba(17,19,24,0.35)), url(/storage/media/terrain-hero-banner-asset.jpg)",
+                                "backgroundPosition", "center top",
+                                "backgroundSize", "cover",
+                                "backgroundRepeat", "no-repeat",
+                                "backgroundAttachment", "fixed"
+                        )
+                )
+        );
+        Map<String, Object> cleanPage = validator.validateAndNormalizeContent(Map.of(
+                "version", 2,
+                "nodes", List.of(section)
+        ));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> nodes = (List<Map<String, Object>>) cleanPage.get("nodes");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> baseStyles = (Map<String, Object>) ((Map<String, Object>) nodes.get(0).get("styles")).get("base");
+        assertEquals("no-repeat", baseStyles.get("backgroundRepeat"));
+        assertEquals("fixed", baseStyles.get("backgroundAttachment"));
+
+        Map<String, Object> tokensWithPalette = new LinkedHashMap<>();
+        tokensWithPalette.put("colors", Map.of("primary", "#274e36", "background", "#ffffff", "text", "#111318"));
+        tokensWithPalette.put("customPalette", List.of(
+                Map.of("id", "terracotta", "name", "Terracotta", "hex", "#c85a32"),
+                Map.of("name", "Sage Mist", "hex", "#8fa89b")
+        ));
+        Map<String, Object> cleanTheme = themeValidator.validateAndNormalize(tokensWithPalette);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> palette = (List<Map<String, Object>>) cleanTheme.get("customPalette");
+        assertEquals(2, palette.size());
+        assertEquals("#C85A32", palette.get(0).get("hex"));
+        assertEquals("sage-mist", palette.get(1).get("id"));
+
+        Map<String, Object> badHexTokens = new LinkedHashMap<>();
+        badHexTokens.put("colors", Map.of("primary", "#274e36", "background", "#ffffff", "text", "#111318"));
+        badHexTokens.put("customPalette", List.of(Map.of("name", "Bad", "hex", "red")));
+        assertThrows(ApiException.class, () -> themeValidator.validateAndNormalize(badHexTokens));
+
+        List<Map<String, Object>> oversized = new ArrayList<>();
+        for (int i = 0; i < 25; i++) {
+            oversized.add(Map.of("id", "c-" + i, "name", "Color " + i, "hex", "#112233"));
+        }
+        Map<String, Object> tooManyTokens = new LinkedHashMap<>();
+        tooManyTokens.put("colors", Map.of("primary", "#274e36", "background", "#ffffff", "text", "#111318"));
+        tooManyTokens.put("customPalette", oversized);
+        assertThrows(ApiException.class, () -> themeValidator.validateAndNormalize(tooManyTokens));
+    }
 }

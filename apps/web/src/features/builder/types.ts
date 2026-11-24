@@ -95,6 +95,8 @@ export type StylePropertyKey =
   | "backgroundImage"
   | "backgroundSize"
   | "backgroundPosition"
+  | "backgroundRepeat"
+  | "backgroundAttachment"
   | "fontFamily"
   | "fontSize"
   | "fontWeight"

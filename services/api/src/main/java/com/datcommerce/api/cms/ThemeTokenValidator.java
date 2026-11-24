@@ -2,7 +2,11 @@ package com.datcommerce.api.cms;
 
 import com.datcommerce.api.common.exception.ApiException;
 import com.datcommerce.api.common.exception.ErrorCode;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -15,6 +19,8 @@ public class ThemeTokenValidator {
     private static final Pattern HEX_COLOR = Pattern.compile("^#[0-9A-Fa-f]{6}$");
     private static final Pattern PX_VALUE = Pattern.compile("^(\\d{1,4})px$");
     private static final Pattern SAFE_SHADOW = Pattern.compile("^[0-9A-Za-zpxrm.,()%\\s#-]{1,120}$");
+    private static final Pattern SAFE_PALETTE_ID = Pattern.compile("^[A-Za-z0-9_-]{1,40}$");
+    private static final int MAX_CUSTOM_PALETTE_COLORS = 24;
 
     private static final Set<String> COLOR_KEYS = Set.of(
             "primary", "secondary", "background", "surface", "text", "muted", "accent", "border"
@@ -167,7 +173,84 @@ public class ThemeTokenValidator {
             out.put("shadows", shadows);
         }
 
+        if (rawTokens.containsKey("customPalette")) {
+            Object rawPaletteObj = rawTokens.get("customPalette");
+            if (rawPaletteObj != null) {
+                if (!(rawPaletteObj instanceof List<?> rawList)) {
+                    throw new ApiException(ErrorCode.VALIDATION_ERROR, "customPalette must be a list");
+                }
+                if (rawList.size() > MAX_CUSTOM_PALETTE_COLORS) {
+                    throw new ApiException(
+                            ErrorCode.VALIDATION_ERROR,
+                            "customPalette exceeds maximum of " + MAX_CUSTOM_PALETTE_COLORS + " colors"
+                    );
+                }
+                List<Map<String, Object>> normalizedPalette = new ArrayList<>();
+                Set<String> seenIds = new HashSet<>();
+                for (Object itemObj : rawList) {
+                    if (!(itemObj instanceof Map<?, ?> itemMap)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Each customPalette entry must be an object");
+                    }
+                    Object nameObj = itemMap.get("name");
+                    String name = nameObj == null ? "" : String.valueOf(nameObj).trim();
+                    if (name.isEmpty() || name.length() > 32) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Palette color name must be 1 to 32 characters");
+                    }
+                    Object hexObj = itemMap.get("hex");
+                    String hex = hexObj == null ? "" : String.valueOf(hexObj).trim();
+                    if (!HEX_COLOR.matcher(hex).matches()) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Palette color '" + name + "' must be a 6-digit hex code");
+                    }
+                    Object idObj = itemMap.get("id");
+                    String rawId = idObj == null ? "" : String.valueOf(idObj).trim();
+                    String baseId = rawId.isEmpty() ? slugifyPaletteId(name) : rawId;
+                    if (!SAFE_PALETTE_ID.matcher(baseId).matches()) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid customPalette id: " + baseId);
+                    }
+                    String uniqueId = ensureUniqueId(baseId, seenIds);
+                    seenIds.add(uniqueId);
+
+                    Map<String, Object> cleanEntry = new LinkedHashMap<>();
+                    cleanEntry.put("id", uniqueId);
+                    cleanEntry.put("name", name);
+                    cleanEntry.put("hex", hex.toUpperCase(Locale.ROOT));
+                    normalizedPalette.add(cleanEntry);
+                }
+                out.put("customPalette", normalizedPalette);
+            } else {
+                out.put("customPalette", List.of());
+            }
+        }
+
         return out;
+    }
+
+    private static String slugifyPaletteId(String name) {
+        String slug = name.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9_-]+", "-")
+                .replaceAll("^-+|-+$", "");
+        if (slug.isEmpty()) {
+            slug = "swatch";
+        }
+        return slug.length() > 32 ? slug.substring(0, 32) : slug;
+    }
+
+    private static String ensureUniqueId(String baseId, Set<String> seenIds) {
+        if (!seenIds.contains(baseId)) {
+            return baseId;
+        }
+        int suffix = 2;
+        while (true) {
+            String candidate = baseId + "-" + suffix;
+            if (candidate.length() > 40) {
+                int keep = Math.max(1, 40 - ("-" + suffix).length());
+                candidate = baseId.substring(0, keep) + "-" + suffix;
+            }
+            if (!seenIds.contains(candidate)) {
+                return candidate;
+            }
+            suffix++;
+        }
     }
 
     private static String validatePxRange(String raw, int min, int max, String field) {
