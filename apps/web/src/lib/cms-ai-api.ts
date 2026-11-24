@@ -7,6 +7,10 @@ import {
 import type {
   AdminThemeResponse,
   AiActivityDto,
+  AiModelSettingsDto,
+  EditorSuggestRequest,
+  EditorSuggestResponse,
+  UpdateAiModelSettingsRequest,
   AiChatTurnResultDto,
   AiChangePlanDto,
   AiConversationDetailDto,
@@ -284,4 +288,15 @@ export const aiAdminApi = {
       { method: "POST" }
     ),
   getActivity: () => apiFetch<AiActivityDto>("/api/v1/admin/ai/activity"),
+  getSettings: () => apiFetch<AiModelSettingsDto>("/api/v1/admin/ai/settings"),
+  updateSettings: (body: UpdateAiModelSettingsRequest) =>
+    apiFetch<AiModelSettingsDto>("/api/v1/admin/ai/settings", {
+      method: "PUT",
+      body,
+    }),
+  suggestEditorChanges: (body: EditorSuggestRequest) =>
+    apiFetch<EditorSuggestResponse>("/api/v1/admin/ai/editor/suggest", {
+      method: "POST",
+      body,
+    }),
 };

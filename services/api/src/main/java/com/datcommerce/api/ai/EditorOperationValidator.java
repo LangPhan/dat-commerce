@@ -1,0 +1,299 @@
+package com.datcommerce.api.ai;
+
+import com.datcommerce.api.cms.BlockSchemaValidator;
+import com.datcommerce.api.common.exception.ApiException;
+import com.datcommerce.api.common.exception.ErrorCode;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+
+@Component
+public class EditorOperationValidator {
+
+    private static final int MAX_OPERATIONS = 20;
+    private static final Set<String> ALLOWED_OP_TYPES = Set.of(
+            "update_props",
+            "update_styles",
+            "reset_style_keys",
+            "update_visibility",
+            "update_meta",
+            "insert_node",
+            "move_node",
+            "duplicate_node",
+            "delete_node",
+            "replace_subtree"
+    );
+    private static final Set<String> ALLOWED_BREAKPOINTS = Set.of("base", "tablet", "mobile", "hover");
+
+    public List<Map<String, Object>> validateAndNormalize(
+            List<Map<String, Object>> rawOps,
+            String scope,
+            Set<String> allowedTargetIds,
+            Set<String> existingPageIds
+    ) {
+        if (rawOps == null || rawOps.isEmpty()) {
+            return List.of();
+        }
+        if (rawOps.size() > MAX_OPERATIONS) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "AI cannot emit more than " + MAX_OPERATIONS + " operations at once"
+            );
+        }
+
+        BlockSchemaValidator.assertSafeRecursive(rawOps, "ai.operations");
+
+        String normalizedScope = StringUtils.hasText(scope)
+                ? scope.trim().toLowerCase(Locale.ROOT)
+                : "element";
+
+        List<Map<String, Object>> cleaned = new ArrayList<>();
+        Set<String> insertedIds = new HashSet<>();
+
+        for (int i = 0; i < rawOps.size(); i++) {
+            Map<String, Object> raw = rawOps.get(i);
+            if (raw == null) {
+                continue;
+            }
+            String opType = str(raw.get("type")).toLowerCase(Locale.ROOT);
+            if (!ALLOWED_OP_TYPES.contains(opType)) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_ERROR,
+                        "Unsupported AI editor operation type: " + opType
+                );
+            }
+
+            Map<String, Object> opOut = new LinkedHashMap<>();
+            opOut.put("type", opType);
+
+            switch (opType) {
+                case "update_props" -> {
+                    String nodeId = requireTargetNode(raw.get("nodeId"), normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    Map<String, Object> props = mapOf(raw.get("props"), "update_props.props");
+                    for (String k : List.of("href", "url", "actionUrl", "videoUrl", "image", "src", "posterUrl")) {
+                        if (props.get(k) instanceof String u && StringUtils.hasText(u)) {
+                            BlockSchemaValidator.validateSafeUrl(
+                                    u,
+                                    "ai.update_props." + k,
+                                    Set.of("image", "src", "posterUrl").contains(k)
+                            );
+                        }
+                    }
+                    opOut.put("nodeId", nodeId);
+                    opOut.put("props", props);
+                }
+                case "update_styles" -> {
+                    String nodeId = requireTargetNode(raw.get("nodeId"), normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    String bp = str(raw.get("breakpoint")).toLowerCase(Locale.ROOT);
+                    if (!StringUtils.hasText(bp)) {
+                        bp = "base";
+                    }
+                    if (!ALLOWED_BREAKPOINTS.contains(bp)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid AI style breakpoint: " + bp);
+                    }
+                    Map<String, Object> rawStyles = mapOf(raw.get("styles"), "update_styles.styles");
+                    Map<String, String> safeStyles = BlockSchemaValidator.sanitizeStyleMap(
+                            rawStyles,
+                            "ai.update_styles." + bp
+                    );
+                    if (!safeStyles.isEmpty()) {
+                        opOut.put("nodeId", nodeId);
+                        opOut.put("breakpoint", bp);
+                        opOut.put("styles", safeStyles);
+                    } else {
+                        continue;
+                    }
+                }
+                case "reset_style_keys" -> {
+                    String nodeId = requireTargetNode(raw.get("nodeId"), normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    String bp = str(raw.get("breakpoint")).toLowerCase(Locale.ROOT);
+                    if (!ALLOWED_BREAKPOINTS.contains(bp)) {
+                        bp = "base";
+                    }
+                    List<String> keys = new ArrayList<>();
+                    if (raw.get("keys") instanceof List<?> rawKeys) {
+                        for (Object k : rawKeys) {
+                            String ks = str(k);
+                            if (BlockSchemaValidator.ALLOWED_STYLE_PROPERTIES.contains(ks)) {
+                                keys.add(ks);
+                            }
+                        }
+                    }
+                    if (keys.isEmpty()) {
+                        continue;
+                    }
+                    opOut.put("nodeId", nodeId);
+                    opOut.put("breakpoint", bp);
+                    opOut.put("keys", keys);
+                }
+                case "update_visibility" -> {
+                    String nodeId = requireTargetNode(raw.get("nodeId"), normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    opOut.put("nodeId", nodeId);
+                    if (raw.get("visible") != null) {
+                        opOut.put("visible", Boolean.TRUE.equals(raw.get("visible")));
+                    }
+                    if (raw.get("visibility") instanceof Map<?, ?> vis) {
+                        Map<String, Object> cleanVis = new LinkedHashMap<>();
+                        for (String bp : List.of("desktop", "tablet", "mobile")) {
+                            if (vis.get(bp) != null) {
+                                cleanVis.put(bp, Boolean.TRUE.equals(vis.get(bp)));
+                            }
+                        }
+                        opOut.put("visibility", cleanVis);
+                    }
+                }
+                case "update_meta" -> {
+                    String nodeId = requireTargetNode(raw.get("nodeId"), normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    opOut.put("nodeId", nodeId);
+                    if (raw.get("label") != null) {
+                        String label = str(raw.get("label"));
+                        if (StringUtils.hasText(label)) {
+                            opOut.put("label", label.length() > 120 ? label.substring(0, 120) : label);
+                        }
+                    }
+                    if (raw.get("locked") != null) {
+                        opOut.put("locked", Boolean.TRUE.equals(raw.get("locked")));
+                    }
+                }
+                case "insert_node" -> {
+                    Object parentObj = raw.get("parentId");
+                    String parentId = parentObj == null ? null : str(parentObj);
+                    if ("element".equals(normalizedScope) && parentId != null
+                            && !allowedTargetIds.contains(parentId) && !insertedIds.contains(parentId)) {
+                        throw new ApiException(
+                                ErrorCode.VALIDATION_ERROR,
+                                "AI insert_node parentId '" + parentId + "' is outside element scope"
+                        );
+                    }
+                    if (!(raw.get("node") instanceof Map<?, ?> rawNode)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "insert_node requires a node object");
+                    }
+                    BlockSchemaValidator treeValidator = new BlockSchemaValidator();
+                    Set<String> ids = new HashSet<>(existingPageIds);
+                    ids.addAll(insertedIds);
+                    Map<String, Object> cleanNode = treeValidator.normalizeV2Node(
+                            rawNode,
+                            "ai.insert_node.node",
+                            1,
+                            ids,
+                            new int[] { existingPageIds.size() + insertedIds.size() }
+                    );
+                    collectIds(cleanNode, insertedIds);
+                    opOut.put("parentId", parentId);
+                    if (raw.get("index") instanceof Number idxNum) {
+                        opOut.put("index", Math.max(0, idxNum.intValue()));
+                    }
+                    opOut.put("node", cleanNode);
+                }
+                case "replace_subtree" -> {
+                    String nodeId = requireTargetNode(raw.get("nodeId"), normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    if (!(raw.get("node") instanceof Map<?, ?> rawNode)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "replace_subtree requires a node object");
+                    }
+                    BlockSchemaValidator treeValidator = new BlockSchemaValidator();
+                    Set<String> ids = new HashSet<>(existingPageIds);
+                    ids.remove(nodeId);
+                    Map<String, Object> cleanNode = treeValidator.normalizeV2Node(
+                            rawNode,
+                            "ai.replace_subtree.node",
+                            1,
+                            ids,
+                            new int[] { existingPageIds.size() }
+                    );
+                    collectIds(cleanNode, insertedIds);
+                    opOut.put("nodeId", nodeId);
+                    opOut.put("node", cleanNode);
+                }
+                case "move_node" -> {
+                    String nodeId = requireTargetNode(raw.get("nodeId"), normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    String targetParentId = raw.get("targetParentId") == null ? null : str(raw.get("targetParentId"));
+                    int index = raw.get("index") instanceof Number n ? Math.max(0, n.intValue()) : 0;
+                    opOut.put("nodeId", nodeId);
+                    opOut.put("targetParentId", targetParentId);
+                    opOut.put("index", index);
+                }
+                case "duplicate_node", "delete_node" -> {
+                    String nodeId = requireTargetNode(raw.get("nodeId"), normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    opOut.put("nodeId", nodeId);
+                }
+            }
+
+            cleaned.add(opOut);
+        }
+
+        return cleaned;
+    }
+
+    private static String requireTargetNode(
+            Object rawNodeId,
+            String scope,
+            Set<String> allowedTargetIds,
+            Set<String> insertedIds,
+            Set<String> existingPageIds,
+            String opType
+    ) {
+        String nodeId = str(rawNodeId);
+        if (!StringUtils.hasText(nodeId)) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, "AI operation " + opType + " missing nodeId");
+        }
+        if ("element".equals(scope) && !allowedTargetIds.contains(nodeId) && !insertedIds.contains(nodeId)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "AI operation '" + opType + "' attempted to modify node '" + nodeId + "' outside selected element scope"
+            );
+        }
+        if ("section".equals(scope) && !allowedTargetIds.isEmpty()
+                && !allowedTargetIds.contains(nodeId) && !insertedIds.contains(nodeId)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "AI operation '" + opType + "' attempted to modify node '" + nodeId + "' outside section scope"
+            );
+        }
+        if (!existingPageIds.contains(nodeId) && !insertedIds.contains(nodeId)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "AI operation referenced unknown nodeId: " + nodeId
+            );
+        }
+        return nodeId;
+    }
+
+    private static void collectIds(Map<String, Object> node, Set<String> out) {
+        Object id = node.get("id");
+        if (id != null) {
+            out.add(String.valueOf(id));
+        }
+        if (node.get("children") instanceof List<?> children) {
+            for (Object ch : children) {
+                if (ch instanceof Map<?, ?> m) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> cm = (Map<String, Object>) m;
+                    collectIds(cm, out);
+                }
+            }
+        }
+    }
+
+    private static Map<String, Object> mapOf(Object obj, String field) {
+        if (!(obj instanceof Map<?, ?> raw)) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, field + " must be an object");
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        raw.forEach((k, v) -> {
+            if (k != null) {
+                out.put(String.valueOf(k), v);
+            }
+        });
+        return out;
+    }
+
+    private static String str(Object o) {
+        return o == null ? "" : String.valueOf(o).trim();
+    }
+}

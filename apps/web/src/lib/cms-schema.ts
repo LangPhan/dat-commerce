@@ -150,7 +150,7 @@ export function apiBlocksToEditorBlocks(content?: PageContentPayload | null): Bl
     });
 }
 
-export function editorBlocksToApiBlocks(blocks: Block[]): PageContentPayload {
+export function editorBlocksToApiBlocks(blocks: Block[]): { version: 1; blocks: ApiPageBlock[] } {
   const mapped: ApiPageBlock[] = blocks.map((b) => ({
     id: b.id,
     type: KIND_TO_SLUG[b.type] || "rich_text",
@@ -191,11 +191,17 @@ export function themeTokensToCssVars(tokens?: ThemeTokens | null): CSSProperties
     "--store-surface": tokens.colors.surface || "#F8FAFC",
     "--store-text": tokens.colors.text,
     "--store-muted": tokens.colors.muted || "#5C6270",
+    "--store-secondary": tokens.colors.secondary || "#1F2937",
     "--store-accent": tokens.colors.accent || "#18794E",
+    "--store-border": tokens.colors.border || "#E5E7EB",
     "--store-font-heading": tokens.typography?.headingFont || "Georgia",
     "--store-font-body": tokens.typography?.bodyFont || "Inter",
     "--store-radius-card": tokens.radius?.card || "10px",
     "--store-radius-button": tokens.radius?.button || "8px",
     "--store-max-width": tokens.container?.maxWidth || "1280px",
+    "--store-section-y": tokens.spacing?.sectionY || "64px",
+    "--store-block-gap": tokens.spacing?.blockGap || "24px",
+    "--store-shadow-card": tokens.shadows?.card || "0 1px 3px rgba(15, 23, 42, 0.08)",
+    "--store-shadow-elevated": tokens.shadows?.elevated || "0 12px 32px rgba(15, 23, 42, 0.14)",
   } as CSSProperties;
 }

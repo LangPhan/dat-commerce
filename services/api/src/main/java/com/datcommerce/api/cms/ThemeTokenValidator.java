@@ -14,9 +14,10 @@ public class ThemeTokenValidator {
 
     private static final Pattern HEX_COLOR = Pattern.compile("^#[0-9A-Fa-f]{6}$");
     private static final Pattern PX_VALUE = Pattern.compile("^(\\d{1,4})px$");
+    private static final Pattern SAFE_SHADOW = Pattern.compile("^[0-9A-Za-zpxrm.,()%\\s#-]{1,120}$");
 
     private static final Set<String> COLOR_KEYS = Set.of(
-            "primary", "background", "surface", "text", "muted", "accent"
+            "primary", "secondary", "background", "surface", "text", "muted", "accent", "border"
     );
     private static final Set<String> REQUIRED_COLORS = Set.of("primary", "background", "text");
     private static final Set<String> ALLOWED_FONTS = Set.of(
@@ -26,11 +27,13 @@ public class ThemeTokenValidator {
     public static Map<String, Object> defaultTokens() {
         Map<String, Object> colors = new LinkedHashMap<>();
         colors.put("primary", "#5B46E8");
+        colors.put("secondary", "#1F2937");
         colors.put("background", "#FFFFFF");
         colors.put("surface", "#F8FAFC");
         colors.put("text", "#111318");
         colors.put("muted", "#5C6270");
         colors.put("accent", "#18794E");
+        colors.put("border", "#E5E7EB");
 
         Map<String, Object> typography = new LinkedHashMap<>();
         typography.put("headingFont", "Georgia");
@@ -43,12 +46,22 @@ public class ThemeTokenValidator {
         Map<String, Object> container = new LinkedHashMap<>();
         container.put("maxWidth", "1280px");
 
+        Map<String, Object> spacing = new LinkedHashMap<>();
+        spacing.put("sectionY", "64px");
+        spacing.put("blockGap", "24px");
+
+        Map<String, Object> shadows = new LinkedHashMap<>();
+        shadows.put("card", "0 1px 3px rgba(15, 23, 42, 0.08)");
+        shadows.put("elevated", "0 12px 32px rgba(15, 23, 42, 0.14)");
+
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("version", 1);
         root.put("colors", colors);
         root.put("typography", typography);
         root.put("radius", radius);
         root.put("container", container);
+        root.put("spacing", spacing);
+        root.put("shadows", shadows);
         return root;
     }
 
@@ -60,7 +73,8 @@ public class ThemeTokenValidator {
 
         Map<String, Object> defaults = defaultTokens();
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("version", 1);
+        int version = rawTokens.get("version") instanceof Number n && n.intValue() == 2 ? 2 : 1;
+        out.put("version", version);
 
         // Colors
         Object colorsObj = rawTokens.get("colors");
@@ -123,6 +137,35 @@ public class ThemeTokenValidator {
             container.put("maxWidth", validatePxRange(String.valueOf(rawContainer.get("maxWidth")), 1024, 1536, "container.maxWidth"));
         }
         out.put("container", container);
+
+        // Optional Spacing
+        if (rawTokens.get("spacing") instanceof Map<?, ?> rawSpacing) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> spacing = new LinkedHashMap<>((Map<String, Object>) defaults.get("spacing"));
+            if (rawSpacing.get("sectionY") != null) {
+                spacing.put("sectionY", validatePxRange(String.valueOf(rawSpacing.get("sectionY")), 0, 160, "spacing.sectionY"));
+            }
+            if (rawSpacing.get("blockGap") != null) {
+                spacing.put("blockGap", validatePxRange(String.valueOf(rawSpacing.get("blockGap")), 0, 96, "spacing.blockGap"));
+            }
+            out.put("spacing", spacing);
+        }
+
+        // Optional Shadows
+        if (rawTokens.get("shadows") instanceof Map<?, ?> rawShadows) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> shadows = new LinkedHashMap<>((Map<String, Object>) defaults.get("shadows"));
+            for (String key : Set.of("card", "elevated")) {
+                if (rawShadows.get(key) != null) {
+                    String s = String.valueOf(rawShadows.get(key)).trim();
+                    if (!SAFE_SHADOW.matcher(s).matches()) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid shadow value for shadows." + key);
+                    }
+                    shadows.put(key, s);
+                }
+            }
+            out.put("shadows", shadows);
+        }
 
         return out;
     }

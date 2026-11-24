@@ -1,16 +1,18 @@
 import type { Attribute, Category, Discount, Product } from "./commerce";
 import type { Block } from "./editor";
 
-export type AIModelId =
-  | "gpt-6-luna"
-  | "cx/gpt-6-luna"
-  | "claude-code";
+export type AIModelId = string;
 
 export type AIModel = {
   id: AIModelId;
   label: string;
   provider: string;
   badge: string;
+  contextLength?: number | null;
+  maxOutputTokens?: number | null;
+  vision?: boolean;
+  tools?: boolean;
+  reasoning?: boolean;
 };
 
 export const AI_MODELS: AIModel[] = [

@@ -1,6 +1,7 @@
 package com.datcommerce.api.ai;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
@@ -10,6 +11,33 @@ import java.util.UUID;
 public final class AiDtos {
 
     private AiDtos() {
+    }
+
+    public record AvailableModelDto(
+            String id,
+            String label,
+            String ownedBy,
+            Integer contextLength,
+            Integer maxOutputTokens,
+            boolean vision,
+            boolean tools,
+            boolean reasoning
+    ) {
+    }
+
+    public record AiModelSettingsDto(
+            List<String> enabledModelIds,
+            List<String> availableModelIds,
+            List<AvailableModelDto> availableModels,
+            String defaultModelId,
+            boolean gatewayReachable,
+            String gatewayError
+    ) {
+    }
+
+    public record UpdateAiModelSettingsRequest(
+            @NotEmpty @Size(max = 30) List<@NotBlank @Size(max = 160) String> enabledModelIds
+    ) {
     }
 
     public record CreateConversationRequest(

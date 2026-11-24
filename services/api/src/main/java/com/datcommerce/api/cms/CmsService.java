@@ -490,10 +490,7 @@ public class CmsService {
     }
 
     private static int extractBlockCount(Map<String, Object> content) {
-        if (content != null && content.get("blocks") instanceof List<?> list) {
-            return list.size();
-        }
-        return 0;
+        return BlockSchemaValidator.countNodes(content);
     }
 
     public record CreatePageRequest(

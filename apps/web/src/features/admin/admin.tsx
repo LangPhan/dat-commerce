@@ -6,6 +6,7 @@ import { ActivityTable } from "@/features/assistant/activity";
 import { Workspace } from "@/features/assistant/workspace";
 import { AuthGuard } from "@/features/auth/auth-guard";
 import { parseAdminRoute, useAdminNotify } from "./admin-context";
+import { AiSettingsView } from "./ai-settings";
 import { Attributes } from "./attributes";
 import { AuditLogsView } from "./audit-logs";
 import { CategoryManager } from "./categories";
@@ -122,6 +123,13 @@ export function Admin() {
     return (
       <AuthGuard requiredPermission="ai:use">
         <Workspace notify={setToast} />
+      </AuthGuard>
+    );
+  }
+  if (view === "ai-settings") {
+    return (
+      <AuthGuard requiredPermission="ai:use">
+        <AiSettingsView notify={setToast} />
       </AuthGuard>
     );
   }

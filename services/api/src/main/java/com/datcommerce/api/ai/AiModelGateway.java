@@ -7,6 +7,21 @@ public interface AiModelGateway {
 
     GatewayTurnResponse generateTurn(GatewayRequest request);
 
+    default List<AvailableModelInfo> listAvailableModels() {
+        return List.of();
+    }
+
+    record AvailableModelInfo(
+            String id,
+            String ownedBy,
+            Integer contextLength,
+            Integer maxOutputTokens,
+            boolean vision,
+            boolean tools,
+            boolean reasoning
+    ) {
+    }
+
     record ToolDefinition(
             String name,
             String description,

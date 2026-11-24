@@ -27,11 +27,25 @@ public class MockAiModelGateway implements AiModelGateway {
     }
 
     @Override
+    public List<AvailableModelInfo> listAvailableModels() {
+        return List.of(
+                new AvailableModelInfo("gpt-6-luna", "9router", 128000, 16384, true, true, true),
+                new AvailableModelInfo("cx/gpt-6-luna", "cx", 128000, 16384, true, true, true),
+                new AvailableModelInfo("claude-code", "combo", 128000, 64000, true, true, true),
+                new AvailableModelInfo("claude-sonnet-4", "combo", 200000, 16384, true, true, true),
+                new AvailableModelInfo("forma-fast", "9router", 64000, 8192, false, true, false)
+        );
+    }
+
+    @Override
     public GatewayTurnResponse generateTurn(GatewayRequest request) {
         String prompt = extractLatestUserPrompt(request.messages());
         String lower = prompt.toLowerCase(Locale.ROOT);
         List<GatewayMessage> toolMsgs = extractCurrentTurnToolResults(request.messages());
         Map<String, Object> ctx = request.context() != null ? request.context() : Map.of();
+        if ("editor_suggest".equals(String.valueOf(ctx.get("mode")))) {
+            return generateEditorSuggestTurn(prompt, lower, ctx);
+        }
 
         // Round 0: emit initial read or propose tool calls, or ask clarification if ambiguous
         if (toolMsgs.isEmpty()) {
@@ -435,6 +449,82 @@ public class MockAiModelGateway implements AiModelGateway {
             }
         }
         return results;
+    }
+
+    private GatewayTurnResponse generateEditorSuggestTurn(
+            String prompt,
+            String lower,
+            Map<String, Object> ctx
+    ) {
+        String targetId = "";
+        Object selObj = ctx.get("selectedNodeIds");
+        if (selObj instanceof List<?> selList && !selList.isEmpty() && selList.get(0) != null) {
+            targetId = String.valueOf(selList.get(0)).trim();
+        }
+        if (!StringUtils.hasText(targetId) && ctx.get("targetSubtree") instanceof Map<?, ?> map && map.get("id") != null) {
+            targetId = String.valueOf(map.get("id")).trim();
+        }
+        String viewport = ctx.get("viewport") != null ? String.valueOf(ctx.get("viewport")) : "desktop";
+        String bp = lower.contains("mobile") ? "mobile" : ("tablet".equals(viewport) ? "tablet" : ("mobile".equals(viewport) ? "mobile" : "base"));
+
+        Map<String, Object> styles = new LinkedHashMap<>();
+        String summary = "Apply contextual visual update";
+        if (lower.contains("color") && extractHex(prompt, "").length() == 7) {
+            styles.put("color", extractHex(prompt, "#2563EB"));
+            summary = "Update text color to " + styles.get("color");
+        } else if (lower.contains("gradient") || lower.contains("dark blue")) {
+            styles.put("backgroundImage", "linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)");
+            styles.put("color", "#FFFFFF");
+            summary = "Apply dark blue gradient backdrop";
+        } else if (lower.contains("56px") || lower.contains("larger") || lower.contains("font size")) {
+            styles.put("fontSize", lower.contains("56px") ? "56px" : "20px");
+            summary = "Increase typography scale";
+        } else if (lower.contains("padding") && lower.contains("48")) {
+            styles.put("paddingTop", "48px");
+            styles.put("paddingBottom", "48px");
+            summary = "Set 48px vertical padding";
+        } else if (lower.contains("margin") && lower.contains("24")) {
+            styles.put("marginBottom", "24px");
+            summary = "Add 24px bottom margin";
+        } else if (lower.contains("center")) {
+            styles.put("textAlign", "center");
+            styles.put("marginLeft", "auto");
+            styles.put("marginRight", "auto");
+            summary = "Center align element";
+        } else if (lower.contains("stack") || lower.contains("vertical")) {
+            bp = "mobile";
+            styles.put("display", "flex");
+            styles.put("flexDirection", "column");
+            styles.put("gridTemplateColumns", "1fr");
+            styles.put("gap", "16px");
+            summary = "Stack items vertically on mobile";
+        } else if (lower.contains("shadow") || lower.contains("rounded") || lower.contains("premium")) {
+            styles.put("borderRadius", "14px");
+            styles.put("boxShadow", "0 16px 36px rgba(15, 23, 42, 0.16)");
+            summary = "Enhance elevation and corners";
+        } else {
+            styles.put("paddingTop", "32px");
+            styles.put("paddingBottom", "32px");
+        }
+
+        List<Map<String, Object>> ops = StringUtils.hasText(targetId)
+                ? List.of(Map.of(
+                        "type", "update_styles",
+                        "nodeId", targetId,
+                        "breakpoint", bp,
+                        "styles", styles
+                ))
+                : List.of();
+        Map<String, Object> jsonOut = Map.of(
+                "summary", summary,
+                "explanation", "Prepared clean style updates scoped to the active selection.",
+                "operations", ops
+        );
+        try {
+            return textResponse(objectMapper.writeValueAsString(jsonOut), 180, 95);
+        } catch (Exception ex) {
+            return textResponse("{\"summary\":\"Update styles\",\"explanation\":\"\",\"operations\":[]}", 100, 40);
+        }
     }
 
     private static String extractSearchTerm(String prompt) {

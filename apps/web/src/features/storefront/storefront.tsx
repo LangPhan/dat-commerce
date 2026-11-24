@@ -24,7 +24,9 @@ import { useStored } from "@/lib/storage";
 import { initialBlocks, pageTemplates } from "@/mocks/pages";
 import type { OrderDto } from "@/types/api-commerce";
 import type { CustomerProfile } from "@/types/commerce";
-import { ProductCard, StoreBlock } from "./blocks";
+import { isV2Content } from "@/features/builder/migration";
+import { PageRenderer } from "@/features/builder/renderer/PageRenderer";
+import { ProductCard, StoreBlock, type StoreProductItem } from "./blocks";
 import { CartPage, CheckoutPage, ConfirmationPage } from "./cart-checkout";
 import { StoreFooter, StoreHeader } from "./header-footer";
 import { Listing } from "./listing";
@@ -159,6 +161,14 @@ export function Storefront({ route }: { route: string[] }) {
   };
 
   const catalog = catalogQuery.data?.items || [];
+  const handleQuickAddToCart = (item: StoreProductItem) => {
+    if ("variants" in item && Array.isArray(item.variants) && item.variants[0]?.id) {
+      addToCartMutation.mutate({ variantId: item.variants[0].id, qty: 1 });
+      return;
+    }
+    const slug = "slug" in item ? item.slug : item.id;
+    router.push(`/store/product/${encodeURIComponent(slug)}`);
+  };
   const categories = categoriesQuery.data || [];
   const collections = collectionsQuery.data || [];
   const cart = cartQuery.data;
@@ -171,16 +181,29 @@ export function Storefront({ route }: { route: string[] }) {
 
   let content: React.ReactNode;
   if (!view) {
-    content = homeBlocks
-      .filter((block) => block.visible)
-      .map((block) => (
-        <StoreBlock
-          key={block.id}
-          block={block}
+    if (cmsPageQuery.data && isV2Content(cmsPageQuery.data.content)) {
+      content = (
+        <PageRenderer
+          mode="live"
+          nodes={cmsPageQuery.data.content.nodes}
           catalog={catalog}
           categories={categories}
+          onAddToCart={handleQuickAddToCart}
+          onNotify={setToast}
         />
-      ));
+      );
+    } else {
+      content = homeBlocks
+        .filter((block) => block.visible)
+        .map((block) => (
+          <StoreBlock
+            key={block.id}
+            block={block}
+            catalog={catalog}
+            categories={categories}
+          />
+        ));
+    }
   } else if (view === "shop" || view === "search" || view === "category") {
     content = (
       <Suspense
@@ -450,19 +473,32 @@ export function Storefront({ route }: { route: string[] }) {
       </div>
     );
   } else if (view === "about") {
-    const aboutBlocks = cmsPageQuery.data
-      ? apiBlocksToEditorBlocks(cmsPageQuery.data.content)
-      : pageTemplates["About page"] || [];
-    content = aboutBlocks
-      .filter((block) => block.visible)
-      .map((block) => (
-        <StoreBlock
-          key={block.id}
-          block={block}
+    if (cmsPageQuery.data && isV2Content(cmsPageQuery.data.content)) {
+      content = (
+        <PageRenderer
+          mode="live"
+          nodes={cmsPageQuery.data.content.nodes}
           catalog={catalog}
           categories={categories}
+          onAddToCart={handleQuickAddToCart}
+          onNotify={setToast}
         />
-      ));
+      );
+    } else {
+      const aboutBlocks = cmsPageQuery.data
+        ? apiBlocksToEditorBlocks(cmsPageQuery.data.content)
+        : pageTemplates["About page"] || [];
+      content = aboutBlocks
+        .filter((block) => block.visible)
+        .map((block) => (
+          <StoreBlock
+            key={block.id}
+            block={block}
+            catalog={catalog}
+            categories={categories}
+          />
+        ));
+    }
   } else if (view === "contact") {
     content = (
       <div className="store-container">
@@ -519,16 +555,29 @@ export function Storefront({ route }: { route: string[] }) {
       </div>
     );
   } else if (cmsPageQuery.data) {
-    content = apiBlocksToEditorBlocks(cmsPageQuery.data.content)
-      .filter((block) => block.visible)
-      .map((block) => (
-        <StoreBlock
-          key={block.id}
-          block={block}
+    if (isV2Content(cmsPageQuery.data.content)) {
+      content = (
+        <PageRenderer
+          mode="live"
+          nodes={cmsPageQuery.data.content.nodes}
           catalog={catalog}
           categories={categories}
+          onAddToCart={handleQuickAddToCart}
+          onNotify={setToast}
         />
-      ));
+      );
+    } else {
+      content = apiBlocksToEditorBlocks(cmsPageQuery.data.content)
+        .filter((block) => block.visible)
+        .map((block) => (
+          <StoreBlock
+            key={block.id}
+            block={block}
+            catalog={catalog}
+            categories={categories}
+          />
+        ));
+    }
   } else {
     content = (
       <div className="store-container">

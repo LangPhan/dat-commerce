@@ -21,6 +21,7 @@ import {
   ModelSelector,
   ToolExecutionTimeline,
 } from "@/components/shared/ai-components";
+import { useAiModels } from "@/hooks/use-ai-models";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/data-display";
@@ -76,7 +77,15 @@ export function Workspace({ notify }: { notify?: (msg: string) => void }) {
     }
     return "";
   });
-  const [model, setModel] = useState<AIModelId>("gpt-6-luna");
+  const { models: availableModels, defaultModelId } = useAiModels();
+  const [model, setModel] = useState<AIModelId>(defaultModelId);
+  const manualModelSelected = useRef(false);
+
+  useEffect(() => {
+    if (!manualModelSelected.current || !availableModels.some((m) => m.id === model)) {
+      setModel(defaultModelId);
+    }
+  }, [availableModels, defaultModelId, model]);
   const [prompt, setPrompt] = useState<string>(() => {
     if (typeof window !== "undefined") {
       return new URLSearchParams(window.location.search).get("prompt") || "";
@@ -443,7 +452,7 @@ export function Workspace({ notify }: { notify?: (msg: string) => void }) {
             <strong style={{ fontSize: 13 }}>
               {detail?.conversation.title || "New operator session"}
             </strong>
-            <ModelSelector value={model} onChange={setModel} />
+            <ModelSelector value={model} onChange={(next) => { manualModelSelected.current = true; setModel(next); }} models={availableModels} />
           </div>
 
           <div className="ai-history" aria-live="polite">

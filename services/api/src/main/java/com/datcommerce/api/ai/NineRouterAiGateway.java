@@ -56,6 +56,84 @@ public class NineRouterAiGateway implements AiModelGateway {
     }
 
     @Override
+    public List<AvailableModelInfo> listAvailableModels() {
+        AppProperties.Ai ai = appProperties.getAi();
+        if (!StringUtils.hasText(ai.getBaseUrl())) {
+            throw new ApiException(
+                    ErrorCode.AI_GATEWAY_ERROR,
+                    "9Router baseUrl is not configured on the server"
+            );
+        }
+        String base = ai.getBaseUrl().replaceAll("/+$", "");
+        String endpoint = base.endsWith("/v1") ? base + "/models" : base + "/v1/models";
+
+        try {
+            HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Accept", "application/json")
+                    .GET();
+            if (StringUtils.hasText(ai.getApiKey())) {
+                reqBuilder.header("Authorization", "Bearer " + ai.getApiKey());
+            }
+
+            HttpResponse<String> response = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
+            int status = response.statusCode();
+            if (status < 200 || status >= 300) {
+                throw new ApiException(
+                        ErrorCode.AI_GATEWAY_ERROR,
+                        "9Router /models returned status " + status
+                );
+            }
+
+            JsonNode root = objectMapper.readTree(response.body());
+            JsonNode data = root.path("data");
+            if (!data.isArray()) {
+                return List.of();
+            }
+
+            Map<String, AvailableModelInfo> deduped = new LinkedHashMap<>();
+            for (JsonNode item : data) {
+                String id = item.path("id").asText("").trim();
+                if (!StringUtils.hasText(id)) {
+                    continue;
+                }
+                String ownedBy = item.path("owned_by").asText("");
+                JsonNode caps = item.path("capabilities");
+                Integer contextLength = readPositiveInt(item, "context_length");
+                if (contextLength == null) {
+                    contextLength = readPositiveInt(caps, "contextWindow");
+                }
+                Integer maxOutput = readPositiveInt(item, "max_completion_tokens");
+                if (maxOutput == null) {
+                    maxOutput = readPositiveInt(caps, "maxOutput");
+                }
+                boolean vision = caps.path("vision").asBoolean(false);
+                boolean tools = caps.path("tools").asBoolean(true);
+                boolean reasoning = caps.path("reasoning").asBoolean(false);
+                deduped.putIfAbsent(id, new AvailableModelInfo(
+                        id,
+                        StringUtils.hasText(ownedBy) ? ownedBy : "9router",
+                        contextLength,
+                        maxOutput,
+                        vision,
+                        tools,
+                        reasoning
+                ));
+            }
+            return List.copyOf(deduped.values());
+        } catch (ApiException ex) {
+            throw ex;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(ErrorCode.AI_GATEWAY_ERROR, "9Router /models request interrupted");
+        } catch (Exception ex) {
+            log.warn("Failed to list 9Router models from {}: {}", endpoint, ex.getMessage());
+            throw new ApiException(ErrorCode.AI_GATEWAY_ERROR, "Failed to reach 9Router /models: " + ex.getMessage());
+        }
+    }
+
+    @Override
     public GatewayTurnResponse generateTurn(GatewayRequest request) {
         AppProperties.Ai ai = appProperties.getAi();
         if (!StringUtils.hasText(ai.getBaseUrl()) || !StringUtils.hasText(ai.getApiKey())) {
@@ -112,6 +190,18 @@ public class NineRouterAiGateway implements AiModelGateway {
             recordCircuitFailure(ai);
             throw new ApiException(ErrorCode.AI_GATEWAY_ERROR, primaryEx.getMessage());
         }
+    }
+
+    private static Integer readPositiveInt(JsonNode node, String field) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        JsonNode val = node.path(field);
+        if (val.isInt() || val.isLong()) {
+            int n = val.asInt();
+            return n > 0 ? n : null;
+        }
+        return null;
     }
 
     private String resolveFallbackModel(AppProperties.Ai ai, String primaryModel) {
@@ -197,8 +287,7 @@ public class NineRouterAiGateway implements AiModelGateway {
             entry.put("role", m.role());
             if ("tool".equals(m.role())) {
                 entry.put("tool_call_id", m.toolCallId());
-                entry.put("name", toWireToolName(m.toolName()));
-                entry.put("content", m.content() != null ? m.content() : "{}");
+                entry.put("content", m.content() != null ? m.content() : "");
             } else {
                 entry.put("content", m.content() != null ? m.content() : "");
                 if (m.toolCalls() != null && !m.toolCalls().isEmpty()) {

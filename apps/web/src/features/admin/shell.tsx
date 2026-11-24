@@ -23,6 +23,7 @@ import {
   Settings2,
   Shapes,
   ShieldCheck,
+  SlidersHorizontal,
   ShoppingBag,
   Sparkles,
   Sun,
@@ -92,6 +93,7 @@ export const navigation: { title: string; items: NavItem[] }[] = [
     title: "AI Workspace",
     items: [
       nav("AI Assistant", "assistant", Sparkles, "ai:use"),
+      nav("AI Settings", "ai-settings", SlidersHorizontal, "ai:use"),
       nav("AI Activity", "ai-activity", History, "ai:use"),
       nav("Automation History", "automation", History, "ai:use"),
       nav("Audit Logs", "audit-logs", ShieldCheck, "audit:read"),

@@ -8,9 +8,11 @@ import {
   Sparkles,
   Wrench,
 } from "lucide-react";
+import { useMemo } from "react";
 import { cn } from "@/lib/format";
 import {
   AI_MODELS,
+  type AIModel,
   type AIModelId,
   type RecordChange,
   type ToolStep,
@@ -25,29 +27,59 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const modelItems = AI_MODELS.map((model) => ({
-  value: model.id,
-  label: `${model.label} (${model.provider})`,
-}));
-
 export function ModelSelector({
   value,
   onChange,
+  models,
   compact = false,
+  disabled = false,
 }: {
   value: AIModelId;
   onChange: (next: AIModelId) => void;
+  models?: AIModel[];
   compact?: boolean;
+  disabled?: boolean;
 }) {
-  const current = AI_MODELS.find((m) => m.id === value) || AI_MODELS[0];
+  const effectiveModels = useMemo<AIModel[]>(() => {
+    const base = models && models.length > 0 ? models : AI_MODELS;
+    if (value && !base.some((m) => m.id === value)) {
+      return [
+        ...base,
+        {
+          id: value,
+          label: value,
+          provider: "Configured",
+          badge: "Custom",
+        },
+      ];
+    }
+    return base;
+  }, [models, value]);
+
+  const modelItems = useMemo(
+    () =>
+      effectiveModels.map((model, index) => ({
+        value: model.id,
+        label:
+          index === 0 && models && models.length > 0
+            ? `${model.label} (#1 Default)`
+            : `${model.label} (${model.provider})`,
+      })),
+    [effectiveModels, models]
+  );
+
+  const current =
+    effectiveModels.find((m) => m.id === value) || effectiveModels[0];
+
   return (
     <div className={cn("model-selector", compact && "compact")}>
       <Cpu size={13} aria-hidden="true" />
       <Select
         items={modelItems}
         value={current.id}
+        disabled={disabled}
         onValueChange={(next) => {
-          if (next) onChange(next as AIModelId);
+          if (next) onChange(next);
         }}
       >
         <SelectTrigger
@@ -81,8 +113,7 @@ export function ToolExecutionTimeline({
   return (
     <ol className="tool-timeline">
       {steps.map((step, index) => {
-        const isRunning =
-          status === "Running" && activeStepIndex === index;
+        const isRunning = status === "Running" && activeStepIndex === index;
         const isPending =
           status === "Running" &&
           activeStepIndex !== undefined &&

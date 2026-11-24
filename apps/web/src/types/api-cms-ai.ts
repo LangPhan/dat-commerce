@@ -23,9 +23,26 @@ export type ApiPageBlock = {
   props: Record<string, unknown>;
 };
 
+export type EditorNodePayload = {
+  id: string;
+  type: string;
+  version: number;
+  label: string;
+  visible: boolean;
+  locked: boolean;
+  props: Record<string, unknown>;
+  styles: Record<string, Record<string, string | undefined> | undefined>;
+  visibility?: Record<string, boolean | undefined>;
+  children?: EditorNodePayload[];
+  customCssClasses?: string[];
+  htmlAttributes?: Record<string, string>;
+};
+
 export type PageContentPayload = {
   version?: number;
-  blocks: ApiPageBlock[];
+  blocks?: ApiPageBlock[];
+  nodes?: EditorNodePayload[];
+  meta?: Record<string, unknown>;
 };
 
 export type PageVersionDto = {
@@ -81,11 +98,13 @@ export type ThemeTokens = {
   version: number;
   colors: {
     primary: string;
+    secondary?: string;
     background: string;
     surface?: string;
     text: string;
     muted?: string;
     accent?: string;
+    border?: string;
   };
   typography: {
     headingFont: string;
@@ -97,6 +116,14 @@ export type ThemeTokens = {
   };
   container: {
     maxWidth: string;
+  };
+  spacing?: {
+    sectionY?: string;
+    blockGap?: string;
+  };
+  shadows?: {
+    card?: string;
+    elevated?: string;
   };
 };
 
@@ -213,4 +240,58 @@ export type AiChatTurnResultDto = {
 export type AiActivityDto = {
   conversations: AiConversationSummaryDto[];
   changePlans: AiChangePlanDto[];
+};
+
+
+export type AvailableModelDto = {
+  id: string;
+  label: string;
+  ownedBy: string;
+  contextLength?: number | null;
+  maxOutputTokens?: number | null;
+  vision: boolean;
+  tools: boolean;
+  reasoning: boolean;
+};
+
+export type AiModelSettingsDto = {
+  enabledModelIds: string[];
+  availableModelIds: string[];
+  availableModels: AvailableModelDto[];
+  defaultModelId: string;
+  gatewayReachable: boolean;
+  gatewayError?: string | null;
+};
+
+export type UpdateAiModelSettingsRequest = {
+  enabledModelIds: string[];
+};
+
+
+export type EditorSuggestRequest = {
+  pageId?: string;
+  pageSlug?: string;
+  viewport?: "desktop" | "tablet" | "mobile";
+  scope?: "element" | "section" | "page";
+  selectedNodeIds?: string[];
+  prompt: string;
+  model?: string;
+  targetSubtree?: unknown;
+  pageOutline?: Array<Record<string, unknown>>;
+  themeTokens?: unknown;
+};
+
+export type EditorSuggestResponse = {
+  model: string;
+  summary: string;
+  explanation: string;
+  scope: string;
+  targetNodeIds: string[];
+  operations: Array<{
+    type: string;
+    [key: string]: unknown;
+  }>;
+  promptTokens: number;
+  completionTokens: number;
+  latencyMs: number;
 };
