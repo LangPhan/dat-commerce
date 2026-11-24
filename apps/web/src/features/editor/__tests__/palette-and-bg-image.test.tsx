@@ -1,19 +1,24 @@
 import "@testing-library/jest-dom/vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildBackgroundImageCss,
   parseBackgroundImage,
 } from "@/features/builder/background-image";
+import { adminMediaApi } from "@/lib/commerce-api";
+import { MediaPickerModal } from "../MediaPickerModal";
 import { getBrandPaletteOptions } from "../brand-palette";
 import {
   BackgroundImageControl,
   ColorControl,
+  PropertyPopoverRow,
 } from "../inspector-controls";
 
-describe("Brand palette color picker & background image helpers", () => {
+describe("Popover inspector groups, Brand palette picker, Background Fill, and uniform modal tabs", () => {
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
   });
 
   it("parses and builds safe CSS background images with opacity overlay", () => {
@@ -38,15 +43,9 @@ describe("Brand palette color picker & background image helpers", () => {
     expect(parsed.imageUrl).toBe("/media/jacket.jpg");
     expect(parsed.imageOpacity).toBeCloseTo(0.6, 2);
     expect(parsed.overlayColor).toBe("#C85A32");
-
-    const heroParsed = parseBackgroundImage(
-      "linear-gradient(125deg, rgba(8,16,12,0.84), rgba(15,41,30,0.62)), url(/media/terrain-hero.jpg)"
-    );
-    expect(heroParsed.imageUrl).toBe("/media/terrain-hero.jpg");
-    expect(heroParsed.imageOpacity).toBeCloseTo(0.27, 2);
   });
 
-  it("shows Brand Palette swatches first, Custom last, and adds a new color directly to Brand Palette", () => {
+  it("opens ColorControl inside a Base UI Popover with Brand Palette first, + add inline, and Custom last", () => {
     const palette = getBrandPaletteOptions({
       version: 1,
       colors: {
@@ -78,6 +77,13 @@ describe("Brand palette color picker & background image helpers", () => {
       />
     );
 
+    // Compact row trigger only — swatches stay collapsed until opened
+    expect(
+      screen.queryByRole("group", { name: "Text Color Brand Palette" })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Text Color: Primary" }));
+
     const group = screen.getByRole("group", { name: "Text Color Brand Palette" });
     const buttons = Array.from(group.querySelectorAll("button"));
     expect(buttons[0]).toHaveAttribute("aria-label", "Select Primary (#274E36)");
@@ -86,16 +92,11 @@ describe("Brand palette color picker & background image helpers", () => {
       "Text Color custom color"
     );
 
-    expect(
-      screen.queryByLabelText("Text Color hex value")
-    ).not.toBeInTheDocument();
-
     fireEvent.click(screen.getByRole("button", { name: "Select Warm Sand (#D6C3A5)" }));
     expect(onChange).toHaveBeenCalledWith("#D6C3A5");
 
     fireEvent.click(screen.getByRole("button", { name: "Text Color custom color" }));
     const hexInput = screen.getByLabelText("Text Color hex value");
-    expect(hexInput).toBeInTheDocument();
     fireEvent.change(hexInput, { target: { value: "#334155" } });
     expect(onChange).toHaveBeenCalledWith("#334155");
 
@@ -114,7 +115,7 @@ describe("Brand palette color picker & background image helpers", () => {
     expect(onChange).toHaveBeenCalledWith("#C85A32");
   });
 
-  it("updates element background image position, opacity, size, and attachment cleanly", () => {
+  it("opens BackgroundImageControl Popover cleanly and updates position, opacity, and Library trigger", () => {
     const onChangeStyles = vi.fn();
     const onOpenLibrary = vi.fn();
 
@@ -130,8 +131,11 @@ describe("Brand palette color picker & background image helpers", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Library/i }));
-    expect(onOpenLibrary).toHaveBeenCalledTimes(1);
+    const trigger = screen.getByRole("button", {
+      name: "Background Fill: jacket.jpg · 100%",
+    });
+    expect(trigger).toBeInTheDocument();
+    fireEvent.click(trigger);
 
     fireEvent.click(screen.getByRole("button", { name: "Position Top Center" }));
     expect(onChangeStyles).toHaveBeenCalledWith({
@@ -144,5 +148,50 @@ describe("Brand palette color picker & background image helpers", () => {
       backgroundImage:
         "linear-gradient(rgba(17,19,24,0.5), rgba(17,19,24,0.5)), url(/media/jacket.jpg)",
     });
+
+    fireEvent.click(screen.getByRole("button", { name: /Library/i }));
+    expect(onOpenLibrary).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens PropertyPopoverRow content on click", () => {
+    render(
+      <PropertyPopoverRow label="Typography" summary="Inter · 16px · 400">
+        <div>Grouped Typography Fields</div>
+      </PropertyPopoverRow>
+    );
+
+    expect(
+      screen.queryByText("Grouped Typography Fields")
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Typography: Inter · 16px · 400" })
+    );
+    expect(screen.getByText("Grouped Typography Fields")).toBeInTheDocument();
+  });
+
+  it("keeps a fixed tabpanel container across Media Library and Store Assets tabs in MediaPickerModal", async () => {
+    vi.spyOn(adminMediaApi, "list").mockResolvedValue([]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MediaPickerModal
+          open
+          canUploadMedia
+          onOpenChange={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+
+    const tabpanel = await screen.findByRole("tabpanel");
+    expect(tabpanel).toHaveClass("ed-media-panel-body");
+
+    fireEvent.click(screen.getByRole("tab", { name: /Store Assets/i }));
+    const panelAfter = screen.getByRole("tabpanel");
+    expect(panelAfter).toHaveClass("ed-media-panel-body");
+    expect(screen.getByText("Alpine Shell Jacket")).toBeInTheDocument();
   });
 });

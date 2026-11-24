@@ -209,42 +209,77 @@ export function MediaPickerModal({
           </p>
         ) : null}
 
-        {tab === "library" ? (
-          mediaQuery.isLoading ? (
-            <div className="ed-media-loading">
-              <Skeleton rows={4} />
-            </div>
-          ) : mediaQuery.isError ? (
+        <div className="ed-media-panel-body" role="tabpanel">
+          {tab === "library" ? (
+            mediaQuery.isLoading ? (
+              <div className="ed-media-loading">
+                <Skeleton rows={4} />
+              </div>
+            ) : mediaQuery.isError ? (
+              <div className="ed-media-empty">
+                <p>Could not load Media Library assets.</p>
+                <Button size="sm" onClick={() => setTab("presets")}>
+                  Browse Store Assets
+                </Button>
+              </div>
+            ) : libraryAssets.length === 0 ? (
+              <div className="ed-media-empty">
+                <p>
+                  {q
+                    ? `No uploaded assets match "${search}".`
+                    : "No uploaded media yet. Upload an image above or browse built-in Store Assets."}
+                </p>
+                <Button size="sm" onClick={() => setTab("presets")}>
+                  Browse Store Assets
+                </Button>
+              </div>
+            ) : (
+              <div className="ed-media-grid">
+                {libraryAssets.map((asset) => {
+                  const selected = currentUrl === asset.url;
+                  return (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      className={cn("ed-media-card", selected && "active")}
+                      onClick={() => pickUrl(asset.url)}
+                    >
+                      <div className="ed-media-thumb">
+                        <img src={asset.url} alt={asset.altText || asset.originalFilename} />
+                        {selected ? (
+                          <span className="ed-media-selected-pill">
+                            <Check size={11} /> Selected
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="ed-media-meta">
+                        <strong title={asset.originalFilename}>
+                          {asset.originalFilename}
+                        </strong>
+                        <span>{formatFileSize(asset.sizeBytes)}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )
+          ) : presetAssets.length === 0 ? (
             <div className="ed-media-empty">
-              <p>Could not load Media Library assets.</p>
-              <Button size="sm" onClick={() => setTab("presets")}>
-                Browse Store Assets
-              </Button>
-            </div>
-          ) : libraryAssets.length === 0 ? (
-            <div className="ed-media-empty">
-              <p>
-                {q
-                  ? `No uploaded assets match "${search}".`
-                  : "No uploaded media yet. Upload an image above or browse built-in Store Assets."}
-              </p>
-              <Button size="sm" onClick={() => setTab("presets")}>
-                Browse Store Assets
-              </Button>
+              <p>{`No store assets match "${search}".`}</p>
             </div>
           ) : (
             <div className="ed-media-grid">
-              {libraryAssets.map((asset) => {
-                const selected = currentUrl === asset.url;
+              {presetAssets.map((preset) => {
+                const selected = currentUrl === preset.url;
                 return (
                   <button
-                    key={asset.id}
+                    key={preset.id}
                     type="button"
                     className={cn("ed-media-card", selected && "active")}
-                    onClick={() => pickUrl(asset.url)}
+                    onClick={() => pickUrl(preset.url)}
                   >
                     <div className="ed-media-thumb">
-                      <img src={asset.url} alt={asset.altText || asset.originalFilename} />
+                      <img src={preset.url} alt={preset.name} />
                       {selected ? (
                         <span className="ed-media-selected-pill">
                           <Check size={11} /> Selected
@@ -252,44 +287,15 @@ export function MediaPickerModal({
                       ) : null}
                     </div>
                     <div className="ed-media-meta">
-                      <strong title={asset.originalFilename}>
-                        {asset.originalFilename}
-                      </strong>
-                      <span>{formatFileSize(asset.sizeBytes)}</span>
+                      <strong title={preset.name}>{preset.name}</strong>
+                      <Badge tone="neutral">{preset.category}</Badge>
                     </div>
                   </button>
                 );
               })}
             </div>
-          )
-        ) : (
-          <div className="ed-media-grid">
-            {presetAssets.map((preset) => {
-              const selected = currentUrl === preset.url;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  className={cn("ed-media-card", selected && "active")}
-                  onClick={() => pickUrl(preset.url)}
-                >
-                  <div className="ed-media-thumb">
-                    <img src={preset.url} alt={preset.name} />
-                    {selected ? (
-                      <span className="ed-media-selected-pill">
-                        <Check size={11} /> Selected
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="ed-media-meta">
-                    <strong title={preset.name}>{preset.name}</strong>
-                    <Badge tone="neutral">{preset.category}</Badge>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

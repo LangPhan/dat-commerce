@@ -68,6 +68,7 @@ import {
   BackgroundImageControl,
   ColorControl,
   ControlField,
+  PropertyPopoverRow,
   SelectControl,
   SliderControl,
   SpacingBoxControl,
@@ -1562,178 +1563,256 @@ export function VisualInspector({
                         </div>
                       )}
 
-                      <div className="ed-control-grid-2">
-                        <UnitControl
-                          label="Width"
-                          value={editStyles.width || ""}
-                          placeholder="auto"
-                          overridden={overriddenKeys.has("width")}
-                          viewport={viewport}
-                          onReset={() => resetKey("width")}
-                          onChange={(v) => setStyle("width", v)}
-                        />
-                        <UnitControl
-                          label="Max Width"
-                          value={editStyles.maxWidth || ""}
-                          placeholder="none"
-                          overridden={overriddenKeys.has("maxWidth")}
-                          viewport={viewport}
-                          onReset={() => resetKey("maxWidth")}
-                          onChange={(v) => setStyle("maxWidth", v)}
-                        />
-                      </div>
-
-                      <div className="ed-control-grid-2">
-                        <UnitControl
-                          label="Height"
-                          value={editStyles.height || ""}
-                          placeholder="auto"
-                          overridden={overriddenKeys.has("height")}
-                          viewport={viewport}
-                          onReset={() => resetKey("height")}
-                          onChange={(v) => setStyle("height", v)}
-                        />
-                        <UnitControl
-                          label="Min Height"
-                          value={editStyles.minHeight || ""}
-                          placeholder="0px"
-                          overridden={overriddenKeys.has("minHeight")}
-                          viewport={viewport}
-                          onReset={() => resetKey("minHeight")}
-                          onChange={(v) => setStyle("minHeight", v)}
-                        />
-                      </div>
-
-                      <SpacingBoxControl
-                        title="Padding"
-                        values={{
-                          top: editStyles.paddingTop || editStyles.padding || "",
-                          right: editStyles.paddingRight || editStyles.padding || "",
-                          bottom: editStyles.paddingBottom || editStyles.padding || "",
-                          left: editStyles.paddingLeft || editStyles.padding || "",
-                        }}
-                        keys={{
-                          top: "paddingTop",
-                          right: "paddingRight",
-                          bottom: "paddingBottom",
-                          left: "paddingLeft",
-                        }}
-                        overriddenKeys={overriddenKeys}
-                        viewport={viewport}
-                        onChangeKey={(side, next) => {
-                          const map = {
-                            top: "paddingTop",
-                            right: "paddingRight",
-                            bottom: "paddingBottom",
-                            left: "paddingLeft",
-                          } as const;
-                          setStyle(map[side], next);
-                        }}
-                        onResetAll={
-                          viewport !== "desktop"
-                            ? () =>
-                                resetNodeStyleKeys(
-                                  primary.id,
-                                  [
-                                    "padding",
-                                    "paddingTop",
-                                    "paddingRight",
-                                    "paddingBottom",
-                                    "paddingLeft",
-                                  ],
-                                  viewport
-                                )
-                            : undefined
+                      <PropertyPopoverRow
+                        label="Dimensions"
+                        summary={[
+                          editStyles.width || "auto",
+                          editStyles.height || "auto",
+                        ].join(" × ")}
+                        popoverWidth="w-[296px]"
+                        disabled={primary.locked}
+                        overridden={
+                          overriddenKeys.has("width") ||
+                          overriddenKeys.has("maxWidth") ||
+                          overriddenKeys.has("height") ||
+                          overriddenKeys.has("minHeight")
                         }
-                      />
-
-                      <SpacingBoxControl
-                        title="Margin"
-                        values={{
-                          top: editStyles.marginTop || editStyles.margin || "",
-                          right: editStyles.marginRight || editStyles.margin || "",
-                          bottom: editStyles.marginBottom || editStyles.margin || "",
-                          left: editStyles.marginLeft || editStyles.margin || "",
-                        }}
-                        keys={{
-                          top: "marginTop",
-                          right: "marginRight",
-                          bottom: "marginBottom",
-                          left: "marginLeft",
-                        }}
-                        overriddenKeys={overriddenKeys}
                         viewport={viewport}
-                        onChangeKey={(side, next) => {
-                          const map = {
-                            top: "marginTop",
-                            right: "marginRight",
-                            bottom: "marginBottom",
-                            left: "marginLeft",
-                          } as const;
-                          setStyle(map[side], next);
+                        onReset={() => {
+                          resetKey("width");
+                          resetKey("maxWidth");
+                          resetKey("height");
+                          resetKey("minHeight");
                         }}
-                        onResetAll={
-                          viewport !== "desktop"
-                            ? () =>
-                                resetNodeStyleKeys(
-                                  primary.id,
-                                  [
-                                    "margin",
-                                    "marginTop",
-                                    "marginRight",
-                                    "marginBottom",
-                                    "marginLeft",
-                                  ],
-                                  viewport
-                                )
-                            : undefined
+                      >
+                        <div className="ed-popover-stack">
+                          <div className="ed-control-grid-2">
+                            <UnitControl
+                              label="Width"
+                              value={editStyles.width || ""}
+                              placeholder="auto"
+                              overridden={overriddenKeys.has("width")}
+                              viewport={viewport}
+                              onReset={() => resetKey("width")}
+                              onChange={(v) => setStyle("width", v)}
+                            />
+                            <UnitControl
+                              label="Max Width"
+                              value={editStyles.maxWidth || ""}
+                              placeholder="none"
+                              overridden={overriddenKeys.has("maxWidth")}
+                              viewport={viewport}
+                              onReset={() => resetKey("maxWidth")}
+                              onChange={(v) => setStyle("maxWidth", v)}
+                            />
+                          </div>
+                          <div className="ed-control-grid-2">
+                            <UnitControl
+                              label="Height"
+                              value={editStyles.height || ""}
+                              placeholder="auto"
+                              overridden={overriddenKeys.has("height")}
+                              viewport={viewport}
+                              onReset={() => resetKey("height")}
+                              onChange={(v) => setStyle("height", v)}
+                            />
+                            <UnitControl
+                              label="Min Height"
+                              value={editStyles.minHeight || ""}
+                              placeholder="0px"
+                              overridden={overriddenKeys.has("minHeight")}
+                              viewport={viewport}
+                              onReset={() => resetKey("minHeight")}
+                              onChange={(v) => setStyle("minHeight", v)}
+                            />
+                          </div>
+                        </div>
+                      </PropertyPopoverRow>
+
+                      <PropertyPopoverRow
+                        label="Spacing"
+                        summary={(() => {
+                          const pParts = [
+                            editStyles.paddingTop || editStyles.padding || "",
+                            editStyles.paddingRight || editStyles.padding || "",
+                            editStyles.paddingBottom || editStyles.padding || "",
+                            editStyles.paddingLeft || editStyles.padding || "",
+                          ].some(Boolean)
+                            ? `P ${editStyles.paddingTop || editStyles.padding || "0"}/${editStyles.paddingLeft || editStyles.padding || "0"}`
+                            : "";
+                          const mParts = [
+                            editStyles.marginTop || editStyles.margin || "",
+                            editStyles.marginRight || editStyles.margin || "",
+                            editStyles.marginBottom || editStyles.margin || "",
+                            editStyles.marginLeft || editStyles.margin || "",
+                          ].some(Boolean)
+                            ? `M ${editStyles.marginTop || editStyles.margin || "0"}/${editStyles.marginBottom || editStyles.margin || "0"}`
+                            : "";
+                          return [pParts, mParts].filter(Boolean).join(" · ") || "Default";
+                        })()}
+                        popoverTitle="Padding & Margin"
+                        popoverWidth="w-[310px]"
+                        disabled={primary.locked}
+                        overridden={
+                          overriddenKeys.has("padding") ||
+                          overriddenKeys.has("paddingTop") ||
+                          overriddenKeys.has("paddingRight") ||
+                          overriddenKeys.has("paddingBottom") ||
+                          overriddenKeys.has("paddingLeft") ||
+                          overriddenKeys.has("margin") ||
+                          overriddenKeys.has("marginTop") ||
+                          overriddenKeys.has("marginRight") ||
+                          overriddenKeys.has("marginBottom") ||
+                          overriddenKeys.has("marginLeft")
                         }
-                      />
-
-                      <div className="ed-control-grid-2">
-                        <SelectControl
-                          label="Position"
-                          value={editStyles.position || "relative"}
-                          options={[
-                            { value: "relative", label: "Relative (Flow)" },
-                            { value: "static", label: "Static" },
-                            { value: "sticky", label: "Sticky" },
-                            { value: "absolute", label: "Absolute Overlay" },
-                          ]}
-                          onChange={(v) => setStyle("position", v)}
-                        />
-                        <SelectControl
-                          label="Overflow"
-                          value={editStyles.overflow || "visible"}
-                          options={[
-                            { value: "visible", label: "Visible" },
-                            { value: "hidden", label: "Hidden" },
-                            { value: "auto", label: "Auto Scroll" },
-                          ]}
-                          onChange={(v) => setStyle("overflow", v)}
-                        />
-                      </div>
-
-                      <div className="ed-control-grid-2">
-                        <ControlField label="Z-Index">
-                          <input
-                            type="number"
-                            value={editStyles.zIndex || ""}
-                            placeholder="auto"
-                            onChange={(e) => setStyle("zIndex", e.target.value)}
-                          />
-                        </ControlField>
-                        <ControlField label="Aspect Ratio">
-                          <input
-                            type="text"
-                            value={editStyles.aspectRatio || ""}
-                            placeholder="16 / 9"
-                            onChange={(e) =>
-                              setStyle("aspectRatio", e.target.value)
+                        viewport={viewport}
+                      >
+                        <div className="ed-popover-stack">
+                          <SpacingBoxControl
+                            title="Padding"
+                            values={{
+                              top: editStyles.paddingTop || editStyles.padding || "",
+                              right: editStyles.paddingRight || editStyles.padding || "",
+                              bottom: editStyles.paddingBottom || editStyles.padding || "",
+                              left: editStyles.paddingLeft || editStyles.padding || "",
+                            }}
+                            keys={{
+                              top: "paddingTop",
+                              right: "paddingRight",
+                              bottom: "paddingBottom",
+                              left: "paddingLeft",
+                            }}
+                            overriddenKeys={overriddenKeys}
+                            viewport={viewport}
+                            onChangeKey={(side, next) => {
+                              const map = {
+                                top: "paddingTop",
+                                right: "paddingRight",
+                                bottom: "paddingBottom",
+                                left: "paddingLeft",
+                              } as const;
+                              setStyle(map[side], next);
+                            }}
+                            onResetAll={
+                              viewport !== "desktop"
+                                ? () =>
+                                    resetNodeStyleKeys(
+                                      primary.id,
+                                      [
+                                        "padding",
+                                        "paddingTop",
+                                        "paddingRight",
+                                        "paddingBottom",
+                                        "paddingLeft",
+                                      ],
+                                      viewport
+                                    )
+                                : undefined
                             }
                           />
-                        </ControlField>
-                      </div>
+                          <SpacingBoxControl
+                            title="Margin"
+                            values={{
+                              top: editStyles.marginTop || editStyles.margin || "",
+                              right: editStyles.marginRight || editStyles.margin || "",
+                              bottom: editStyles.marginBottom || editStyles.margin || "",
+                              left: editStyles.marginLeft || editStyles.margin || "",
+                            }}
+                            keys={{
+                              top: "marginTop",
+                              right: "marginRight",
+                              bottom: "marginBottom",
+                              left: "marginLeft",
+                            }}
+                            overriddenKeys={overriddenKeys}
+                            viewport={viewport}
+                            onChangeKey={(side, next) => {
+                              const map = {
+                                top: "marginTop",
+                                right: "marginRight",
+                                bottom: "marginBottom",
+                                left: "marginLeft",
+                              } as const;
+                              setStyle(map[side], next);
+                            }}
+                            onResetAll={
+                              viewport !== "desktop"
+                                ? () =>
+                                    resetNodeStyleKeys(
+                                      primary.id,
+                                      [
+                                        "margin",
+                                        "marginTop",
+                                        "marginRight",
+                                        "marginBottom",
+                                        "marginLeft",
+                                      ],
+                                      viewport
+                                    )
+                                : undefined
+                            }
+                          />
+                        </div>
+                      </PropertyPopoverRow>
+
+                      <PropertyPopoverRow
+                        label="Position & Overflow"
+                        summary={[
+                          editStyles.position || "relative",
+                          editStyles.overflow || "visible",
+                          editStyles.zIndex ? `z ${editStyles.zIndex}` : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                        popoverWidth="w-[296px]"
+                        disabled={primary.locked}
+                      >
+                        <div className="ed-popover-stack">
+                          <div className="ed-control-grid-2">
+                            <SelectControl
+                              label="Position"
+                              value={editStyles.position || "relative"}
+                              options={[
+                                { value: "relative", label: "Relative (Flow)" },
+                                { value: "static", label: "Static" },
+                                { value: "sticky", label: "Sticky" },
+                                { value: "absolute", label: "Absolute Overlay" },
+                              ]}
+                              onChange={(v) => setStyle("position", v)}
+                            />
+                            <SelectControl
+                              label="Overflow"
+                              value={editStyles.overflow || "visible"}
+                              options={[
+                                { value: "visible", label: "Visible" },
+                                { value: "hidden", label: "Hidden" },
+                                { value: "auto", label: "Auto Scroll" },
+                              ]}
+                              onChange={(v) => setStyle("overflow", v)}
+                            />
+                          </div>
+                          <div className="ed-control-grid-2">
+                            <ControlField label="Z-Index">
+                              <input
+                                type="number"
+                                value={editStyles.zIndex || ""}
+                                placeholder="auto"
+                                onChange={(e) => setStyle("zIndex", e.target.value)}
+                              />
+                            </ControlField>
+                            <ControlField label="Aspect Ratio">
+                              <input
+                                type="text"
+                                value={editStyles.aspectRatio || ""}
+                                placeholder="16 / 9"
+                                onChange={(e) =>
+                                  setStyle("aspectRatio", e.target.value)
+                                }
+                              />
+                            </ControlField>
+                          </div>
+                        </div>
+                      </PropertyPopoverRow>
                     </div>
                   </div>
                 ) : null}
@@ -1780,6 +1859,8 @@ export function VisualInspector({
                         backgroundRepeat={editStyles.backgroundRepeat}
                         backgroundAttachment={editStyles.backgroundAttachment}
                         palette={brandPalette}
+                        gradientPresets={GRADIENT_PRESETS}
+                        onSelectGradient={(v) => setStyle("backgroundImage", v)}
                         onAddPaletteColor={canWrite ? handleFallbackAddPalette : undefined}
                         canUploadMedia={canUploadMedia}
                         uploading={quickUploadMutation.isPending}
@@ -1827,134 +1908,209 @@ export function VisualInspector({
                           });
                         }}
                       />
-                      <SelectControl
-                        label="Background Gradient"
-                        value={
-                          GRADIENT_PRESETS.some(
-                            (g) => g.value === (editStyles.backgroundImage || "")
-                          )
-                            ? editStyles.backgroundImage || ""
-                            : ""
+
+                      <PropertyPopoverRow
+                        label="Typography"
+                        summary={[
+                          editStyles.fontFamily || "Inter",
+                          editStyles.fontSize || "16px",
+                          editStyles.fontWeight || "400",
+                        ].join(" · ")}
+                        popoverWidth="w-[300px]"
+                        disabled={primary.locked}
+                        overridden={
+                          overriddenKeys.has("fontFamily") ||
+                          overriddenKeys.has("fontSize") ||
+                          overriddenKeys.has("fontWeight") ||
+                          overriddenKeys.has("textAlign")
                         }
-                        options={GRADIENT_PRESETS}
-                        onChange={(v) => setStyle("backgroundImage", v)}
-                      />
+                        viewport={viewport}
+                      >
+                        <div className="ed-popover-stack">
+                          <div className="ed-control-grid-2">
+                            <SelectControl
+                              label="Font Family"
+                              value={editStyles.fontFamily || "Inter"}
+                              options={FONT_OPTIONS}
+                              onChange={(v) => setStyle("fontFamily", v)}
+                            />
+                            <UnitControl
+                              label="Font Size"
+                              value={editStyles.fontSize || ""}
+                              placeholder="16px"
+                              overridden={overriddenKeys.has("fontSize")}
+                              viewport={viewport}
+                              onReset={() => resetKey("fontSize")}
+                              onChange={(v) => setStyle("fontSize", v)}
+                            />
+                          </div>
+                          <div className="ed-control-grid-2">
+                            <SelectControl
+                              label="Font Weight"
+                              value={editStyles.fontWeight || "400"}
+                              options={[
+                                { value: "400", label: "Regular (400)" },
+                                { value: "500", label: "Medium (500)" },
+                                { value: "600", label: "Semibold (600)" },
+                                { value: "700", label: "Bold (700)" },
+                              ]}
+                              onChange={(v) => setStyle("fontWeight", v)}
+                            />
+                            <SelectControl
+                              label="Text Align"
+                              value={editStyles.textAlign || "left"}
+                              options={[
+                                { value: "left", label: "Left" },
+                                { value: "center", label: "Center" },
+                                { value: "right", label: "Right" },
+                              ]}
+                              overridden={overriddenKeys.has("textAlign")}
+                              viewport={viewport}
+                              onReset={() => resetKey("textAlign")}
+                              onChange={(v) => setStyle("textAlign", v)}
+                            />
+                          </div>
+                          <div className="ed-control-grid-2">
+                            <ControlField label="Line Height">
+                              <input
+                                type="text"
+                                value={editStyles.lineHeight || ""}
+                                placeholder="1.5"
+                                onChange={(e) => setStyle("lineHeight", e.target.value)}
+                              />
+                            </ControlField>
+                            <UnitControl
+                              label="Letter Spacing"
+                              value={editStyles.letterSpacing || ""}
+                              placeholder="0px"
+                              onChange={(v) => setStyle("letterSpacing", v)}
+                            />
+                          </div>
+                        </div>
+                      </PropertyPopoverRow>
 
-                      <div className="ed-control-grid-2">
-                        <SelectControl
-                          label="Font Family"
-                          value={editStyles.fontFamily || "Inter"}
-                          options={FONT_OPTIONS}
-                          onChange={(v) => setStyle("fontFamily", v)}
-                        />
-                        <UnitControl
-                          label="Font Size"
-                          value={editStyles.fontSize || ""}
-                          placeholder="16px"
-                          overridden={overriddenKeys.has("fontSize")}
-                          viewport={viewport}
-                          onReset={() => resetKey("fontSize")}
-                          onChange={(v) => setStyle("fontSize", v)}
-                        />
-                      </div>
-
-                      <div className="ed-control-grid-2">
-                        <SelectControl
-                          label="Font Weight"
-                          value={editStyles.fontWeight || "400"}
-                          options={[
-                            { value: "400", label: "Regular (400)" },
-                            { value: "500", label: "Medium (500)" },
-                            { value: "600", label: "Semibold (600)" },
-                            { value: "700", label: "Bold (700)" },
-                          ]}
-                          onChange={(v) => setStyle("fontWeight", v)}
-                        />
-                        <SelectControl
-                          label="Text Align"
-                          value={editStyles.textAlign || "left"}
-                          options={[
-                            { value: "left", label: "Left" },
-                            { value: "center", label: "Center" },
-                            { value: "right", label: "Right" },
-                          ]}
-                          overridden={overriddenKeys.has("textAlign")}
-                          viewport={viewport}
-                          onReset={() => resetKey("textAlign")}
-                          onChange={(v) => setStyle("textAlign", v)}
-                        />
-                      </div>
-
-                      <div className="ed-control-grid-2">
-                        <ControlField label="Line Height">
-                          <input
-                            type="text"
-                            value={editStyles.lineHeight || ""}
-                            placeholder="1.5"
-                            onChange={(e) => setStyle("lineHeight", e.target.value)}
+                      <PropertyPopoverRow
+                        label="Border"
+                        summary={
+                          [
+                            editStyles.borderWidth
+                              ? `${editStyles.borderWidth} ${editStyles.borderStyle || "solid"}`
+                              : "",
+                            editStyles.borderRadius
+                              ? `r ${editStyles.borderRadius}`
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "None"
+                        }
+                        preview={
+                          editStyles.borderColor ? (
+                            <span
+                              className="ed-color-chip"
+                              style={{ backgroundColor: editStyles.borderColor }}
+                              aria-hidden="true"
+                            />
+                          ) : undefined
+                        }
+                        popoverWidth="w-[296px]"
+                        disabled={primary.locked}
+                        overridden={overriddenKeys.has("borderRadius")}
+                        viewport={viewport}
+                        onClear={
+                          editStyles.borderWidth ||
+                          editStyles.borderRadius ||
+                          editStyles.borderColor
+                            ? () =>
+                                setStyleBatch({
+                                  borderWidth: "",
+                                  borderStyle: "",
+                                  borderRadius: "",
+                                  borderColor: "",
+                                })
+                            : undefined
+                        }
+                        clearLabel="Clear Border"
+                      >
+                        <div className="ed-popover-stack">
+                          <div className="ed-control-grid-2">
+                            <UnitControl
+                              label="Border Width"
+                              value={editStyles.borderWidth || ""}
+                              placeholder="0px"
+                              onChange={(v) => {
+                                setStyle("borderWidth", v);
+                                if (v && !editStyles.borderStyle) {
+                                  setStyle("borderStyle", "solid");
+                                }
+                              }}
+                            />
+                            <UnitControl
+                              label="Border Radius"
+                              value={editStyles.borderRadius || ""}
+                              placeholder="0px"
+                              overridden={overriddenKeys.has("borderRadius")}
+                              viewport={viewport}
+                              onReset={() => resetKey("borderRadius")}
+                              onChange={(v) => setStyle("borderRadius", v)}
+                            />
+                          </div>
+                          <SelectControl
+                            label="Border Style"
+                            value={editStyles.borderStyle || "solid"}
+                            options={[
+                              { value: "solid", label: "Solid" },
+                              { value: "dashed", label: "Dashed" },
+                              { value: "dotted", label: "Dotted" },
+                              { value: "none", label: "None" },
+                            ]}
+                            onChange={(v) => setStyle("borderStyle", v)}
                           />
-                        </ControlField>
-                        <UnitControl
-                          label="Letter Spacing"
-                          value={editStyles.letterSpacing || ""}
-                          placeholder="0px"
-                          onChange={(v) => setStyle("letterSpacing", v)}
-                        />
-                      </div>
+                          <ColorControl
+                            label="Border Color"
+                            displayMode="inline"
+                            value={editStyles.borderColor || ""}
+                            placeholder="#E5E7EB"
+                            palette={brandPalette}
+                            onAddPaletteColor={canWrite ? handleFallbackAddPalette : undefined}
+                            onChange={(v) => setStyle("borderColor", v)}
+                          />
+                        </div>
+                      </PropertyPopoverRow>
 
-                      <div className="ed-control-grid-2">
-                        <UnitControl
-                          label="Border Width"
-                          value={editStyles.borderWidth || ""}
-                          placeholder="0px"
-                          onChange={(v) => {
-                            setStyle("borderWidth", v);
-                            if (v && !editStyles.borderStyle) {
-                              setStyle("borderStyle", "solid");
-                            }
-                          }}
-                        />
-                        <UnitControl
-                          label="Border Radius"
-                          value={editStyles.borderRadius || ""}
-                          placeholder="0px"
-                          overridden={overriddenKeys.has("borderRadius")}
-                          viewport={viewport}
-                          onReset={() => resetKey("borderRadius")}
-                          onChange={(v) => setStyle("borderRadius", v)}
-                        />
-                      </div>
-
-                      <ColorControl
-                        label="Border Color"
-                        value={editStyles.borderColor || ""}
-                        placeholder="#E5E7EB"
-                        palette={brandPalette}
-                        onAddPaletteColor={canWrite ? handleFallbackAddPalette : undefined}
-                        onChange={(v) => setStyle("borderColor", v)}
-                      />
-
-                      <SelectControl
-                        label="Box Shadow"
-                        value={
-                          SHADOW_PRESETS.some(
+                      <PropertyPopoverRow
+                        label="Effects"
+                        summary={[
+                          SHADOW_PRESETS.find(
                             (p) => p.value === (editStyles.boxShadow || "none")
-                          )
-                            ? editStyles.boxShadow || "none"
-                            : "none"
-                        }
-                        options={SHADOW_PRESETS}
-                        onChange={(v) => setStyle("boxShadow", v)}
-                      />
-
-                      <SliderControl
-                        label="Opacity"
-                        value={opacityNum}
-                        min={0.1}
-                        max={1}
-                        step={0.05}
-                        onChange={(v) => setStyle("opacity", v)}
-                      />
+                          )?.label || "Custom",
+                          `${Math.round(opacityNum * 100)}%`,
+                        ].join(" · ")}
+                        popoverWidth="w-[288px]"
+                        disabled={primary.locked}
+                      >
+                        <div className="ed-popover-stack">
+                          <SelectControl
+                            label="Box Shadow"
+                            value={
+                              SHADOW_PRESETS.some(
+                                (p) => p.value === (editStyles.boxShadow || "none")
+                              )
+                                ? editStyles.boxShadow || "none"
+                                : "none"
+                            }
+                            options={SHADOW_PRESETS}
+                            onChange={(v) => setStyle("boxShadow", v)}
+                          />
+                          <SliderControl
+                            label="Opacity"
+                            value={opacityNum}
+                            min={0.1}
+                            max={1}
+                            step={0.05}
+                            onChange={(v) => setStyle("opacity", v)}
+                          />
+                        </div>
+                      </PropertyPopoverRow>
                     </div>
                   </div>
                 ) : null}

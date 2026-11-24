@@ -481,7 +481,12 @@ label > [data-slot="select-trigger"] {
   margin-top: 8px;
 }
 
-/* Base UI Select Portal Stacking */
+/* Base UI Popover & Select Portal Stacking (Dialog 41 < Popover 60 < Select 80) */
+[data-slot="popover-positioner"],
+[data-slot="popover-content"] {
+  z-index: 60;
+}
+
 [data-slot="select-positioner"],
 [data-slot="select-content"] {
   z-index: 80;

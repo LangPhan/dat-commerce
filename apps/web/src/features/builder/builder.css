@@ -482,6 +482,7 @@
 
 .bldr-tab-panel {
   padding: 16px;
+  min-height: 96px;
   font-size: 14px;
   line-height: 1.6;
 }

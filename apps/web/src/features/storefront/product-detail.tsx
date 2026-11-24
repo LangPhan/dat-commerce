@@ -245,17 +245,18 @@ function ProductDetailInner({
             ]}
           />
 
-          {tab === "description" ? (
-            <div style={{ paddingTop: 14, fontSize: 13.5, color: "var(--muted)" }}>
-              <p>{product.description}</p>
-              <ul style={{ marginTop: 10, paddingLeft: 18, display: "grid", gap: 4 }}>
-                <li>30-day field trial & complimentary returns</li>
-                <li>Carbon-neutral shipping on orders over $100</li>
-                <li>2-year craftsmanship & hardware warranty</li>
-              </ul>
-            </div>
-          ) : (
-            <dl style={{ marginTop: 10 }}>
+          <div style={{ minHeight: 168 }}>
+            {tab === "description" ? (
+              <div style={{ paddingTop: 14, fontSize: 13.5, color: "var(--muted)" }}>
+                <p>{product.description}</p>
+                <ul style={{ marginTop: 10, paddingLeft: 18, display: "grid", gap: 4 }}>
+                  <li>30-day field trial & complimentary returns</li>
+                  <li>Carbon-neutral shipping on orders over $100</li>
+                  <li>2-year craftsmanship & hardware warranty</li>
+                </ul>
+              </div>
+            ) : (
+              <dl style={{ marginTop: 10 }}>
               {product.attributes.map((attr) => {
                 const rawDisplay =
                   attr.displayValue ||
@@ -275,8 +276,9 @@ function ProductDetailInner({
                   </div>
                 );
               })}
-            </dl>
-          )}
+              </dl>
+            )}
+          </div>
         </div>
       </div>
 

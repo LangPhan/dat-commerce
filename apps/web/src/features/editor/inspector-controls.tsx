@@ -1,8 +1,23 @@
 "use client";
 
-import { FolderOpen, Image as ImageIcon, Plus, RotateCcw, Upload, X } from "lucide-react";
+import {
+  FolderOpen,
+  Image as ImageIcon,
+  Plus,
+  RotateCcw,
+  SlidersHorizontal,
+  Upload,
+  X,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -70,6 +85,12 @@ function normalizeBackgroundPosition(raw?: string): string {
   return clean;
 }
 
+function summarizeMediaFilename(url: string): string {
+  const clean = url.split("?")[0]?.split("#")[0] || url;
+  const segments = clean.split("/").filter(Boolean);
+  return segments[segments.length - 1] || clean;
+}
+
 export function ControlField({
   label,
   hint,
@@ -115,12 +136,113 @@ export function ControlField({
   );
 }
 
+export function PropertyPopoverRow({
+  label,
+  summary,
+  preview,
+  popoverTitle,
+  popoverWidth = "w-[300px]",
+  overridden = false,
+  viewport,
+  onReset,
+  onClear,
+  clearLabel,
+  disabled = false,
+  open,
+  onOpenChange,
+  children,
+}: {
+  label: string;
+  summary: string;
+  preview?: ReactNode;
+  popoverTitle?: string;
+  popoverWidth?: string;
+  overridden?: boolean;
+  viewport?: ViewportMode;
+  onReset?: () => void;
+  onClear?: () => void;
+  clearLabel?: string;
+  disabled?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <div className="ed-prop-row-wrap">
+        <PopoverTrigger
+          type="button"
+          className="ed-prop-trigger"
+          disabled={disabled}
+          aria-label={`${label}: ${summary || "Default"}`}
+        >
+          <span className="ed-prop-trigger-left">
+            <span className="ed-prop-label">
+              {label}
+              {overridden && viewport && viewport !== "desktop" ? (
+                <span className="ed-override-dot" title={`Overridden on ${viewport}`}>
+                  {viewport === "tablet" ? "T" : "M"}
+                </span>
+              ) : null}
+            </span>
+          </span>
+          <span className="ed-prop-trigger-right">
+            {preview}
+            <span className="ed-prop-summary">{summary}</span>
+            <SlidersHorizontal
+              size={12}
+              className="ed-prop-chevron"
+              aria-hidden="true"
+            />
+          </span>
+        </PopoverTrigger>
+        {onClear ? (
+          <button
+            type="button"
+            className="ed-prop-clear"
+            title={clearLabel || `Clear ${label}`}
+            aria-label={clearLabel || `Clear ${label}`}
+            disabled={disabled}
+            onClick={onClear}
+          >
+            <X size={11} />
+          </button>
+        ) : null}
+        {overridden && onReset ? (
+          <button
+            type="button"
+            className="ed-reset-override"
+            title={`Reset ${label} viewport override`}
+            aria-label={`Reset ${label} viewport override`}
+            disabled={disabled}
+            onClick={onReset}
+          >
+            <RotateCcw size={10} />
+          </button>
+        ) : null}
+      </div>
+      <PopoverContent
+        side="left"
+        align="start"
+        sideOffset={10}
+        className={popoverWidth}
+      >
+        <PopoverHeader>
+          <PopoverTitle>{popoverTitle || label}</PopoverTitle>
+        </PopoverHeader>
+        <div className="ed-popover-body">{children}</div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function ColorControl({
   label,
   value,
   placeholder = "#111318",
   palette,
   onAddPaletteColor,
+  displayMode,
   overridden,
   viewport,
   onReset,
@@ -131,6 +253,7 @@ export function ColorControl({
   placeholder?: string;
   palette?: BrandPaletteOption[];
   onAddPaletteColor?: (name: string, hex: string) => void;
+  displayMode?: "popover" | "inline";
   overridden?: boolean;
   viewport?: ViewportMode;
   onReset?: () => void;
@@ -147,6 +270,7 @@ export function ColorControl({
   const safeHex = isValidHex6(trimmed) ? normalizedVal : "#5B46E8";
 
   const hasPalette = Boolean(palette && palette.length > 0);
+  const effectiveMode = displayMode ?? (hasPalette ? "popover" : "inline");
   const matchedPalette = hasPalette
     ? palette!.find((item) => item.hex.toUpperCase() === normalizedVal)
     : undefined;
@@ -180,14 +304,8 @@ export function ColorControl({
         : undefined
     : undefined;
 
-  return (
-    <ControlField
-      label={label}
-      hint={hintText}
-      overridden={overridden}
-      viewport={viewport}
-      onReset={onReset}
-    >
+  const pickerBody = (
+    <>
       {hasPalette ? (
         <div className="ed-palette-control">
           <div className="ed-palette-swatches" role="group" aria-label={`${label} Brand Palette`}>
@@ -346,6 +464,55 @@ export function ColorControl({
           ) : null}
         </div>
       ) : null}
+    </>
+  );
+
+  if (effectiveMode === "popover") {
+    const summaryLabel = matchedPalette
+      ? matchedPalette.name
+      : trimmed || (placeholder === "transparent" ? "Auto" : "Default");
+
+    return (
+      <PropertyPopoverRow
+        label={label}
+        summary={summaryLabel}
+        popoverTitle={`${label} · Brand Palette`}
+        popoverWidth="w-[284px]"
+        overridden={overridden}
+        viewport={viewport}
+        onReset={onReset}
+        onClear={
+          trimmed
+            ? () => {
+                setCustomOpen(false);
+                setAddingOpen(false);
+                onChange("");
+              }
+            : undefined
+        }
+        clearLabel={`Clear ${label}`}
+        preview={
+          <span
+            className={cn("ed-color-chip", !trimmed && "is-empty")}
+            style={trimmed ? { backgroundColor: trimmed } : undefined}
+            aria-hidden="true"
+          />
+        }
+      >
+        <div className="ed-popover-stack">{pickerBody}</div>
+      </PropertyPopoverRow>
+    );
+  }
+
+  return (
+    <ControlField
+      label={label}
+      hint={hintText}
+      overridden={overridden}
+      viewport={viewport}
+      onReset={onReset}
+    >
+      {pickerBody}
     </ControlField>
   );
 }
@@ -358,6 +525,8 @@ export function BackgroundImageControl({
   backgroundRepeat,
   backgroundAttachment,
   palette,
+  gradientPresets = [],
+  onSelectGradient,
   onAddPaletteColor,
   canUploadMedia = false,
   uploading = false,
@@ -373,6 +542,8 @@ export function BackgroundImageControl({
   backgroundRepeat?: string;
   backgroundAttachment?: string;
   palette?: BrandPaletteOption[];
+  gradientPresets?: { label: string; value: string }[];
+  onSelectGradient?: (val: string) => void;
   onAddPaletteColor?: (name: string, hex: string) => void;
   canUploadMedia?: boolean;
   uploading?: boolean;
@@ -381,9 +552,20 @@ export function BackgroundImageControl({
   onQuickUpload?: (file: File) => void;
   onChangeStyles: (patch: StyleValues) => void;
 }) {
+  const [popoverOpen, setPopoverOpen] = useState(false);
   const parsed = parseBackgroundImage(backgroundImage, backgroundColor || "#111318");
   const opacityPct = Math.round(parsed.imageOpacity * 100);
   const normPos = normalizeBackgroundPosition(backgroundPosition);
+
+  const matchedGradient = gradientPresets.find(
+    (g) => g.value && g.value === (backgroundImage || "")
+  );
+
+  const summary = parsed.imageUrl
+    ? `${summarizeMediaFilename(parsed.imageUrl)} · ${opacityPct}%`
+    : parsed.rawGradientOnly
+      ? matchedGradient?.label || "Gradient"
+      : "None";
 
   const applyImageState = (next: {
     imageUrl: string;
@@ -418,188 +600,246 @@ export function BackgroundImageControl({
     onChangeStyles(patch);
   };
 
+  const triggerPreview = parsed.imageUrl ? (
+    <span
+      className="ed-bg-thumb-mini"
+      style={{
+        backgroundImage: buildBackgroundImageCss({
+          imageUrl: parsed.imageUrl,
+          imageOpacity: parsed.imageOpacity,
+          overlayColor: parsed.overlayColor,
+        }),
+        backgroundPosition: backgroundPosition || "center",
+        backgroundSize: "cover",
+      }}
+      aria-hidden="true"
+    />
+  ) : parsed.rawGradientOnly ? (
+    <span
+      className="ed-color-chip"
+      style={{ backgroundImage: parsed.rawGradientOnly }}
+      aria-hidden="true"
+    />
+  ) : (
+    <ImageIcon size={12} className="ed-prop-muted-icon" aria-hidden="true" />
+  );
+
   return (
-    <div className="ed-bg-img-card">
-      <div className="ed-ctrl-head">
-        <span className="ed-ctrl-label">Background Image</span>
+    <PropertyPopoverRow
+      label="Background Fill"
+      summary={summary}
+      preview={triggerPreview}
+      popoverTitle="Background Image & Gradient"
+      popoverWidth="w-[316px]"
+      disabled={disabled}
+      open={popoverOpen}
+      onOpenChange={setPopoverOpen}
+      clearLabel="Clear Background Fill"
+      onClear={
+        parsed.imageUrl || parsed.rawGradientOnly
+          ? () => applyImageState({ imageUrl: "" })
+          : undefined
+      }
+    >
+      <div className="ed-bg-img-card ed-bg-img-in-popover">
         {parsed.imageUrl ? (
-          <button
-            type="button"
-            className="ed-link-btn"
+          <div
+            className="ed-bg-img-preview"
+            style={{
+              backgroundImage: buildBackgroundImageCss({
+                imageUrl: parsed.imageUrl,
+                imageOpacity: parsed.imageOpacity,
+                overlayColor: parsed.overlayColor,
+              }),
+              backgroundPosition: backgroundPosition || "center",
+              backgroundSize: backgroundSize || "cover",
+              backgroundRepeat: backgroundRepeat || "no-repeat",
+            }}
+          >
+            <span className="ed-bg-img-url-pill" title={parsed.imageUrl}>
+              {parsed.imageUrl}
+            </span>
+          </div>
+        ) : (
+          <div className="ed-bg-img-empty">
+            <ImageIcon size={16} />
+            <span>No background image set</span>
+          </div>
+        )}
+
+        <div className="ed-bg-img-actions">
+          <Button
+            size="sm"
             disabled={disabled}
-            onClick={() => applyImageState({ imageUrl: "" })}
+            onClick={() => {
+              setPopoverOpen(false);
+              onOpenLibrary();
+            }}
           >
-            Clear
-          </button>
-        ) : null}
-      </div>
+            <FolderOpen size={12} />
+            <span>Library</span>
+          </Button>
 
-      {parsed.imageUrl ? (
-        <div
-          className="ed-bg-img-preview"
-          style={{
-            backgroundImage: buildBackgroundImageCss({
-              imageUrl: parsed.imageUrl,
-              imageOpacity: parsed.imageOpacity,
-              overlayColor: parsed.overlayColor,
-            }),
-            backgroundPosition: backgroundPosition || "center",
-            backgroundSize: backgroundSize || "cover",
-            backgroundRepeat: backgroundRepeat || "no-repeat",
-          }}
-        >
-          <span className="ed-bg-img-url-pill" title={parsed.imageUrl}>
-            {parsed.imageUrl}
-          </span>
-        </div>
-      ) : (
-        <div className="ed-bg-img-empty">
-          <ImageIcon size={16} />
-          <span>No background image set</span>
-        </div>
-      )}
+          {canUploadMedia && onQuickUpload ? (
+            <label
+              className={cn(
+                "ed-bg-upload-btn",
+                (disabled || uploading) && "is-disabled"
+              )}
+            >
+              <Upload size={12} />
+              <span>{uploading ? "Uploading..." : "Upload"}</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                aria-label="Upload background image"
+                disabled={disabled || uploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) onQuickUpload(file);
+                }}
+              />
+            </label>
+          ) : null}
 
-      <div className="ed-bg-img-actions">
-        <Button
-          size="sm"
+          {parsed.imageUrl ? (
+            <button
+              type="button"
+              className="ed-link-btn"
+              style={{ marginLeft: "auto" }}
+              disabled={disabled}
+              onClick={() => applyImageState({ imageUrl: "" })}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+
+        <input
+          type="text"
+          aria-label="Background image URL"
+          placeholder="/media/terrain-hero.jpg or /storage/..."
           disabled={disabled}
-          onClick={onOpenLibrary}
-        >
-          <FolderOpen size={12} />
-          <span>Library</span>
-        </Button>
+          value={parsed.imageUrl}
+          onChange={(e) => {
+            const val = e.target.value;
+            if (!val.trim()) {
+              applyImageState({ imageUrl: "" });
+            } else {
+              applyImageState({ imageUrl: val });
+            }
+          }}
+        />
 
-        {canUploadMedia && onQuickUpload ? (
-          <label
-            className={cn(
-              "ed-bg-upload-btn",
-              (disabled || uploading) && "is-disabled"
-            )}
-          >
-            <Upload size={12} />
-            <span>{uploading ? "Uploading..." : "Upload"}</span>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              aria-label="Upload background image"
-              disabled={disabled || uploading}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (file) onQuickUpload(file);
+        {parsed.imageUrl ? (
+          <div className="ed-bg-img-settings">
+            <SliderControl
+              label="Image Opacity"
+              value={opacityPct}
+              min={0}
+              max={100}
+              step={5}
+              unit="%"
+              onChange={(nextVal) => {
+                const pct = parseFloat(nextVal);
+                const nextOpacity = Number.isFinite(pct)
+                  ? Math.max(0, Math.min(1, pct / 100))
+                  : 1;
+                applyImageState({
+                  imageUrl: parsed.imageUrl,
+                  imageOpacity: nextOpacity,
+                  overlayColor: parsed.overlayColor,
+                });
               }}
             />
-          </label>
+
+            <ColorControl
+              label="Overlay Tint"
+              displayMode="inline"
+              value={parsed.overlayColor}
+              placeholder="#111318"
+              palette={palette}
+              onAddPaletteColor={onAddPaletteColor}
+              onChange={(nextTint) => {
+                const targetHex = normalizeHexColor(nextTint, "#111318");
+                const nextOpacity =
+                  parsed.imageOpacity >= 0.995 ? 0.65 : parsed.imageOpacity;
+                applyImageState({
+                  imageUrl: parsed.imageUrl,
+                  imageOpacity: nextOpacity,
+                  overlayColor: targetHex,
+                });
+              }}
+            />
+
+            <div className="ed-ctrl-field">
+              <div className="ed-ctrl-head">
+                <span className="ed-ctrl-label">Position</span>
+                <span className="ed-ctrl-value-tag">{normPos}</span>
+              </div>
+              <div className="ed-bg-pos-layout">
+                <div className="ed-bg-pos-grid" role="group" aria-label="Background image position grid">
+                  {BG_POSITION_GRID.map((cell) => {
+                    const active = normPos === cell.value;
+                    return (
+                      <button
+                        key={cell.value}
+                        type="button"
+                        className={cn("ed-bg-pos-cell", active && "active")}
+                        title={cell.label}
+                        aria-label={`Position ${cell.label}`}
+                        aria-pressed={active}
+                        disabled={disabled}
+                        onClick={() =>
+                          onChangeStyles({ backgroundPosition: cell.value })
+                        }
+                      />
+                    );
+                  })}
+                </div>
+                <div className="ed-bg-pos-selects">
+                  <SelectControl
+                    label="Size"
+                    value={backgroundSize || "cover"}
+                    options={BG_SIZE_OPTIONS}
+                    onChange={(v) => onChangeStyles({ backgroundSize: v })}
+                  />
+                  <SelectControl
+                    label="Repeat"
+                    value={backgroundRepeat || "no-repeat"}
+                    options={BG_REPEAT_OPTIONS}
+                    onChange={(v) => onChangeStyles({ backgroundRepeat: v })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <SelectControl
+              label="Attachment"
+              value={backgroundAttachment || "scroll"}
+              options={BG_ATTACHMENT_OPTIONS}
+              onChange={(v) => onChangeStyles({ backgroundAttachment: v })}
+            />
+          </div>
+        ) : null}
+
+        {gradientPresets.length > 0 && onSelectGradient ? (
+          <div className="ed-bg-grad-row">
+            <SelectControl
+              label="Gradient Preset"
+              value={
+                gradientPresets.some((g) => g.value === (backgroundImage || ""))
+                  ? backgroundImage || ""
+                  : ""
+              }
+              options={gradientPresets}
+              onChange={onSelectGradient}
+            />
+          </div>
         ) : null}
       </div>
-
-      <input
-        type="text"
-        aria-label="Background image URL"
-        placeholder="/media/terrain-hero.jpg or /storage/..."
-        disabled={disabled}
-        value={parsed.imageUrl}
-        onChange={(e) => {
-          const val = e.target.value;
-          if (!val.trim()) {
-            applyImageState({ imageUrl: "" });
-          } else {
-            applyImageState({ imageUrl: val });
-          }
-        }}
-      />
-
-      {parsed.imageUrl ? (
-        <div className="ed-bg-img-settings">
-          <SliderControl
-            label="Image Opacity"
-            value={opacityPct}
-            min={0}
-            max={100}
-            step={5}
-            unit="%"
-            onChange={(nextVal) => {
-              const pct = parseFloat(nextVal);
-              const nextOpacity = Number.isFinite(pct)
-                ? Math.max(0, Math.min(1, pct / 100))
-                : 1;
-              applyImageState({
-                imageUrl: parsed.imageUrl,
-                imageOpacity: nextOpacity,
-                overlayColor: parsed.overlayColor,
-              });
-            }}
-          />
-
-          <ColorControl
-            label="Overlay Tint"
-            value={parsed.overlayColor}
-            placeholder="#111318"
-            palette={palette}
-            onAddPaletteColor={onAddPaletteColor}
-            onChange={(nextTint) => {
-              const targetHex = normalizeHexColor(nextTint, "#111318");
-              const nextOpacity =
-                parsed.imageOpacity >= 0.995 ? 0.65 : parsed.imageOpacity;
-              applyImageState({
-                imageUrl: parsed.imageUrl,
-                imageOpacity: nextOpacity,
-                overlayColor: targetHex,
-              });
-            }}
-          />
-
-          <div className="ed-ctrl-field">
-            <div className="ed-ctrl-head">
-              <span className="ed-ctrl-label">Position</span>
-              <span className="ed-ctrl-value-tag">{normPos}</span>
-            </div>
-            <div className="ed-bg-pos-layout">
-              <div className="ed-bg-pos-grid" role="group" aria-label="Background image position grid">
-                {BG_POSITION_GRID.map((cell) => {
-                  const active = normPos === cell.value;
-                  return (
-                    <button
-                      key={cell.value}
-                      type="button"
-                      className={cn("ed-bg-pos-cell", active && "active")}
-                      title={cell.label}
-                      aria-label={`Position ${cell.label}`}
-                      aria-pressed={active}
-                      disabled={disabled}
-                      onClick={() =>
-                        onChangeStyles({ backgroundPosition: cell.value })
-                      }
-                    />
-                  );
-                })}
-              </div>
-              <div className="ed-bg-pos-selects">
-                <SelectControl
-                  label="Size"
-                  value={backgroundSize || "cover"}
-                  options={BG_SIZE_OPTIONS}
-                  onChange={(v) => onChangeStyles({ backgroundSize: v })}
-                />
-                <SelectControl
-                  label="Repeat"
-                  value={backgroundRepeat || "no-repeat"}
-                  options={BG_REPEAT_OPTIONS}
-                  onChange={(v) => onChangeStyles({ backgroundRepeat: v })}
-                />
-              </div>
-            </div>
-          </div>
-
-          <SelectControl
-            label="Attachment"
-            value={backgroundAttachment || "scroll"}
-            options={BG_ATTACHMENT_OPTIONS}
-            onChange={(v) => onChangeStyles({ backgroundAttachment: v })}
-          />
-        </div>
-      ) : null}
-    </div>
+    </PropertyPopoverRow>
   );
 }
 
