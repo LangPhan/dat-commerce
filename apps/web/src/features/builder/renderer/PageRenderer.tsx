@@ -4,14 +4,29 @@ import { EyeOff, Lock } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
 import type { StoreCategoryItem, StoreProductItem } from "@/features/storefront/blocks";
 import { cn } from "@/lib/format";
+import { getElementPart } from "../parts";
 import { renderElementContent, type BuilderNodeAttrs } from "../registry/elements";
 import { sanitizeHtmlAttributes } from "../sanitizers";
 import {
+  compileEditPartCss,
   compileLivePageCss,
   compileNodeInlineStyle,
   isVisibleForViewport,
 } from "../style-compiler";
 import type { ElementNode, ViewportMode } from "../types";
+
+function resolveOwnPartKey(
+  target: EventTarget | null,
+  containerEl: HTMLElement,
+  nodeType: ElementNode["type"]
+): string | null {
+  if (!(target instanceof Element)) return null;
+  const partEl = target.closest<HTMLElement>("[data-builder-part]");
+  if (!partEl) return null;
+  if (partEl.closest("[data-editor-node-id]") !== containerEl) return null;
+  const partKey = partEl.getAttribute("data-builder-part");
+  return partKey && getElementPart(nodeType, partKey) ? partKey : null;
+}
 
 export type EditNodeWrapperProps = {
   node: ElementNode;
@@ -32,11 +47,15 @@ export function PageRenderer({
   showOutlines = false,
   selectedIds = [],
   hoveredId = null,
+  selectedPart = null,
+  hoveredPart = null,
   aiAffectedIds,
   catalog = [],
   categories = [],
   onSelectNode,
+  onSelectPart,
   onHoverNode,
+  onHoverPart,
   onAddToCart,
   onNotify,
   wrapEditNode,
@@ -49,20 +68,27 @@ export function PageRenderer({
   showOutlines?: boolean;
   selectedIds?: string[];
   hoveredId?: string | null;
+  selectedPart?: { nodeId: string; partKey: string } | null;
+  hoveredPart?: { nodeId: string; partKey: string } | null;
   aiAffectedIds?: Set<string>;
   catalog?: StoreProductItem[];
   categories?: StoreCategoryItem[];
   onSelectNode?: (nodeId: string, opts?: { additive?: boolean }) => void;
+  onSelectPart?: (nodeId: string, partKey: string | null) => void;
   onHoverNode?: (nodeId: string | null) => void;
+  onHoverPart?: (part: { nodeId: string; partKey: string } | null) => void;
   onAddToCart?: (product: StoreProductItem) => void;
   onNotify?: (msg: string) => void;
   wrapEditNode?: (args: EditNodeWrapperProps) => ReactNode;
   renderContainerEndSlot?: (parentId: string | null, childCount: number) => ReactNode;
 }) {
-  const liveCss =
+  const styleCss =
     mode === "live"
-      ? compileLivePageCss(nodes, { hoverOnly: Boolean(forceViewport) })
-      : "";
+      ? compileLivePageCss(nodes, {
+          hoverOnly: Boolean(forceViewport),
+          forceViewport,
+        })
+      : compileEditPartCss(nodes, viewport, { selectedPart, hoveredPart });
   const selectedSet = new Set(selectedIds);
 
   const renderNodeList = (
@@ -167,32 +193,64 @@ export function PageRenderer({
             onMouseOver={(e) => {
               e.stopPropagation();
               onHoverNode?.(node.id);
+              if (onHoverPart) {
+                const pk = resolveOwnPartKey(
+                  e.target,
+                  e.currentTarget,
+                  node.type
+                );
+                onHoverPart(pk ? { nodeId: node.id, partKey: pk } : null);
+              }
             }}
             onMouseOut={(e) => {
               e.stopPropagation();
-              if (hoveredId === node.id) onHoverNode?.(null);
+              if (hoveredId === node.id) {
+                onHoverNode?.(null);
+                onHoverPart?.(null);
+              }
             }}
             onClick={(e) => {
               e.stopPropagation();
-              onSelectNode?.(node.id, {
-                additive: e.shiftKey || e.metaKey || e.ctrlKey,
-              });
+              const additive = e.shiftKey || e.metaKey || e.ctrlKey;
+              if (!additive && onSelectPart) {
+                const pk = resolveOwnPartKey(
+                  e.target,
+                  e.currentTarget,
+                  node.type
+                );
+                onSelectPart(node.id, pk);
+                return;
+              }
+              onSelectNode?.(node.id, { additive });
             }}
           >
-            {isHovered || isSelected || isAiAffected ? (
-              <div
-                className={cn(
-                  "bldr-node-tag",
-                  isSelected && "selected",
-                  isAiAffected && "ai"
-                )}
-              >
-                <span>{node.label}</span>
-                {node.locked ? <Lock size={10} /> : null}
-                {!visibleInViewport ? <EyeOff size={10} /> : null}
-                {isAiAffected ? <em>AI preview</em> : null}
-              </div>
-            ) : null}
+            {(() => {
+              const activePartKey =
+                selectedPart?.nodeId === node.id
+                  ? selectedPart.partKey
+                  : hoveredPart?.nodeId === node.id
+                    ? hoveredPart.partKey
+                    : null;
+              const activePartDef = getElementPart(node.type, activePartKey);
+              return isHovered || isSelected || isAiAffected ? (
+                <div
+                  className={cn(
+                    "bldr-node-tag",
+                    isSelected && "selected",
+                    isAiAffected && "ai"
+                  )}
+                >
+                  <span>
+                    {node.label}
+                    {activePartDef ? ` › ${activePartDef.label}` : ""}
+                  </span>
+                  {node.locked ? <Lock size={10} /> : null}
+                  {!visibleInViewport ? <EyeOff size={10} /> : null}
+                  {activePartDef?.repeating ? <em>Syncs all</em> : null}
+                  {isAiAffected ? <em>AI preview</em> : null}
+                </div>
+              ) : null;
+            })()}
             {elementBody}
           </div>
         );
@@ -224,7 +282,7 @@ export function PageRenderer({
 
   return (
     <div className={cn("bldr-page-root", mode === "edit" ? "is-edit" : "is-live")}>
-      {liveCss ? <style>{liveCss}</style> : null}
+      {styleCss ? <style>{styleCss}</style> : null}
       {renderNodeList(nodes, null, 0)}
     </div>
   );

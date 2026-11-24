@@ -114,7 +114,9 @@ class EditorAiServiceTest {
                         heroSubtree,
                         pageOutline,
                         Map.of(),
-                        List.of()
+                        List.of(),
+                        null,
+                        null
                 )
         );
 
@@ -163,7 +165,9 @@ class EditorAiServiceTest {
                                 heroSubtree,
                                 pageOutline,
                                 Map.of(),
-                                List.of()
+                                List.of(),
+                                null,
+                                null
                         )
                 )
         );
@@ -212,11 +216,72 @@ class EditorAiServiceTest {
                         multiSubtree,
                         pageOutline,
                         Map.of(),
-                        List.of()
+                        List.of(),
+                        null,
+                        null
                 )
         );
 
         assertEquals(2, response.operations().size());
         assertEquals(List.of("card-1", "card-2"), response.targetNodeIds());
+    }
+
+    @Test
+    void elementScopeForwardsEditablePartsAndAllowsPartStyleOps() {
+        Map<String, Object> bestSection = Map.of(
+                "id", "best",
+                "type", "section",
+                "label", "Best Sellers",
+                "children", List.of(
+                        Map.of(
+                                "id", "best-grid",
+                                "type", "product_grid",
+                                "label", "Best Sellers Grid"
+                        )
+                )
+        );
+        String gatewayJson = """
+                {
+                  "summary": "Round product cards and green prices",
+                  "explanation": "Styled all repeating product cards and prices via partStyles.",
+                  "operations": [
+                    {"type":"update_part_styles","nodeId":"best-grid","part":"card","breakpoint":"base","styles":{"borderRadius":"16px","backgroundColor":"#F8FAFC"}},
+                    {"type":"update_part_styles","nodeId":"best-grid","part":"price","breakpoint":"base","styles":{"color":"#18794E"}}
+                  ]
+                }
+                """;
+        when(mockGateway.generateTurn(any(AiModelGateway.GatewayRequest.class)))
+                .thenReturn(new AiModelGateway.GatewayTurnResponse(gatewayJson, List.of(), 130, 70, "stop"));
+
+        EditorAiService.EditorSuggestResponse response = service.suggest(
+                actor,
+                new EditorAiService.EditorSuggestRequest(
+                        UUID.randomUUID(),
+                        "home",
+                        "desktop",
+                        "element",
+                        List.of("best-grid"),
+                        "Đổi màu giá sang xanh lá và bo tròn card sản phẩm 16px",
+                        "gpt-6-luna",
+                        bestSection,
+                        pageOutline,
+                        Map.of(),
+                        List.of(),
+                        "price",
+                        Map.of("best-grid", List.of("card", "image", "title", "price", "subtitle", "rating"))
+                )
+        );
+
+        assertEquals(2, response.operations().size());
+        assertEquals("update_part_styles", response.operations().get(0).get("type"));
+        assertEquals("card", response.operations().get(0).get("part"));
+
+        ArgumentCaptor<AiModelGateway.GatewayRequest> reqCaptor = ArgumentCaptor.forClass(AiModelGateway.GatewayRequest.class);
+        Mockito.verify(mockGateway).generateTurn(reqCaptor.capture());
+        List<AiModelGateway.GatewayMessage> msgs = reqCaptor.getValue().messages();
+        String userPayload = msgs.get(msgs.size() - 1).content();
+        assertTrue(userPayload.contains("\"selectedPart\":\"price\""));
+        assertTrue(userPayload.contains("\"editableParts\""));
+        assertTrue(userPayload.contains("best-grid"));
     }
 }

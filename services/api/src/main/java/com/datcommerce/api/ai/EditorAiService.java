@@ -37,6 +37,8 @@ public class EditorAiService {
                - "page": any node in `pageOutline`.
             4. Allowed operation schemas:
                - {"type":"update_styles","nodeId":"...","breakpoint":"base|tablet|mobile|hover","styles":{"cssCamelCaseProp":"value"}}
+               - {"type":"update_part_styles","nodeId":"...","part":"...","breakpoint":"base|tablet|mobile|hover","styles":{"cssCamelCaseProp":"value"}}
+               - {"type":"reset_part_style_keys","nodeId":"...","part":"...","breakpoint":"base|tablet|mobile|hover","keys":["prop"]}
                - {"type":"update_props","nodeId":"...","props":{"text|label|href|...":"value"}}
                - {"type":"update_visibility","nodeId":"...","visible":true,"visibility":{"desktop":true,"tablet":true,"mobile":true}}
                - {"type":"insert_node","parentId":"containerIdOrNull","index":0,"node":{"id":"ai-...","type":"...","version":2,"label":"...","visible":true,"locked":false,"props":{},"styles":{"base":{}}}}
@@ -45,6 +47,7 @@ public class EditorAiService {
                - {"type":"delete_node","nodeId":"..."}
             5. Allowed CSS style keys (camelCase): display, flexDirection, justifyContent, alignItems, flexWrap, gap, rowGap, columnGap, gridTemplateColumns, gridTemplateRows, width, minWidth, maxWidth, height, minHeight, maxHeight, margin, marginTop, marginRight, marginBottom, marginLeft, padding, paddingTop, paddingRight, paddingBottom, paddingLeft, position, zIndex, overflow, textAlign, color, backgroundColor, backgroundImage, fontFamily, fontSize, fontWeight, lineHeight, letterSpacing, textTransform, borderWidth, borderStyle, borderColor, borderRadius, boxShadow, opacity, aspectRatio, objectFit.
             6. Never output <script>, on* handlers, javascript:, or style values containing ';' or '{' or '}'.
+            7. Deep styling for compound & repeating widgets: When modifying inner sub-elements inside compound widgets (such as `product_grid`, `product_carousel`, `product_card`, `category_grid`, `form`, `promotion_banner`, `featured_product`, `icon_list`, `image_gallery`, `tabs`, `accordion`, `carousel`, `countdown`, `product_info`, `add_to_cart`), you MUST emit `update_part_styles` with the widget's `nodeId` and a valid `part` key listed in `editableParts` (prioritizing `selectedPart` when provided in context). Modifying a `part` automatically updates ALL repeating items uniformly (e.g., all product cards' `card`, `title`, `price`, `image`, `badge`, `rating` in a `product_grid`, or all `field`, `label`, `input`, `submit` parts in a `form`).
 
             Output JSON shape:
             {
@@ -238,6 +241,12 @@ public class EditorAiService {
         ctx.put("viewport", viewport);
         ctx.put("scope", scope);
         ctx.put("selectedNodeIds", req.selectedNodeIds());
+        if (StringUtils.hasText(req.selectedPart())) {
+            ctx.put("selectedPart", req.selectedPart().trim());
+        }
+        if (req.editableParts() != null && !req.editableParts().isEmpty()) {
+            ctx.put("editableParts", req.editableParts());
+        }
         if (!"page".equals(scope) && allowedTargetIds != null && !allowedTargetIds.isEmpty()) {
             ctx.put("allowedNodeIds", allowedTargetIds.stream().sorted().toList());
         }
@@ -347,7 +356,9 @@ public class EditorAiService {
             Object targetSubtree,
             List<Map<String, Object>> pageOutline,
             Map<String, Object> themeTokens,
-            List<EditorChatHistoryItem> history
+            List<EditorChatHistoryItem> history,
+            @Size(max = 60) String selectedPart,
+            Map<String, List<String>> editableParts
     ) {
     }
 

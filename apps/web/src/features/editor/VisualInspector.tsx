@@ -24,6 +24,7 @@ import {
   createElementId,
   findNode,
 } from "@/features/builder/operations";
+import { getElementPart, getElementParts } from "@/features/builder/parts";
 import {
   ELEMENT_DEFINITIONS,
   createElementNode,
@@ -522,13 +523,17 @@ export function VisualInspector({
 
   const nodes = useEditorStore((s) => s.nodes);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  const selectedPart = useEditorStore((s) => s.selectedPart);
   const viewport = useEditorStore((s) => s.viewport);
   const themeTokens = useEditorStore((s) => s.themeTokens);
   const themeDirty = useEditorStore((s) => s.themeDirty);
   const setThemeTokens = useEditorStore((s) => s.setThemeTokens);
+  const selectPart = useEditorStore((s) => s.selectPart);
   const updateNodeProps = useEditorStore((s) => s.updateNodeProps);
   const updateNodeStyles = useEditorStore((s) => s.updateNodeStyles);
   const resetNodeStyleKeys = useEditorStore((s) => s.resetNodeStyleKeys);
+  const updateNodePartStyles = useEditorStore((s) => s.updateNodePartStyles);
+  const resetNodePartStyleKeys = useEditorStore((s) => s.resetNodePartStyleKeys);
   const toggleNodeVisibility = useEditorStore((s) => s.toggleNodeVisibility);
   const toggleNodeLock = useEditorStore((s) => s.toggleNodeLock);
   const executeOperation = useEditorStore((s) => s.executeOperation);
@@ -625,14 +630,33 @@ export function VisualInspector({
       ) : primary ? (
         (() => {
           const def = ELEMENT_DEFINITIONS[primary.type];
+          const primaryParts = getElementParts(primary.type);
+          const activePartKey =
+            selectedPart?.nodeId === primary.id ? selectedPart.partKey : null;
+          const activePartDef = activePartKey
+            ? getElementPart(primary.type, activePartKey)
+            : null;
+          const editedResponsiveStyles = activePartKey
+            ? primary.partStyles?.[activePartKey]
+            : primary.styles;
           const { resolved, overriddenKeys, hasViewportOverride } =
-            resolveStylesForViewport(primary.styles, viewport);
+            resolveStylesForViewport(editedResponsiveStyles, viewport);
           const editStyles: StyleValues =
             editHoverState && tab === "style"
-              ? primary.styles?.hover || {}
+              ? editedResponsiveStyles?.hover || {}
               : resolved;
 
           const setStyle = (key: StylePropertyKey, val: string) => {
+            if (activePartKey && activePartDef) {
+              updateNodePartStyles(
+                primary.id,
+                activePartKey,
+                { [key]: val },
+                activeBreakpoint,
+                `Update ${key} on ${primary.label} › ${activePartDef.label}`
+              );
+              return;
+            }
             updateNodeStyles(
               primary.id,
               { [key]: val },
@@ -641,6 +665,24 @@ export function VisualInspector({
             );
           };
           const resetKey = (key: StylePropertyKey) => {
+            if (activePartKey) {
+              if (activeBreakpoint === "base") {
+                updateNodePartStyles(
+                  primary.id,
+                  activePartKey,
+                  { [key]: "" },
+                  "base"
+                );
+              } else {
+                resetNodePartStyleKeys(
+                  primary.id,
+                  activePartKey,
+                  [key],
+                  activeBreakpoint
+                );
+              }
+              return;
+            }
             if (activeBreakpoint === "base") {
               updateNodeStyles(primary.id, { [key]: "" }, "base");
             } else {
@@ -658,7 +700,10 @@ export function VisualInspector({
               <div className="ed-selected-banner">
                 <div className="ed-selected-title">
                   <strong>{primary.label}</strong>
-                  <span>{def?.label || primary.type}</span>
+                  <span>
+                    {def?.label || primary.type}
+                    {activePartDef ? ` › ${activePartDef.label}` : ""}
+                  </span>
                 </div>
                 <div className="ed-selected-quick">
                   <IconButton
@@ -699,6 +744,71 @@ export function VisualInspector({
                   </IconButton>
                 </div>
               </div>
+
+              {primaryParts.length ? (
+                <div className="ed-part-strip" aria-label="Inner elements">
+                  <button
+                    type="button"
+                    className={cn("ed-part-chip", !activePartKey && "active")}
+                    onClick={() => selectPart(primary.id, null)}
+                  >
+                    Whole Element
+                  </button>
+                  {primaryParts.map((part) => {
+                    const partResp = primary.partStyles?.[part.key];
+                    const hasCustom = Boolean(
+                      partResp &&
+                        (["base", "tablet", "mobile", "hover"] as const).some(
+                          (bp) => Object.keys(partResp[bp] || {}).length > 0
+                        )
+                    );
+                    return (
+                      <button
+                        key={part.key}
+                        type="button"
+                        className={cn(
+                          "ed-part-chip",
+                          activePartKey === part.key && "active",
+                          hasCustom && "has-custom"
+                        )}
+                        title={
+                          part.repeating
+                            ? `${part.label} (edits sync across all repeating items)`
+                            : part.label
+                        }
+                        onClick={() => {
+                          selectPart(primary.id, part.key);
+                          if (tab === "content" || tab === "advanced") {
+                            setTab("style");
+                          }
+                        }}
+                      >
+                        <span>{part.label}</span>
+                        {part.repeating ? <span aria-hidden="true">↻</span> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {activePartDef ? (
+                <div className="ed-part-sync-note">
+                  <span>
+                    {activePartDef.repeating
+                      ? `Editing ${activePartDef.label} — styles sync across all repeating items.`
+                      : `Editing inner element: ${activePartDef.label}.`}
+                  </span>
+                  {tab === "content" ? (
+                    <button
+                      type="button"
+                      className="ed-mini-link"
+                      onClick={() => setTab("style")}
+                    >
+                      Style controls
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
 
               {viewport !== "desktop" ? (
                 <div className="ed-viewport-hint">

@@ -29,8 +29,11 @@ export function EditorCanvas({
 }) {
   const nodes = useEditorStore((s) => s.nodes);
   const aiPreview = useEditorStore((s) => s.aiPreview);
+  const lastAppliedAiCompare = useEditorStore((s) => s.lastAppliedAiCompare);
   const selectedIds = useEditorStore((s) => s.selectedIds);
   const hoveredId = useEditorStore((s) => s.hoveredId);
+  const selectedPart = useEditorStore((s) => s.selectedPart);
+  const hoveredPart = useEditorStore((s) => s.hoveredPart);
   const themeTokens = useEditorStore((s) => s.themeTokens);
   const viewport = useEditorStore((s) => s.viewport);
   const zoom = useEditorStore((s) => s.zoom);
@@ -40,12 +43,27 @@ export function EditorCanvas({
   const aiBarOpen = useEditorStore((s) => s.aiBarOpen);
 
   const selectNode = useEditorStore((s) => s.selectNode);
+  const selectPart = useEditorStore((s) => s.selectPart);
   const setHoveredId = useEditorStore((s) => s.setHoveredId);
+  const setHoveredPart = useEditorStore((s) => s.setHoveredPart);
 
-  const renderedNodes = aiPreview ? aiPreview.previewNodes : nodes;
-  const aiAffectedIds = aiPreview
-    ? new Set(aiPreview.diffs.map((d) => d.nodeId))
-    : undefined;
+  const viewingBeforePreview = Boolean(aiPreview && aiPreview.viewMode === "before");
+  const viewingBeforeApplied = Boolean(
+    !aiPreview && lastAppliedAiCompare?.viewingBefore
+  );
+  const viewingBefore = viewingBeforePreview || viewingBeforeApplied;
+
+  const renderedNodes = aiPreview
+    ? viewingBeforePreview
+      ? aiPreview.beforeNodes
+      : aiPreview.previewNodes
+    : viewingBeforeApplied && lastAppliedAiCompare
+      ? lastAppliedAiCompare.beforeNodes
+      : nodes;
+  const aiAffectedIds =
+    aiPreview && !viewingBeforePreview
+      ? new Set(aiPreview.diffs.map((d) => d.nodeId))
+      : undefined;
 
   const { setNodeRef: setEmptyRootDropRef, isOver: isRootEmptyOver } =
     useDroppable({
@@ -67,6 +85,11 @@ export function EditorCanvas({
 
   return (
     <main className={cn("ed-canvas-stage", previewMode && "is-preview")}>
+      {viewingBefore && !previewMode ? (
+        <div className="ed-canvas-before-badge" role="status">
+          Viewing Before AI (original state)
+        </div>
+      ) : null}
       <div
         className={cn("ed-canvas-scroll", !aiBarOpen && "ed-ai-hidden")}
         onClick={() => {
@@ -127,11 +150,15 @@ export function EditorCanvas({
                 showOutlines={showOutlines}
                 selectedIds={selectedIds}
                 hoveredId={hoveredId}
+                selectedPart={selectedPart}
+                hoveredPart={hoveredPart}
                 aiAffectedIds={aiAffectedIds}
                 catalog={catalog}
                 categories={categories}
                 onSelectNode={(nodeId, opts) => selectNode(nodeId, opts)}
+                onSelectPart={(nodeId, partKey) => selectPart(nodeId, partKey)}
                 onHoverNode={(nodeId) => setHoveredId(nodeId)}
+                onHoverPart={(part) => setHoveredPart(part)}
                 onNotify={onNotify}
                 wrapEditNode={
                   previewMode

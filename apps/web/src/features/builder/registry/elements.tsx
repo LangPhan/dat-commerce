@@ -277,10 +277,12 @@ function InteractiveTabs({
             key={item.id}
             type="button"
             role="tab"
+            data-builder-part={idx === active ? "tab_active" : "tab"}
             aria-selected={idx === active}
             className={cn("bldr-tab-btn", idx === active && "active")}
             onClick={(e) => {
-              if (mode === "edit") e.stopPropagation();
+              void e;
+              void mode;
               setActive(idx);
             }}
           >
@@ -289,7 +291,7 @@ function InteractiveTabs({
         ))}
       </div>
       {current ? (
-        <div className="bldr-tab-panel" role="tabpanel">
+        <div className="bldr-tab-panel" data-builder-part="panel" role="tabpanel">
           {current.body}
         </div>
       ) : null}
@@ -313,20 +315,26 @@ function InteractiveAccordion({
       {items.map((item, idx) => {
         const isOpen = openIndex === idx;
         return (
-          <div key={item.id} className="bldr-acc-item">
+          <div key={item.id} className="bldr-acc-item" data-builder-part="item">
             <button
               type="button"
               className="bldr-acc-trigger"
+              data-builder-part="trigger"
               aria-expanded={isOpen}
               onClick={(e) => {
-                if (mode === "edit") e.stopPropagation();
+                void e;
+                void mode;
                 setOpenIndex(isOpen ? null : idx);
               }}
             >
               <span>{item.title || `Question ${idx + 1}`}</span>
               <span>{isOpen ? "−" : "+"}</span>
             </button>
-            {isOpen ? <div className="bldr-acc-body">{item.body}</div> : null}
+            {isOpen ? (
+              <div className="bldr-acc-body" data-builder-part="body">
+                {item.body}
+              </div>
+            ) : null}
           </div>
         );
       })}
@@ -349,14 +357,15 @@ function InteractiveCarousel({
   const slide = slides[safeIdx];
   return (
     <div className="bldr-carousel">
-      <div className="bldr-carousel-media">
+      <div className="bldr-carousel-media" data-builder-part="media">
         <img
           src={sanitizeMediaUrl(slide.image)}
           alt={slide.title || "Carousel slide"}
+          data-builder-part="image"
         />
-        <div className="bldr-carousel-caption">
-          {slide.title ? <strong>{slide.title}</strong> : null}
-          {slide.body ? <p>{slide.body}</p> : null}
+        <div className="bldr-carousel-caption" data-builder-part="caption">
+          {slide.title ? <strong data-builder-part="title">{slide.title}</strong> : null}
+          {slide.body ? <p data-builder-part="body">{slide.body}</p> : null}
         </div>
       </div>
       {slides.length > 1 ? (
@@ -364,8 +373,10 @@ function InteractiveCarousel({
           <button
             type="button"
             aria-label="Previous slide"
+            data-builder-part="nav_btn"
             onClick={(e) => {
-              if (mode === "edit") e.stopPropagation();
+              void e;
+              void mode;
               setIdx((prev) => (prev - 1 + slides.length) % slides.length);
             }}
           >
@@ -377,8 +388,10 @@ function InteractiveCarousel({
           <button
             type="button"
             aria-label="Next slide"
+            data-builder-part="nav_btn"
             onClick={(e) => {
-              if (mode === "edit") e.stopPropagation();
+              void e;
+              void mode;
               setIdx((prev) => (prev + 1) % slides.length);
             }}
           >
@@ -423,7 +436,11 @@ function InteractiveCountdown({
 
   return (
     <div className="bldr-countdown">
-      {heading ? <strong className="bldr-countdown-title">{heading}</strong> : null}
+      {heading ? (
+        <strong className="bldr-countdown-title" data-builder-part="heading">
+          {heading}
+        </strong>
+      ) : null}
       <div className="bldr-countdown-grid">
         {[
           ["Days", remaining.days],
@@ -431,9 +448,9 @@ function InteractiveCountdown({
           ["Mins", remaining.minutes],
           ["Secs", remaining.seconds],
         ].map(([label, val]) => (
-          <div key={String(label)} className="bldr-countdown-cell">
-            <strong>{String(val).padStart(2, "0")}</strong>
-            <span>{label}</span>
+          <div key={String(label)} className="bldr-countdown-cell" data-builder-part="cell">
+            <strong data-builder-part="value">{String(val).padStart(2, "0")}</strong>
+            <span data-builder-part="label">{label}</span>
           </div>
         ))}
       </div>
@@ -460,11 +477,12 @@ function InteractiveForm({
       className="bldr-form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (mode === "edit") e.stopPropagation();
-        setSubmitted(true);
+        if (mode !== "edit") {
+          setSubmitted(true);
+        }
       }}
     >
-      {heading ? <h3>{heading}</h3> : null}
+      {heading ? <h3 data-builder-part="heading">{heading}</h3> : null}
       {submitted ? (
         <p role="status" className="bldr-form-success">
           <Check size={15} /> {successMessage || "Submitted!"}
@@ -473,17 +491,19 @@ function InteractiveForm({
         <>
           <div className="bldr-form-fields">
             {fields.map((field) => (
-              <label key={field.id}>
-                <span>{field.label}</span>
+              <label key={field.id} data-builder-part="field">
+                <span data-builder-part="label">{field.label}</span>
                 {field.type === "textarea" ? (
                   <textarea
                     rows={3}
+                    data-builder-part="input"
                     placeholder={field.placeholder}
                     required={field.required}
                   />
                 ) : (
                   <input
                     type={field.type === "email" ? "email" : "text"}
+                    data-builder-part="input"
                     placeholder={field.placeholder}
                     required={field.required}
                   />
@@ -494,9 +514,9 @@ function InteractiveForm({
           <button
             type="submit"
             className="btn primary"
+            data-builder-part="submit"
             onClick={(e) => {
               if (mode === "edit") {
-                e.stopPropagation();
                 e.preventDefault();
               }
             }}
@@ -741,14 +761,18 @@ export function renderElementContent(
           {items.map((item) => {
             const IconComp = BUILDER_ICON_MAP[item.icon || "check"] || Check;
             return (
-              <div key={item.id} className="bldr-icon-list-item">
-                <span className="bldr-icon-list-badge">
+              <div key={item.id} className="bldr-icon-list-item" data-builder-part="item">
+                <span className="bldr-icon-list-badge" data-builder-part="badge">
                   <IconComp size={14} />
                 </span>
                 <div>
-                  <strong>{item.title}</strong>
-                  {item.subtitle ? <small className="muted"> · {item.subtitle}</small> : null}
-                  {item.body ? <p>{item.body}</p> : null}
+                  <strong data-builder-part="title">{item.title}</strong>
+                  {item.subtitle ? (
+                    <small className="muted" data-builder-part="subtitle">
+                      {" "}· {item.subtitle}
+                    </small>
+                  ) : null}
+                  {item.body ? <p data-builder-part="body">{item.body}</p> : null}
                 </div>
               </div>
             );
@@ -775,15 +799,16 @@ export function renderElementContent(
           }}
         >
           {items.map((item) => (
-            <div key={item.id} className="bldr-gallery-card">
+            <div key={item.id} className="bldr-gallery-card" data-builder-part="card">
               <img
                 src={sanitizeMediaUrl(item.image)}
                 alt={item.title || "Gallery photo"}
+                data-builder-part="image"
               />
               {item.title || item.body ? (
                 <div className="bldr-gallery-meta">
-                  {item.title ? <strong>{item.title}</strong> : null}
-                  {item.body ? <span>{item.body}</span> : null}
+                  {item.title ? <strong data-builder-part="title">{item.title}</strong> : null}
+                  {item.body ? <span data-builder-part="body">{item.body}</span> : null}
                 </div>
               ) : null}
             </div>
@@ -855,7 +880,12 @@ export function renderElementContent(
           </div>
           {actionLabel ? (
             <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-              <Link href={actionUrl} onClick={stopLinkInEdit} className="bldr-inline-action">
+              <Link
+                href={actionUrl}
+                onClick={stopLinkInEdit}
+                className="bldr-inline-action"
+                data-builder-part="action"
+              >
                 {actionLabel} <ArrowRight size={14} />
               </Link>
             </div>
@@ -936,11 +966,16 @@ export function renderElementContent(
                 href={`/store/category/${encodeURIComponent(c.slug)}`}
                 onClick={stopLinkInEdit}
                 className="bldr-category-card"
+                data-builder-part="card"
               >
-                <img src={sanitizeMediaUrl(c.image)} alt={c.name} />
+                <img
+                  src={sanitizeMediaUrl(c.image)}
+                  alt={c.name}
+                  data-builder-part="image"
+                />
                 <div className="bldr-category-meta">
-                  <strong>{c.name}</strong>
-                  <span>{c.count} products</span>
+                  <strong data-builder-part="title">{c.name}</strong>
+                  <span data-builder-part="count">{c.count} products</span>
                 </div>
               </Link>
             );
@@ -963,14 +998,17 @@ export function renderElementContent(
             src={sanitizeMediaUrl(info.image)}
             alt={info.name}
             className="bldr-featured-img"
+            data-builder-part="image"
           />
           <div className="bldr-featured-body">
-            <span className="bldr-kicker">{strProp(props, "kicker", "FEATURED")}</span>
-            <h3>{info.name}</h3>
-            <p className="muted">
+            <span className="bldr-kicker" data-builder-part="kicker">
+              {strProp(props, "kicker", "FEATURED")}
+            </span>
+            <h3 data-builder-part="title">{info.name}</h3>
+            <p className="muted" data-builder-part="description">
               {info.description || `${info.brand} · ${info.categoryLabel}`}
             </p>
-            <div className="bldr-featured-price-row">
+            <div className="bldr-featured-price-row" data-builder-part="price">
               <strong>{usd(info.price)}</strong>
               {info.compareAtPrice && info.compareAtPrice > info.price ? (
                 <del className="muted">{usd(info.compareAtPrice)}</del>
@@ -980,9 +1018,10 @@ export function renderElementContent(
               <button
                 type="button"
                 className="btn primary"
+                data-builder-part="button"
                 onClick={(e) => {
                   if (isEdit) {
-                    e.stopPropagation();
+                    e.preventDefault();
                     ctx.onNotify?.(`Preview cart action for "${info.name}"`);
                     return;
                   }
@@ -1037,7 +1076,7 @@ export function renderElementContent(
           style={compiledStyle}
           onClick={(e) => {
             if (isEdit) {
-              e.stopPropagation();
+              e.preventDefault();
               ctx.onNotify?.(
                 resolved
                   ? `Preview: Added ${resolved.info.name} to cart`
@@ -1049,7 +1088,7 @@ export function renderElementContent(
           }}
         >
           <ShoppingBag size={14} />
-          <span>{label}</span>
+          <span data-builder-part="button">{label}</span>
         </button>
       );
     }
@@ -1065,18 +1104,18 @@ export function renderElementContent(
           style={compiledStyle}
         >
           <div className="bldr-product-info-head">
-            <span className="muted">
+            <span className="muted" data-builder-part="meta">
               {info.brand} · {info.categoryLabel}
             </span>
-            <span className="bldr-rating">
+            <span className="bldr-rating" data-builder-part="rating">
               <Star size={12} fill="currentColor" /> {info.rating.toFixed(1)}
             </span>
           </div>
           {boolProp(props, "showDescription", true) && info.description ? (
-            <p>{info.description}</p>
+            <p data-builder-part="description">{info.description}</p>
           ) : null}
           {boolProp(props, "showStock", true) ? (
-            <small className="bldr-stock-pill">
+            <small className="bldr-stock-pill" data-builder-part="stock">
               {info.stock > 0 ? `${info.stock} in stock & ready to ship` : "Out of stock"}
             </small>
           ) : null}
@@ -1093,16 +1132,21 @@ export function renderElementContent(
         >
           <div>
             {strProp(props, "kicker") ? (
-              <span className="bldr-kicker">{strProp(props, "kicker")}</span>
+              <span className="bldr-kicker" data-builder-part="kicker">
+                {strProp(props, "kicker")}
+              </span>
             ) : null}
-            <h3>{strProp(props, "heading", "Special Offer")}</h3>
-            {strProp(props, "copy") ? <p>{strProp(props, "copy")}</p> : null}
+            <h3 data-builder-part="heading">{strProp(props, "heading", "Special Offer")}</h3>
+            {strProp(props, "copy") ? (
+              <p data-builder-part="copy">{strProp(props, "copy")}</p>
+            ) : null}
           </div>
           {strProp(props, "actionLabel") ? (
             <Link
               href={sanitizeUrl(props.actionUrl, "/store/shop")}
               onClick={stopLinkInEdit}
               className="btn primary"
+              data-builder-part="action"
             >
               {strProp(props, "actionLabel")} <ArrowRight size={14} />
             </Link>

@@ -133,4 +133,62 @@ class EditorOperationValidatorTest {
         assertEquals(1, ok.size());
         assertEquals("hero-inner", ok.get(0).get("parentId"));
     }
+
+    @Test
+    void normalizesPartStyleOperationsAndRejectsInvalidPartOrScope() {
+        List<Map<String, Object>> ops = validator.validateAndNormalize(
+                List.of(
+                        Map.of(
+                                "type", "update_part_styles",
+                                "nodeId", "best-grid",
+                                "part", "card",
+                                "breakpoint", "base",
+                                "styles", Map.of("borderRadius", "16px", "backgroundColor", "#F8FAFC")
+                        ),
+                        Map.of(
+                                "type", "reset_part_style_keys",
+                                "nodeId", "best-grid",
+                                "part", "price",
+                                "breakpoint", "mobile",
+                                "keys", List.of("color")
+                        )
+                ),
+                "element",
+                Set.of("best-sec", "best-grid"),
+                Set.of("best-sec", "best-grid", "other-sec")
+        );
+        assertEquals(2, ops.size());
+        assertEquals("card", ops.get(0).get("part"));
+        assertEquals("price", ops.get(1).get("part"));
+
+        assertThrows(
+                ApiException.class,
+                () -> validator.validateAndNormalize(
+                        List.of(Map.of(
+                                "type", "update_part_styles",
+                                "nodeId", "best-grid",
+                                "part", "invalid part!",
+                                "styles", Map.of("color", "#000000")
+                        )),
+                        "element",
+                        Set.of("best-grid"),
+                        Set.of("best-grid")
+                )
+        );
+
+        assertThrows(
+                ApiException.class,
+                () -> validator.validateAndNormalize(
+                        List.of(Map.of(
+                                "type", "update_part_styles",
+                                "nodeId", "other-sec",
+                                "part", "card",
+                                "styles", Map.of("color", "#000000")
+                        )),
+                        "element",
+                        Set.of("best-grid"),
+                        Set.of("best-grid", "other-sec")
+                )
+        );
+    }
 }

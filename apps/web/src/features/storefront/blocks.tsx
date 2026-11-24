@@ -61,24 +61,28 @@ export function ProductCard({ product }: { product: StoreProductItem }) {
   const p = normalizeProduct(product);
   const isLow = p.stock > 0 && p.stock <= 5;
   return (
-    <Link className="product-card" href={p.href}>
-      <div className="product-card-img-wrap">
-        <img src={p.image} alt={p.name} />
+    <Link className="product-card" data-builder-part="card" href={p.href}>
+      <div className="product-card-img-wrap" data-builder-part="image_wrap">
+        <img src={p.image} alt={p.name} data-builder-part="image" />
         {isLow ? (
-          <span className="product-card-badge">Only {p.stock} left</span>
+          <span className="product-card-badge" data-builder-part="badge">
+            Only {p.stock} left
+          </span>
         ) : p.compareAtPrice && p.compareAtPrice > p.price ? (
-          <span className="product-card-badge">Sale</span>
+          <span className="product-card-badge" data-builder-part="badge">
+            Sale
+          </span>
         ) : null}
       </div>
       <div className="product-card-meta">
-        <strong>{p.name}</strong>
-        <span>{usd(p.price)}</span>
+        <strong data-builder-part="title">{p.name}</strong>
+        <span data-builder-part="price">{usd(p.price)}</span>
       </div>
       <div className="product-card-sub">
-        <span>
+        <span data-builder-part="subtitle">
           {p.brand} · {p.categoryLabel}
         </span>
-        <span className="product-card-rating">
+        <span className="product-card-rating" data-builder-part="rating">
           <Star size={11} fill="currentColor" aria-hidden="true" />
           {p.rating.toFixed(1)}
         </span>

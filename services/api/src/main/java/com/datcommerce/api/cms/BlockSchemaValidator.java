@@ -19,6 +19,7 @@ public class BlockSchemaValidator {
 
     public static final int MAX_V2_NODES = 250;
     public static final int MAX_V2_DEPTH = 12;
+    private static final int MAX_PARTS_PER_NODE = 30;
 
     public static final Set<String> ALLOWED_TYPES = Set.of(
             "hero",
@@ -85,6 +86,7 @@ public class BlockSchemaValidator {
     private static final Set<String> STYLE_BREAKPOINTS = Set.of("base", "tablet", "mobile", "hover");
 
     private static final Pattern SAFE_ID_PATTERN = Pattern.compile("^[A-Za-z0-9_-]{1,80}$");
+    private static final Pattern SAFE_PART_PATTERN = Pattern.compile("^[a-z0-9_-]{1,40}$");
     private static final Pattern SAFE_CLASS_PATTERN = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
     private static final Pattern SAFE_ATTR_NAME_PATTERN = Pattern.compile("^(aria-[a-z0-9-]+|data-[a-z0-9-]+|role|id|title|tabindex)$");
     private static final Pattern DANGEROUS_HTML = Pattern.compile(
@@ -226,6 +228,7 @@ public class BlockSchemaValidator {
         );
 
         Map<String, Object> styles = normalizeResponsiveStyles(rawMap.get("styles"), id);
+        Map<String, Object> partStyles = normalizePartStyles(rawMap.get("partStyles"), id);
         Map<String, Object> visibility = normalizeVisibility(rawMap.get("visibility"), id);
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -237,6 +240,9 @@ public class BlockSchemaValidator {
         out.put("locked", locked);
         out.put("props", props);
         out.put("styles", styles);
+        if (!partStyles.isEmpty()) {
+            out.put("partStyles", partStyles);
+        }
         if (!visibility.isEmpty()) {
             out.put("visibility", visibility);
         }
@@ -363,6 +369,41 @@ public class BlockSchemaValidator {
         }
 
         return props;
+    }
+
+    public static Map<String, Object> normalizePartStyles(Object rawPartStylesObj, String id) {
+        if (rawPartStylesObj == null) {
+            return Map.of();
+        }
+        if (!(rawPartStylesObj instanceof Map<?, ?> rawParts)) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, "Element '" + id + "' partStyles must be an object");
+        }
+        if (rawParts.size() > MAX_PARTS_PER_NODE) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "Element '" + id + "' exceeds maximum " + MAX_PARTS_PER_NODE + " styled sub-parts"
+            );
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawParts.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) {
+                continue;
+            }
+            String partKey = String.valueOf(entry.getKey()).trim().toLowerCase(Locale.ROOT);
+            if (!SAFE_PART_PATTERN.matcher(partKey).matches()) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_ERROR,
+                        "Element '" + id + "' has invalid partStyles key: " + partKey
+                );
+            }
+            Map<String, Object> normalizedPart = normalizeResponsiveStyles(entry.getValue(), id + ".partStyles." + partKey);
+            boolean hasAnyDecl = normalizedPart.values().stream()
+                    .anyMatch(v -> v instanceof Map<?, ?> bpMap && !bpMap.isEmpty());
+            if (hasAnyDecl) {
+                out.put(partKey, normalizedPart);
+            }
+        }
+        return out;
     }
 
     public static Map<String, Object> normalizeResponsiveStyles(Object rawStylesObj, String id) {

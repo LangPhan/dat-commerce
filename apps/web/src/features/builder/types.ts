@@ -155,6 +155,7 @@ export type ElementNode = {
   locked: boolean;
   props: Record<string, unknown>;
   styles: ResponsiveStyles;
+  partStyles?: Record<string, ResponsiveStyles>;
   visibility?: ResponsiveVisibility;
   children?: ElementNode[];
   customCssClasses?: string[];
@@ -178,6 +179,20 @@ export type EditorOperation =
   | {
       type: "reset_style_keys";
       nodeId: string;
+      breakpoint: "base" | "tablet" | "mobile" | "hover";
+      keys: StylePropertyKey[];
+    }
+  | {
+      type: "update_part_styles";
+      nodeId: string;
+      part: string;
+      breakpoint?: "base" | "tablet" | "mobile" | "hover";
+      styles: StyleValues;
+    }
+  | {
+      type: "reset_part_style_keys";
+      nodeId: string;
+      part: string;
       breakpoint: "base" | "tablet" | "mobile" | "hover";
       keys: StylePropertyKey[];
     }
@@ -253,6 +268,16 @@ export type AiPreviewSession = {
   diffs: DiffRow[];
   previewNodes: ElementNode[];
   beforeNodes: ElementNode[];
+  viewMode?: "after" | "before";
+};
+
+export type LastAppliedAiCompare = {
+  historyEntryId: string;
+  summary: string;
+  model?: string;
+  beforeNodes: ElementNode[];
+  afterNodes: ElementNode[];
+  viewingBefore: boolean;
 };
 
 export type SaveStatus = "saved" | "unsaved" | "saving" | "error";

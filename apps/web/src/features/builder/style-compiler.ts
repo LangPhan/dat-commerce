@@ -119,9 +119,10 @@ function escapeSelectorAttr(id: string): string {
  */
 export function compileLivePageCss(
   nodes: ElementNode[],
-  opts?: { hoverOnly?: boolean }
+  opts?: { hoverOnly?: boolean; forceViewport?: ViewportMode }
 ): string {
   const hoverOnly = Boolean(opts?.hoverOnly);
+  const forceViewport = opts?.forceViewport;
   const baseRules: string[] = [];
   const hoverRules: string[] = [];
   const tabletRules: string[] = [];
@@ -170,6 +171,38 @@ export function compileLivePageCss(
             }
           }
         }
+
+        if (node.partStyles) {
+          for (const [partKey, partResp] of Object.entries(node.partStyles)) {
+            const safePart = escapeSelectorAttr(partKey);
+            if (!safePart || !partResp) continue;
+            const partSelector = `${selector} [data-builder-part="${safePart}"][data-builder-part="${safePart}"]`;
+            if (forceViewport) {
+              const { resolved } = resolveStylesForViewport(partResp, forceViewport);
+              const resolvedDecl = serializeDeclarations(resolved);
+              if (resolvedDecl) {
+                baseRules.push(`${partSelector} { ${resolvedDecl} }`);
+              }
+            } else {
+              const partBase = serializeDeclarations(partResp.base || {});
+              if (partBase) {
+                baseRules.push(`${partSelector} { ${partBase} }`);
+              }
+              const partTablet = serializeDeclarations(partResp.tablet || {});
+              if (partTablet) {
+                tabletRules.push(`  ${partSelector} { ${partTablet} }`);
+              }
+              const partMobile = serializeDeclarations(partResp.mobile || {});
+              if (partMobile) {
+                mobileRules.push(`  ${partSelector} { ${partMobile} }`);
+              }
+            }
+            const partHover = serializeDeclarations(partResp.hover || {});
+            if (partHover) {
+              hoverRules.push(`${partSelector}:hover { ${partHover} }`);
+            }
+          }
+        }
       }
       if (node.children?.length) {
         visit(node.children);
@@ -189,4 +222,71 @@ export function compileLivePageCss(
     sections.push(`@media (max-width: 640px) {\n${mobileRules.join("\n")}\n}`);
   }
   return sections.join("\n");
+}
+
+export function compileEditPartCss(
+  nodes: ElementNode[],
+  viewport: ViewportMode,
+  highlight?: {
+    selectedPart?: { nodeId: string; partKey: string } | null;
+    hoveredPart?: { nodeId: string; partKey: string } | null;
+  }
+): string {
+  const rules: string[] = [];
+
+  const visit = (list: ElementNode[]) => {
+    for (const node of list) {
+      const safeId = escapeSelectorAttr(node.id);
+      if (safeId && node.partStyles) {
+        const nodeSelector = `.bldr-page-root [data-editor-node-id="${safeId}"][data-editor-node-id="${safeId}"]`;
+        for (const [partKey, partResp] of Object.entries(node.partStyles)) {
+          const safePart = escapeSelectorAttr(partKey);
+          if (!safePart || !partResp) continue;
+          const partSelector = `${nodeSelector} [data-builder-part="${safePart}"][data-builder-part="${safePart}"]`;
+          const { resolved } = resolveStylesForViewport(partResp, viewport);
+          const decl = serializeDeclarations(resolved);
+          if (decl) {
+            rules.push(`${partSelector} { ${decl} }`);
+          }
+          const hoverDecl = serializeDeclarations(partResp.hover || {});
+          if (hoverDecl) {
+            rules.push(`${partSelector}:hover { ${hoverDecl} }`);
+          }
+        }
+      }
+      if (node.children?.length) {
+        visit(node.children);
+      }
+    }
+  };
+
+  visit(nodes);
+
+  const hovered = highlight?.hoveredPart;
+  const selected = highlight?.selectedPart;
+  if (
+    hovered &&
+    (!selected ||
+      hovered.nodeId !== selected.nodeId ||
+      hovered.partKey !== selected.partKey)
+  ) {
+    const hId = escapeSelectorAttr(hovered.nodeId);
+    const hPart = escapeSelectorAttr(hovered.partKey);
+    if (hId && hPart) {
+      rules.push(
+        `.bldr-page-root [data-editor-node-id="${hId}"][data-editor-node-id="${hId}"] [data-builder-part="${hPart}"] { outline: 1.5px dashed rgba(91, 70, 232, 0.82); outline-offset: 1px; }`
+      );
+    }
+  }
+  if (selected) {
+    const sId = escapeSelectorAttr(selected.nodeId);
+    const sPart = escapeSelectorAttr(selected.partKey);
+    if (sId && sPart) {
+      rules.push(
+        `.bldr-page-root [data-editor-node-id="${sId}"][data-editor-node-id="${sId}"] [data-builder-part="${sPart}"] { outline: 2px solid #5b46e8; outline-offset: 1px; box-shadow: 0 0 0 3px rgba(91, 70, 232, 0.14); }`
+      );
+    }
+  }
+
+  return rules.join("\n");
 }

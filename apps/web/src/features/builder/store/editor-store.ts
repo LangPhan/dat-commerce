@@ -10,6 +10,7 @@ import {
   findParent,
 } from "../operations";
 import { createElementNode } from "../registry/definitions";
+import { isValidPartKey } from "../parts";
 import type {
   AiChatTurn,
   AiChatTurnStatus,
@@ -19,6 +20,7 @@ import type {
   ElementNode,
   ElementType,
   HistoryEntry,
+  LastAppliedAiCompare,
   SaveStatus,
   StylePropertyKey,
   StyleValues,
@@ -41,6 +43,8 @@ export interface EditorStoreState {
   nodes: ElementNode[];
   selectedIds: string[];
   hoveredId: string | null;
+  selectedPart: { nodeId: string; partKey: string } | null;
+  hoveredPart: { nodeId: string; partKey: string } | null;
   expandedLayerIds: Record<string, boolean>;
 
   themeTokens: ThemeTokens | null;
@@ -61,6 +65,7 @@ export interface EditorStoreState {
   historyIndex: number;
 
   aiPreview: AiPreviewSession | null;
+  lastAppliedAiCompare: LastAppliedAiCompare | null;
   aiBarOpen: boolean;
   aiDraftPrompt: string;
   aiScope: AiScopeMode;
@@ -95,7 +100,9 @@ export interface EditorStoreState {
   markThemeSaved: () => void;
 
   selectNode: (id: string | null, opts?: { additive?: boolean }) => void;
+  selectPart: (nodeId: string, partKey: string | null) => void;
   setHoveredId: (id: string | null) => void;
+  setHoveredPart: (part: { nodeId: string; partKey: string } | null) => void;
   toggleLayerExpanded: (id: string) => void;
   expandAncestors: (ids: string[]) => void;
 
@@ -129,6 +136,19 @@ export interface EditorStoreState {
     keys: StylePropertyKey[],
     breakpoint: "base" | "tablet" | "mobile" | "hover"
   ) => void;
+  updateNodePartStyles: (
+    nodeId: string,
+    partKey: string,
+    styles: StyleValues,
+    breakpoint?: "base" | "tablet" | "mobile" | "hover",
+    summary?: string
+  ) => void;
+  resetNodePartStyleKeys: (
+    nodeId: string,
+    partKey: string,
+    keys: StylePropertyKey[],
+    breakpoint: "base" | "tablet" | "mobile" | "hover"
+  ) => void;
   toggleNodeVisibility: (nodeId: string) => void;
   toggleNodeLock: (nodeId: string) => void;
   renameNode: (nodeId: string, label: string) => void;
@@ -138,8 +158,11 @@ export interface EditorStoreState {
   jumpToHistory: (index: number) => void;
 
   startAiPreview: (session: AiPreviewSession) => void;
+  setAiPreviewViewMode: (mode: "after" | "before") => void;
   applyAiPreview: () => void;
   revertAiPreview: () => void;
+  setLastAppliedCompareViewingBefore: (viewingBefore: boolean) => void;
+  dismissLastAppliedCompare: () => void;
   setAiBarOpen: (open: boolean) => void;
   toggleAiBar: () => void;
   setAiDraftPrompt: (prompt: string) => void;
@@ -172,6 +195,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
   nodes: [],
   selectedIds: [],
   hoveredId: null,
+  selectedPart: null,
+  hoveredPart: null,
   expandedLayerIds: {},
 
   themeTokens: null,
@@ -192,6 +217,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
   historyIndex: -1,
 
   aiPreview: null,
+  lastAppliedAiCompare: null,
   aiBarOpen: true,
   aiDraftPrompt: "",
   aiScope: "element",
@@ -216,6 +242,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       nodes: params.nodes,
       selectedIds: firstId ? [firstId] : [],
       hoveredId: null,
+      selectedPart: null,
+      hoveredPart: null,
       expandedLayerIds: expanded,
       dirty: false,
       saveStatus: "saved",
@@ -223,6 +251,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       history: [],
       historyIndex: -1,
       aiPreview: null,
+      lastAppliedAiCompare: null,
     });
   },
 
@@ -260,18 +289,32 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
 
   selectNode: (id, opts) =>
     set((s) => {
-      if (!id) return { selectedIds: [] };
+      if (!id) return { selectedIds: [], selectedPart: null };
       if (opts?.additive) {
         const exists = s.selectedIds.includes(id);
         const nextIds = exists
           ? s.selectedIds.filter((x) => x !== id)
           : [...s.selectedIds, id];
-        return { selectedIds: nextIds };
+        return {
+          selectedIds: nextIds,
+          selectedPart:
+            nextIds.length === 1 && s.selectedPart?.nodeId === nextIds[0]
+              ? s.selectedPart
+              : null,
+        };
       }
-      return { selectedIds: [id] };
+      return { selectedIds: [id], selectedPart: null };
+    }),
+
+  selectPart: (nodeId, partKey) =>
+    set({
+      selectedIds: [nodeId],
+      selectedPart: partKey ? { nodeId, partKey } : null,
     }),
 
   setHoveredId: (hoveredId) => set({ hoveredId }),
+
+  setHoveredPart: (hoveredPart) => set({ hoveredPart }),
 
   toggleLayerExpanded: (id) =>
     set((s) => ({
@@ -331,13 +374,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       selectedIds: validNextSelected,
       history: appended,
       historyIndex: appended.length - 1,
+      selectedPart:
+        state.selectedPart &&
+        validNextSelected.length === 1 &&
+        validNextSelected[0] === state.selectedPart.nodeId
+          ? state.selectedPart
+          : null,
       dirty: true,
       saveStatus: "unsaved",
       aiPreview: null,
-  aiBarOpen: true,
-  aiDraftPrompt: "",
-  aiScope: "element",
-  aiChatByPage: {},
+      lastAppliedAiCompare: null,
     });
     return true;
   },
@@ -372,13 +418,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       selectedIds: validNextSelected,
       history: appended,
       historyIndex: appended.length - 1,
+      selectedPart:
+        state.selectedPart &&
+        validNextSelected.length === 1 &&
+        validNextSelected[0] === state.selectedPart.nodeId
+          ? state.selectedPart
+          : null,
       dirty: true,
       saveStatus: "unsaved",
       aiPreview: null,
-  aiBarOpen: true,
-  aiDraftPrompt: "",
-  aiScope: "element",
-  aiChatByPage: {},
+      lastAppliedAiCompare: null,
     });
     return true;
   },
@@ -503,6 +552,24 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     );
   },
 
+  updateNodePartStyles: (nodeId, partKey, styles, breakpoint = "base", summary) => {
+    const node = findNode(get().nodes, nodeId);
+    if (!node || node.locked || !isValidPartKey(partKey)) return;
+    get().executeOperation(
+      { type: "update_part_styles", nodeId, part: partKey, breakpoint, styles },
+      { summary: summary || `Style ${node.label} (${partKey})` }
+    );
+  },
+
+  resetNodePartStyleKeys: (nodeId, partKey, keys, breakpoint) => {
+    const node = findNode(get().nodes, nodeId);
+    if (!node || node.locked || !isValidPartKey(partKey) || !keys.length) return;
+    get().executeOperation(
+      { type: "reset_part_style_keys", nodeId, part: partKey, breakpoint, keys },
+      { summary: `Reset ${breakpoint} styles on ${node.label} (${partKey})` }
+    );
+  },
+
   toggleNodeVisibility: (nodeId) => {
     const node = findNode(get().nodes, nodeId);
     if (!node) return;
@@ -541,9 +608,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     set({
       nodes: entry.beforeNodes,
       selectedIds: entry.beforeSelectedIds,
+      selectedPart:
+        state.selectedPart &&
+        entry.beforeSelectedIds.length === 1 &&
+        entry.beforeSelectedIds[0] === state.selectedPart.nodeId
+          ? state.selectedPart
+          : null,
       historyIndex: state.historyIndex - 1,
       dirty: true,
       saveStatus: "unsaved",
+      lastAppliedAiCompare: null,
     });
   },
 
@@ -554,9 +628,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     set({
       nodes: entry.afterNodes,
       selectedIds: entry.afterSelectedIds,
+      selectedPart:
+        state.selectedPart &&
+        entry.afterSelectedIds.length === 1 &&
+        entry.afterSelectedIds[0] === state.selectedPart.nodeId
+          ? state.selectedPart
+          : null,
       historyIndex: state.historyIndex + 1,
       dirty: true,
       saveStatus: "unsaved",
+      lastAppliedAiCompare: null,
     });
   },
 
@@ -569,9 +650,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       set({
         nodes: first.beforeNodes,
         selectedIds: first.beforeSelectedIds,
+        selectedPart: null,
         historyIndex: -1,
         dirty: true,
         saveStatus: "unsaved",
+        lastAppliedAiCompare: null,
       });
       return;
     }
@@ -579,19 +662,36 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     set({
       nodes: target.afterNodes,
       selectedIds: target.afterSelectedIds,
+      selectedPart: null,
       historyIndex: index,
       dirty: true,
       saveStatus: "unsaved",
+      lastAppliedAiCompare: null,
     });
   },
 
-  startAiPreview: (session) => set({ aiPreview: session }),
+  startAiPreview: (session) =>
+    set({
+      aiPreview: { ...session, viewMode: session.viewMode ?? "after" },
+      lastAppliedAiCompare: null,
+    }),
+
+  setAiPreviewViewMode: (viewMode) =>
+    set((s) => ({
+      aiPreview: s.aiPreview ? { ...s.aiPreview, viewMode } : null,
+    })),
 
   applyAiPreview: () => {
     const state = get();
     const preview = state.aiPreview;
     if (!preview) return;
     const pageKey = state.pageId || state.pageSlug || "home";
+    const nextSelectedIds = preview.targetNodeIds.filter((id) =>
+      Boolean(findNode(preview.previewNodes, id))
+    );
+    const resolvedSelectedIds = nextSelectedIds.length
+      ? nextSelectedIds
+      : state.selectedIds;
     const entry: HistoryEntry = {
       id: makeHistoryId(),
       timestamp: new Date().toISOString(),
@@ -601,9 +701,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       beforeNodes: state.nodes,
       afterNodes: preview.previewNodes,
       beforeSelectedIds: state.selectedIds,
-      afterSelectedIds: preview.targetNodeIds.filter((id) =>
-        Boolean(findNode(preview.previewNodes, id))
-      ),
+      afterSelectedIds: resolvedSelectedIds,
     };
     const truncated = state.history.slice(0, state.historyIndex + 1);
     const appended = [...truncated, entry].slice(-MAX_HISTORY);
@@ -615,20 +713,41 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
     );
     set({
       nodes: preview.previewNodes,
-      selectedIds: entry.afterSelectedIds.length
-        ? entry.afterSelectedIds
-        : state.selectedIds,
+      selectedIds: resolvedSelectedIds,
+      selectedPart:
+        state.selectedPart &&
+        resolvedSelectedIds.length === 1 &&
+        resolvedSelectedIds[0] === state.selectedPart.nodeId
+          ? state.selectedPart
+          : null,
       history: appended,
       historyIndex: appended.length - 1,
       dirty: true,
       saveStatus: "unsaved",
       aiPreview: null,
+      lastAppliedAiCompare: {
+        historyEntryId: entry.id,
+        summary: preview.summary,
+        model: preview.model,
+        beforeNodes: state.nodes,
+        afterNodes: preview.previewNodes,
+        viewingBefore: false,
+      },
       aiChatByPage: {
         ...state.aiChatByPage,
         [pageKey]: nextTurns,
       },
     });
   },
+
+  setLastAppliedCompareViewingBefore: (viewingBefore) =>
+    set((s) => ({
+      lastAppliedAiCompare: s.lastAppliedAiCompare
+        ? { ...s.lastAppliedAiCompare, viewingBefore }
+        : null,
+    })),
+
+  dismissLastAppliedCompare: () => set({ lastAppliedAiCompare: null }),
 
   revertAiPreview: () =>
     set((state) => {

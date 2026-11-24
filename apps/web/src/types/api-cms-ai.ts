@@ -286,6 +286,8 @@ export type EditorSuggestRequest = {
   pageOutline?: Array<Record<string, unknown>>;
   themeTokens?: unknown;
   history?: EditorChatHistoryItem[];
+  selectedPart?: string;
+  editableParts?: Record<string, string[]>;
 };
 
 export type EditorSuggestResponse = {

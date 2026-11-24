@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -17,10 +18,13 @@ import org.springframework.util.StringUtils;
 public class EditorOperationValidator {
 
     private static final int MAX_OPERATIONS = 20;
+    private static final Pattern SAFE_PART_PATTERN = Pattern.compile("^[a-z0-9_-]{1,40}$");
     private static final Set<String> ALLOWED_OP_TYPES = Set.of(
             "update_props",
             "update_styles",
             "reset_style_keys",
+            "update_part_styles",
+            "reset_part_style_keys",
             "update_visibility",
             "update_meta",
             "insert_node",
@@ -129,6 +133,60 @@ public class EditorOperationValidator {
                         continue;
                     }
                     opOut.put("nodeId", nodeId);
+                    opOut.put("breakpoint", bp);
+                    opOut.put("keys", keys);
+                }
+                case "update_part_styles" -> {
+                    String nodeId = requireTargetNode(raw.get("nodeId"), normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    String part = str(raw.get("part")).toLowerCase(Locale.ROOT);
+                    if (!SAFE_PART_PATTERN.matcher(part).matches()) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid AI sub-element part key: " + part);
+                    }
+                    String bp = str(raw.get("breakpoint")).toLowerCase(Locale.ROOT);
+                    if (!StringUtils.hasText(bp)) {
+                        bp = "base";
+                    }
+                    if (!ALLOWED_BREAKPOINTS.contains(bp)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid AI style breakpoint: " + bp);
+                    }
+                    Map<String, Object> rawStyles = mapOf(raw.get("styles"), "update_part_styles.styles");
+                    Map<String, String> safeStyles = BlockSchemaValidator.sanitizeStyleMap(
+                            rawStyles,
+                            "ai.update_part_styles." + part + "." + bp
+                    );
+                    if (!safeStyles.isEmpty()) {
+                        opOut.put("nodeId", nodeId);
+                        opOut.put("part", part);
+                        opOut.put("breakpoint", bp);
+                        opOut.put("styles", safeStyles);
+                    } else {
+                        continue;
+                    }
+                }
+                case "reset_part_style_keys" -> {
+                    String nodeId = requireTargetNode(raw.get("nodeId"), normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    String part = str(raw.get("part")).toLowerCase(Locale.ROOT);
+                    if (!SAFE_PART_PATTERN.matcher(part).matches()) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid AI sub-element part key: " + part);
+                    }
+                    String bp = str(raw.get("breakpoint")).toLowerCase(Locale.ROOT);
+                    if (!ALLOWED_BREAKPOINTS.contains(bp)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid AI style breakpoint: " + bp);
+                    }
+                    List<String> keys = new ArrayList<>();
+                    if (raw.get("keys") instanceof List<?> rawKeys) {
+                        for (Object k : rawKeys) {
+                            String ks = str(k);
+                            if (BlockSchemaValidator.ALLOWED_STYLE_PROPERTIES.contains(ks)) {
+                                keys.add(ks);
+                            }
+                        }
+                    }
+                    if (keys.isEmpty()) {
+                        continue;
+                    }
+                    opOut.put("nodeId", nodeId);
+                    opOut.put("part", part);
                     opOut.put("breakpoint", bp);
                     opOut.put("keys", keys);
                 }

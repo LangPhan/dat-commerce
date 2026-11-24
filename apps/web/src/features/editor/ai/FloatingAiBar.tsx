@@ -12,6 +12,7 @@ import {
   Sparkles,
   Trash2,
   Wand2,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModelSelector } from "@/components/shared/ai-components";
@@ -33,6 +34,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AiModelSettingsPanel } from "@/features/admin/ai-settings";
+import {
+  collectEditablePartsMap,
+  getElementPart,
+} from "@/features/builder/parts";
 import {
   applyOperations,
   computeNodeDiffs,
@@ -60,7 +65,37 @@ const SCOPE_OPTIONS: { value: AiScopeMode; label: string }[] = [
   { value: "page", label: "Entire Page" },
 ];
 
-function quickChipsForNode(node: ElementNode | null): string[] {
+function quickChipsForNode(
+  node: ElementNode | null,
+  partKey?: string | null
+): string[] {
+  if (node && partKey) {
+    const partDef = getElementPart(node.type, partKey);
+    if (partDef) {
+      return [
+        `Change ${partDef.label} text color`,
+        `Round ${partDef.label} corners to 14px`,
+        `Add subtle shadow to ${partDef.label}`,
+        `Increase ${partDef.label} font size`,
+      ];
+    }
+  }
+  if (node && (node.type === "product_grid" || node.type === "product_carousel")) {
+    return [
+      "Round product cards 16px & light bg",
+      "Make prices forest green #18794E",
+      "Highlight Sale badges in amber",
+      "Center titles & stack 2 cols on mobile",
+    ];
+  }
+  if (node?.type === "form") {
+    return [
+      "Round inputs & soften borders",
+      "Make submit button pill dark green",
+      "Increase field label contrast",
+      "Add spacious form spacing",
+    ];
+  }
   if (!node) {
     return [
       "Make the hero section look more premium",
@@ -119,16 +154,25 @@ export function FloatingAiBar({
   const viewport = useEditorStore((s) => s.viewport);
   const nodes = useEditorStore((s) => s.nodes);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  const selectedPart = useEditorStore((s) => s.selectedPart);
   const themeTokens = useEditorStore((s) => s.themeTokens);
   const aiPreview = useEditorStore((s) => s.aiPreview);
+  const lastAppliedAiCompare = useEditorStore((s) => s.lastAppliedAiCompare);
   const aiBarOpen = useEditorStore((s) => s.aiBarOpen);
   const prompt = useEditorStore((s) => s.aiDraftPrompt);
   const scope = useEditorStore((s) => s.aiScope);
   const aiChatByPage = useEditorStore((s) => s.aiChatByPage);
 
   const startAiPreview = useEditorStore((s) => s.startAiPreview);
+  const setAiPreviewViewMode = useEditorStore((s) => s.setAiPreviewViewMode);
   const applyAiPreview = useEditorStore((s) => s.applyAiPreview);
   const revertAiPreview = useEditorStore((s) => s.revertAiPreview);
+  const setLastAppliedCompareViewingBefore = useEditorStore(
+    (s) => s.setLastAppliedCompareViewingBefore
+  );
+  const dismissLastAppliedCompare = useEditorStore(
+    (s) => s.dismissLastAppliedCompare
+  );
   const setAiBarOpen = useEditorStore((s) => s.setAiBarOpen);
   const setAiDraftPrompt = useEditorStore((s) => s.setAiDraftPrompt);
   const setAiScope = useEditorStore((s) => s.setAiScope);
@@ -185,7 +229,19 @@ export function FloatingAiBar({
     return entries.slice(0, 4);
   }, [primaryNode, viewport]);
 
-  const quickChips = useMemo(() => quickChipsForNode(primaryNode), [primaryNode]);
+  const activePartKey =
+    primaryNode && selectedPart?.nodeId === primaryNode.id
+      ? selectedPart.partKey
+      : null;
+  const activePartDef =
+    primaryNode && activePartKey
+      ? getElementPart(primaryNode.type, activePartKey)
+      : null;
+
+  const quickChips = useMemo(
+    () => quickChipsForNode(primaryNode, activePartKey),
+    [primaryNode, activePartKey]
+  );
 
   const suggestMutation = useMutation({
     mutationFn: async (vars: {
@@ -193,6 +249,7 @@ export function FloatingAiBar({
       targetNode: ElementNode | null;
       reqScope: AiScopeMode;
       reqSelectedIds: string[];
+      reqSelectedPart: string | null;
       historyPayload: EditorChatHistoryItem[];
     }) => {
       const path = vars.targetNode ? findNodePath(nodes, vars.targetNode.id) : [];
@@ -207,6 +264,12 @@ export function FloatingAiBar({
                   .map((id) => findNode(nodes, id))
                   .filter((n): n is ElementNode => n !== null)
               : vars.targetNode;
+      const subtreeList = Array.isArray(targetSubtree)
+        ? targetSubtree
+        : targetSubtree
+          ? [targetSubtree]
+          : [];
+      const editableParts = collectEditablePartsMap(subtreeList);
 
       const pageOutline = flattenTree(nodes).map((item) => ({
         id: item.node.id,
@@ -231,12 +294,19 @@ export function FloatingAiBar({
         pageOutline,
         themeTokens: themeTokens || undefined,
         history: vars.historyPayload,
+        selectedPart: vars.reqSelectedPart || undefined,
+        editableParts: Object.keys(editableParts).length
+          ? editableParts
+          : undefined,
       });
     },
     onSuccess: (res, vars) => {
       setErrorMsg(null);
+      const partLabel = vars.targetNode && vars.reqSelectedPart
+        ? getElementPart(vars.targetNode.type, vars.reqSelectedPart)?.label
+        : undefined;
       const targetLabel = vars.targetNode
-        ? vars.targetNode.label
+        ? `${vars.targetNode.label}${partLabel ? ` › ${partLabel}` : ""}`
         : `${pageSlug} (page)`;
       const normalizedOps = normalizeApiOperations(res.operations);
       const previewNodes = applyOperations(nodes, normalizedOps);
@@ -294,6 +364,7 @@ export function FloatingAiBar({
         diffs,
         previewNodes,
         beforeNodes: nodes,
+        viewMode: "after",
       });
     },
     onError: (err, vars) => {
@@ -342,6 +413,7 @@ export function FloatingAiBar({
       targetNode: primaryNode,
       reqScope: effectiveScope,
       reqSelectedIds: selectedIds,
+      reqSelectedPart: activePartKey,
       historyPayload,
     });
   };
@@ -395,6 +467,26 @@ export function FloatingAiBar({
               <Badge tone="accent">{aiPreview.model}</Badge>
             </div>
             <div className="ed-ai-preview-actions">
+              <div
+                className="ed-ai-compare-toggle"
+                role="group"
+                aria-label="Compare before and after AI changes"
+              >
+                <button
+                  type="button"
+                  className={aiPreview.viewMode === "before" ? "active" : undefined}
+                  onClick={() => setAiPreviewViewMode("before")}
+                >
+                  Before
+                </button>
+                <button
+                  type="button"
+                  className={aiPreview.viewMode !== "before" ? "active" : undefined}
+                  onClick={() => setAiPreviewViewMode("after")}
+                >
+                  After
+                </button>
+              </div>
               <Button size="sm" onClick={revertAiPreview}>
                 <RotateCcw size={12} /> Revert
               </Button>
@@ -437,6 +529,48 @@ export function FloatingAiBar({
                 <strong>{diff.after}</strong>
               </div>
             ))}
+          </div>
+        </div>
+      ) : !aiPreview && lastAppliedAiCompare ? (
+        <div
+          className="ed-ai-compare-strip"
+          role="region"
+          aria-label="Applied AI comparison"
+        >
+          <div className="ed-ai-compare-info">
+            <Sparkles size={13} />
+            <span>
+              Applied: <strong>{lastAppliedAiCompare.summary}</strong>
+            </span>
+          </div>
+          <div className="ed-ai-preview-actions">
+            <div
+              className="ed-ai-compare-toggle"
+              role="group"
+              aria-label="Compare applied AI before and after"
+            >
+              <button
+                type="button"
+                className={lastAppliedAiCompare.viewingBefore ? "active" : undefined}
+                onClick={() => setLastAppliedCompareViewingBefore(true)}
+              >
+                Before
+              </button>
+              <button
+                type="button"
+                className={!lastAppliedAiCompare.viewingBefore ? "active" : undefined}
+                onClick={() => setLastAppliedCompareViewingBefore(false)}
+              >
+                After
+              </button>
+            </div>
+            <IconButton
+              label="Dismiss comparison"
+              title="Close Before/After compare bar"
+              onClick={dismissLastAppliedCompare}
+            >
+              <X size={13} />
+            </IconButton>
           </div>
         </div>
       ) : null}
@@ -523,7 +657,11 @@ export function FloatingAiBar({
             </span>
             {primaryNode ? (
               <strong className="ed-ai-target">
-                {primaryNode.label} <small>#{primaryNode.type}</small>
+                {primaryNode.label}
+                {activePartDef ? ` › ${activePartDef.label}` : ""}{" "}
+                <small>
+                  {activePartDef?.repeating ? "syncs all" : `#${primaryNode.type}`}
+                </small>
               </strong>
             ) : (
               <strong className="ed-ai-target">

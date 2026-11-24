@@ -165,4 +165,49 @@ class BlockSchemaValidatorV2Test {
         Map<String, Object> cleanTokens = themeValidator.validateAndNormalize(rawTokens);
         assertTrue(cleanTokens.containsKey("spacing"));
     }
+
+    @Test
+    void normalizesAndRejectsUnsafePartStyles() {
+        Map<String, Object> grid = Map.of(
+                "id", "best-grid",
+                "type", "product_grid",
+                "label", "Best Sellers",
+                "props", Map.of("columns", 4, "limit", 8),
+                "styles", Map.of("base", Map.of()),
+                "partStyles", Map.of(
+                        "card", Map.of("base", Map.of("borderRadius", "16px", "backgroundColor", "#F8FAFC")),
+                        "price", Map.of("base", Map.of("color", "#18794E")),
+                        "empty_part", Map.of("base", Map.of())
+                )
+        );
+        Map<String, Object> clean = validator.validateAndNormalizeContent(Map.of(
+                "version", 2,
+                "nodes", List.of(grid)
+        ));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> nodes = (List<Map<String, Object>>) clean.get("nodes");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> partStyles = (Map<String, Object>) nodes.get(0).get("partStyles");
+        assertTrue(partStyles.containsKey("card"));
+        assertTrue(partStyles.containsKey("price"));
+        assertTrue(!partStyles.containsKey("empty_part"));
+
+        Map<String, Object> badKey = Map.of(
+                "id", "grid-bad-key",
+                "type", "product_grid",
+                "label", "Grid",
+                "props", Map.of(),
+                "partStyles", Map.of("bad key!", Map.of("base", Map.of("color", "#000000")))
+        );
+        assertThrows(ApiException.class, () -> validator.validateAndNormalizeContent(Map.of("version", 2, "nodes", List.of(badKey))));
+
+        Map<String, Object> unsafeCss = Map.of(
+                "id", "grid-bad-css",
+                "type", "product_grid",
+                "label", "Grid",
+                "props", Map.of(),
+                "partStyles", Map.of("card", Map.of("base", Map.of("backgroundImage", "url(javascript:alert(1))")))
+        );
+        assertThrows(ApiException.class, () -> validator.validateAndNormalizeContent(Map.of("version", 2, "nodes", List.of(unsafeCss))));
+    }
 }

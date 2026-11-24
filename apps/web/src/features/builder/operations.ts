@@ -3,12 +3,14 @@ import {
   sanitizeHtmlAttributes,
   sanitizeStyleValues,
 } from "./sanitizers";
+import { isValidPartKey } from "./parts";
 import {
   CONTAINER_ELEMENT_TYPES,
   type DiffRow,
   type EditorOperation,
   type ElementNode,
   type ElementType,
+  type ResponsiveStyles,
   type StylePropertyKey,
 } from "./types";
 
@@ -271,6 +273,13 @@ export function validateOperation(
       }
       return null;
     }
+    case "update_part_styles":
+    case "reset_part_style_keys": {
+      if (!isValidPartKey(op.part)) return `Invalid sub-element part '${op.part}'`;
+      const target = findNode(nodes, op.nodeId);
+      if (!target) return `Element '${op.nodeId}' not found`;
+      return null;
+    }
     case "duplicate_node":
     case "delete_node":
     case "update_props":
@@ -347,6 +356,75 @@ export function applyOperation(
             base: node.styles?.base || {},
             [bp]: current,
           },
+        };
+      });
+    }
+
+    case "update_part_styles": {
+      if (!isValidPartKey(op.part)) return nodes;
+      const bp = op.breakpoint || "base";
+      const sanitized = sanitizeStyleValues(op.styles as Record<string, unknown>);
+      return mapTree(nodes, op.nodeId, (node) => {
+        const prevParts = node.partStyles || {};
+        const prevPartResp: ResponsiveStyles = prevParts[op.part] || { base: {} };
+        const existing = prevPartResp[bp] || {};
+        const merged: Record<string, string | undefined> = { ...existing };
+        for (const [k, v] of Object.entries(op.styles)) {
+          if (v === "" || v === undefined) {
+            delete merged[k];
+          } else if (sanitized[k as StylePropertyKey] !== undefined) {
+            merged[k] = sanitized[k as StylePropertyKey];
+          }
+        }
+        const nextPartResp: ResponsiveStyles = {
+          ...prevPartResp,
+          base: prevPartResp.base || {},
+          [bp]: merged,
+        };
+        const hasAny = (["base", "tablet", "mobile", "hover"] as const).some(
+          (b) => Object.keys(nextPartResp[b] || {}).length > 0
+        );
+        const nextParts: Record<string, ResponsiveStyles> = { ...prevParts };
+        if (hasAny) {
+          nextParts[op.part] = nextPartResp;
+        } else {
+          delete nextParts[op.part];
+        }
+        return {
+          ...node,
+          partStyles: Object.keys(nextParts).length ? nextParts : undefined,
+        };
+      });
+    }
+
+    case "reset_part_style_keys": {
+      if (!isValidPartKey(op.part)) return nodes;
+      const bp = op.breakpoint;
+      return mapTree(nodes, op.nodeId, (node) => {
+        const prevParts = node.partStyles || {};
+        const prevPartResp = prevParts[op.part];
+        if (!prevPartResp) return node;
+        const current = { ...(prevPartResp[bp] || {}) };
+        for (const key of op.keys) {
+          delete current[key];
+        }
+        const nextPartResp: ResponsiveStyles = {
+          ...prevPartResp,
+          base: prevPartResp.base || {},
+          [bp]: current,
+        };
+        const hasAny = (["base", "tablet", "mobile", "hover"] as const).some(
+          (b) => Object.keys(nextPartResp[b] || {}).length > 0
+        );
+        const nextParts: Record<string, ResponsiveStyles> = { ...prevParts };
+        if (hasAny) {
+          nextParts[op.part] = nextPartResp;
+        } else {
+          delete nextParts[op.part];
+        }
+        return {
+          ...node,
+          partStyles: Object.keys(nextParts).length ? nextParts : undefined,
         };
       });
     }
@@ -540,6 +618,51 @@ export function normalizeApiOperations(
           });
         }
         break;
+      case "update_part_styles":
+        if (
+          nodeId &&
+          typeof raw.part === "string" &&
+          isValidPartKey(raw.part.trim().toLowerCase()) &&
+          raw.styles &&
+          typeof raw.styles === "object"
+        ) {
+          const bp =
+            raw.breakpoint === "tablet" ||
+            raw.breakpoint === "mobile" ||
+            raw.breakpoint === "hover"
+              ? raw.breakpoint
+              : "base";
+          result.push({
+            type: "update_part_styles",
+            nodeId,
+            part: raw.part.trim().toLowerCase(),
+            breakpoint: bp,
+            styles: sanitizeStyleValues(raw.styles as Record<string, unknown>),
+          });
+        }
+        break;
+      case "reset_part_style_keys":
+        if (
+          nodeId &&
+          typeof raw.part === "string" &&
+          isValidPartKey(raw.part.trim().toLowerCase()) &&
+          Array.isArray(raw.keys)
+        ) {
+          const bp =
+            raw.breakpoint === "tablet" ||
+            raw.breakpoint === "mobile" ||
+            raw.breakpoint === "hover"
+              ? raw.breakpoint
+              : "base";
+          result.push({
+            type: "reset_part_style_keys",
+            nodeId,
+            part: raw.part.trim().toLowerCase(),
+            breakpoint: bp,
+            keys: raw.keys.filter((k): k is StylePropertyKey => typeof k === "string"),
+          });
+        }
+        break;
       case "update_visibility":
         if (nodeId) {
           result.push({
@@ -657,6 +780,33 @@ export function computeNodeDiffs(
             before: bv,
             after: av,
           });
+        }
+      }
+    }
+
+    const partKeys = new Set([
+      ...Object.keys(before.partStyles || {}),
+      ...Object.keys(after.partStyles || {}),
+    ]);
+    for (const part of partKeys) {
+      const bPart = before.partStyles?.[part];
+      const aPart = after.partStyles?.[part];
+      for (const bp of ["base", "tablet", "mobile", "hover"] as const) {
+        const bMap = bPart?.[bp] || {};
+        const aMap = aPart?.[bp] || {};
+        const keys = new Set([...Object.keys(bMap), ...Object.keys(aMap)]);
+        for (const k of keys) {
+          const bv = bMap[k as StylePropertyKey] ?? "auto";
+          const av = aMap[k as StylePropertyKey] ?? "auto";
+          if (bv !== av) {
+            diffs.push({
+              nodeId: after.id,
+              nodeLabel: after.label,
+              field: bp === "base" ? `part:${part}.${k}` : `part:${part}.${bp}.${k}`,
+              before: bv,
+              after: av,
+            });
+          }
         }
       }
     }
