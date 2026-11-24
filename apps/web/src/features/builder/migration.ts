@@ -71,6 +71,7 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
 
   if (block.type === "Hero" || block.type === "Collection Banner") {
     const isHero = block.type === "Hero";
+    const isCentered = block.layout === "centered";
     const bgOverlay: StyleValues =
       block.layout === "overlay" && block.image
         ? {
@@ -81,6 +82,7 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
             minHeight: block.scale === "large" ? "520px" : "420px",
             display: "flex",
             alignItems: "center",
+            justifyContent: isCentered ? "center" : "flex-start",
           }
         : {
             ...sectionStyle,
@@ -241,18 +243,24 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
               props: {},
               styles: {
                 base: {
-                  maxWidth: "1280px",
                   width: "100%",
-                  margin: "0 auto",
-                  textAlign: block.layout === "centered" ? "center" : "left",
+                  margin: isCentered ? "0 auto" : "0",
+                  ...(isCentered ? { maxWidth: "1280px" } : {}),
+                  textAlign: isCentered ? "center" : "left",
                   display: "flex",
                   flexDirection: "column",
-                  alignItems: block.layout === "centered" ? "center" : "flex-start",
+                  alignItems: isCentered ? "center" : "flex-start",
                 },
               },
               children: contentChildren,
             }),
           ];
+
+    const heroBaseStyle: StyleValues = {
+      ...sectionStyle,
+      ...(isCentered ? {} : { paddingLeft: "64px", paddingRight: "64px" }),
+      ...bgOverlay,
+    };
 
     return baseNode({
       id: sid,
@@ -260,12 +268,13 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
       label: block.label || (isHero ? "Hero Section" : "Collection Banner"),
       visible: block.visible,
       props: {},
-      styles: {
-        base: {
-          ...sectionStyle,
-          ...bgOverlay,
-        },
-      },
+      styles: isCentered
+        ? { base: heroBaseStyle }
+        : {
+            base: heroBaseStyle,
+            tablet: { paddingLeft: "36px", paddingRight: "36px" },
+            mobile: { paddingLeft: "24px", paddingRight: "24px" },
+          },
       children: innerChildren,
     });
   }
