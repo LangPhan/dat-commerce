@@ -99,17 +99,20 @@ export function Storefront({ route }: { route: string[] }) {
   const themeQuery = useQuery({
     queryKey: ["store-theme"],
     queryFn: () => cmsStoreApi.getTheme(),
+    staleTime: 60_000,
   });
 
   const navQuery = useQuery({
     queryKey: ["store-nav", "main"],
     queryFn: () => cmsStoreApi.getNavigation("main"),
+    staleTime: 60_000,
   });
 
   const cmsPageQuery = useQuery({
     queryKey: ["store-cms-page", cmsSlug],
     queryFn: () => cmsStoreApi.getPage(cmsSlug!),
     enabled: Boolean(cmsSlug),
+    staleTime: 60_000,
     retry: false,
   });
 
@@ -121,17 +124,20 @@ export function Storefront({ route }: { route: string[] }) {
   const catalogQuery = useQuery({
     queryKey: ["store-home-catalog"],
     queryFn: () => storeApi.listProducts({ size: 24 }),
+    staleTime: 60_000,
   });
 
   const categoriesQuery = useQuery({
     queryKey: ["store-categories"],
     queryFn: () => storeApi.listCategories(),
+    staleTime: 60_000,
   });
 
   const collectionsQuery = useQuery({
     queryKey: ["store-collections"],
     queryFn: () => storeApi.listCollections(),
     enabled: view === "collections" || view === "collection",
+    staleTime: 60_000,
   });
 
   const addToCartMutation = useMutation({

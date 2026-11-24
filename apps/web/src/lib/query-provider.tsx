@@ -1,8 +1,18 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
 import { AuthProvider } from "@/features/auth/auth-context";
+import { recordInitialPathname } from "@/features/storefront/page-reveal";
+
+function NavigationBootTracker() {
+  const pathname = usePathname();
+  useEffect(() => {
+    recordInitialPathname(pathname);
+  }, [pathname]);
+  return null;
+}
 
 export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -20,6 +30,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <NavigationBootTracker />
       <AuthProvider>{children}</AuthProvider>
     </QueryClientProvider>
   );

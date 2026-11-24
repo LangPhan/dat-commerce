@@ -1,10 +1,63 @@
 "use client";
 
 import { Mountain } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import type { ElementNode } from "@/features/builder/types";
 
 export type PageRevealPhase = "loading" | "revealing" | "ready";
+
+let initialPathname: string | null = null;
+let hasCompletedInitialReveal = false;
+
+export function recordInitialPathname(pathname: string | null | undefined) {
+  if (typeof window === "undefined" || !pathname) return;
+  if (initialPathname === null) {
+    initialPathname = pathname;
+    return;
+  }
+  if (pathname !== initialPathname) {
+    hasCompletedInitialReveal = true;
+  }
+}
+
+export function markStoreInitialRevealDone() {
+  hasCompletedInitialReveal = true;
+}
+
+export function shouldShowStorePageLoader(
+  currentPathname?: string | null
+): boolean {
+  if (hasCompletedInitialReveal) return false;
+  if (
+    initialPathname !== null &&
+    currentPathname &&
+    currentPathname !== initialPathname
+  ) {
+    hasCompletedInitialReveal = true;
+    return false;
+  }
+  return true;
+}
+
+export function resetPageRevealStateForTest() {
+  initialPathname = null;
+  hasCompletedInitialReveal = false;
+}
+
+function hasUrlHash(): boolean {
+  return typeof window !== "undefined" && Boolean(window.location?.hash);
+}
+
+function scrollToTopInstant() {
+  if (typeof window === "undefined" || hasUrlHash()) return;
+  if (typeof window.scrollTo !== "function") return;
+  try {
+    window.scrollTo(0, 0);
+  } catch {
+    // Ignore unimplemented scrollTo in test environments such as jsdom.
+  }
+}
 
 function isSafePreloadUrl(raw: string): boolean {
   const trimmed = raw.trim();
@@ -96,13 +149,50 @@ export function StorePageReveal({
   maxWaitMs?: number;
   children: ReactNode;
 }) {
-  const [phase, setPhase] = useState<PageRevealPhase>("loading");
+  const pathname = usePathname();
+  const [phase, setPhase] = useState<PageRevealPhase>(() =>
+    shouldShowStorePageLoader(pathname) ? "loading" : "ready"
+  );
+
+  useEffect(() => {
+    recordInitialPathname(pathname);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (phase !== "loading" || hasUrlHash()) return;
+    const prevRestoration =
+      "scrollRestoration" in window.history
+        ? window.history.scrollRestoration
+        : null;
+    if (prevRestoration !== null) {
+      window.history.scrollRestoration = "manual";
+    }
+    scrollToTopInstant();
+
+    const keepAtTop = () => {
+      if (!hasUrlHash() && window.scrollY > 0) {
+        scrollToTopInstant();
+      }
+    };
+    window.addEventListener("scroll", keepAtTop, { passive: true });
+    window.addEventListener("load", keepAtTop);
+
+    return () => {
+      window.removeEventListener("scroll", keepAtTop);
+      window.removeEventListener("load", keepAtTop);
+      if (prevRestoration !== null) {
+        window.history.scrollRestoration = prevRestoration;
+      }
+    };
+  }, [phase]);
 
   const preloadKey = preloadImageUrls.join("\n");
 
   useEffect(() => {
     if (phase !== "loading") return;
     const failsafeTimer = window.setTimeout(() => {
+      scrollToTopInstant();
+      markStoreInitialRevealDone();
       setPhase("revealing");
     }, maxWaitMs);
     return () => window.clearTimeout(failsafeTimer);
@@ -130,6 +220,8 @@ export function StorePageReveal({
         if (cancelled) return;
         rafTwo = window.requestAnimationFrame(() => {
           if (!cancelled) {
+            scrollToTopInstant();
+            markStoreInitialRevealDone();
             setPhase("revealing");
           }
         });
@@ -147,7 +239,7 @@ export function StorePageReveal({
     if (phase !== "revealing") return;
     const finishTimer = window.setTimeout(() => {
       setPhase("ready");
-    }, 520);
+    }, 400);
     return () => window.clearTimeout(finishTimer);
   }, [phase]);
 
