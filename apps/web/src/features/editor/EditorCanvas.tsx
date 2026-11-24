@@ -81,7 +81,7 @@ export function EditorCanvas({
           )}
           style={{
             width: frameWidth,
-            maxWidth: viewport === "desktop" ? "1320px" : frameWidth,
+            maxWidth: viewport === "desktop" ? (previewMode ? "none" : "1320px") : frameWidth,
             zoom: zoom === 1 ? undefined : zoom,
           }}
         >

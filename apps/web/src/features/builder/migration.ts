@@ -55,6 +55,14 @@ function baseNode(
   };
 }
 
+function responsiveSectionStyles(base: StyleValues): ElementNode["styles"] {
+  return {
+    base,
+    tablet: { paddingLeft: "36px", paddingRight: "36px" },
+    mobile: { paddingLeft: "24px", paddingRight: "24px" },
+  };
+}
+
 export function migrateBlockToV2Node(block: Block): ElementNode {
   const palette = tonePalette(block.tone);
   const padY = spacingPadY(block.spacing);
@@ -63,8 +71,8 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
   const sectionStyle: StyleValues = {
     paddingTop: padY,
     paddingBottom: padY,
-    paddingLeft: "24px",
-    paddingRight: "24px",
+    paddingLeft: "64px",
+    paddingRight: "64px",
     backgroundColor: palette.bg,
     color: palette.color,
   };
@@ -286,7 +294,7 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
       label: block.label || "Image with Text",
       visible: block.visible,
       props: {},
-      styles: { base: sectionStyle },
+      styles: responsiveSectionStyles(sectionStyle),
       children: [
         baseNode({
           id: `${sid}-grid`,
@@ -295,8 +303,8 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
           props: { columns: 2 },
           styles: {
             base: {
-              maxWidth: "1280px",
-              margin: "0 auto",
+              width: "100%",
+              margin: "0",
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
               gap: "32px",
@@ -379,14 +387,14 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
       label: block.label || block.type,
       visible: block.visible,
       props: {},
-      styles: { base: sectionStyle },
+      styles: responsiveSectionStyles(sectionStyle),
       children: [
         baseNode({
           id: `${sid}-wrap`,
           type: "container",
           label: "Section Container",
           props: {},
-          styles: { base: { maxWidth: "1280px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" } },
+          styles: { base: { width: "100%", margin: "0", display: "flex", flexDirection: "column", gap: "20px" } },
           children: [
             baseNode({
               id: `${sid}-title`,
@@ -420,14 +428,14 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
       label: block.label || "Featured Categories",
       visible: block.visible,
       props: {},
-      styles: { base: sectionStyle },
+      styles: responsiveSectionStyles(sectionStyle),
       children: [
         baseNode({
           id: `${sid}-wrap`,
           type: "container",
           label: "Categories Container",
           props: {},
-          styles: { base: { maxWidth: "1280px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" } },
+          styles: { base: { width: "100%", margin: "0", display: "flex", flexDirection: "column", gap: "20px" } },
           children: [
             baseNode({
               id: `${sid}-h2`,
@@ -455,7 +463,7 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
       label: block.label || "Promotional Banner",
       visible: block.visible,
       props: {},
-      styles: { base: { ...sectionStyle, paddingTop: "32px", paddingBottom: "32px" } },
+      styles: responsiveSectionStyles({ ...sectionStyle, paddingTop: "32px", paddingBottom: "32px" }),
       children: [
         baseNode({
           id: `${sid}-promo`,
@@ -480,7 +488,7 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
       label: block.label || "FAQ",
       visible: block.visible,
       props: {},
-      styles: { base: sectionStyle },
+      styles: responsiveSectionStyles(sectionStyle),
       children: [
         baseNode({
           id: `${sid}-wrap`,
@@ -521,14 +529,14 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
       label: block.label || "Image Gallery",
       visible: block.visible,
       props: {},
-      styles: { base: sectionStyle },
+      styles: responsiveSectionStyles(sectionStyle),
       children: [
         baseNode({
           id: `${sid}-wrap`,
           type: "container",
           label: "Gallery Container",
           props: {},
-          styles: { base: { maxWidth: "1280px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "18px" } },
+          styles: { base: { width: "100%", margin: "0", display: "flex", flexDirection: "column", gap: "18px" } },
           children: [
             baseNode({
               id: `${sid}-h2`,
@@ -564,7 +572,7 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
       label: block.label || "Video Section",
       visible: block.visible,
       props: {},
-      styles: { base: sectionStyle },
+      styles: responsiveSectionStyles(sectionStyle),
       children: [
         baseNode({
           id: `${sid}-wrap`,
@@ -604,7 +612,7 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
       label: block.label || "Newsletter",
       visible: block.visible,
       props: {},
-      styles: { base: sectionStyle },
+      styles: responsiveSectionStyles(sectionStyle),
       children: [
         baseNode({
           id: `${sid}-wrap`,
@@ -658,14 +666,14 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
       label: block.label || block.type,
       visible: block.visible,
       props: {},
-      styles: { base: sectionStyle },
+      styles: responsiveSectionStyles(sectionStyle),
       children: [
         baseNode({
           id: `${sid}-wrap`,
           type: "container",
           label: `${block.type} Container`,
           props: {},
-          styles: { base: { maxWidth: "1280px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" } },
+          styles: { base: { width: "100%", margin: "0", display: "flex", flexDirection: "column", gap: "20px" } },
           children: [
             baseNode({
               id: `${sid}-h2`,
@@ -703,7 +711,7 @@ export function migrateBlockToV2Node(block: Block): ElementNode {
     label: block.label || "Rich Text",
     visible: block.visible,
     props: {},
-    styles: { base: sectionStyle },
+    styles: responsiveSectionStyles(sectionStyle),
     children: [
       baseNode({
         id: `${sid}-wrap`,

@@ -16,9 +16,17 @@ export const ELEMENT_DEFINITIONS: Record<ElementType, ElementDefinition> = {
         width: "100%",
         paddingTop: "56px",
         paddingBottom: "56px",
+        paddingLeft: "64px",
+        paddingRight: "64px",
+        backgroundColor: "#FFFFFF",
+      },
+      tablet: {
+        paddingLeft: "36px",
+        paddingRight: "36px",
+      },
+      mobile: {
         paddingLeft: "24px",
         paddingRight: "24px",
-        backgroundColor: "#FFFFFF",
       },
     },
     inspectorFields: [
@@ -39,16 +47,13 @@ export const ELEMENT_DEFINITIONS: Record<ElementType, ElementDefinition> = {
     type: "container",
     label: "Container",
     category: "layout",
-    description: "Centered max-width wrapper for organizing nested elements.",
+    description: "Flexible layout wrapper for organizing nested elements.",
     isContainer: true,
     iconName: "Box",
     defaultProps: {},
     defaultStyles: {
       base: {
         width: "100%",
-        maxWidth: "1200px",
-        marginLeft: "auto",
-        marginRight: "auto",
         display: "flex",
         flexDirection: "column",
         gap: "16px",

@@ -8,6 +8,7 @@ import {
   migrateV1ToV2,
 } from "../migration";
 import { countTreeNodes } from "../operations";
+import { ELEMENT_DEFINITIONS } from "../registry/definitions";
 
 describe("v1 to v2 CMS migration", () => {
   it("migrates seeded v1 homepage blocks into nested editable v2 element trees", () => {
@@ -70,5 +71,63 @@ describe("v1 to v2 CMS migration", () => {
     const centeredWrap = centeredHero.children?.[0];
     expect(centeredWrap?.styles.base.margin).toBe("0 auto");
     expect(centeredWrap?.styles.base.maxWidth).toBe("1280px");
+  });
+
+  it("uses unified 64px/36px/24px section rail without shrinking containers or full-width bands while keeping newsletter centered", () => {
+    expect(ELEMENT_DEFINITIONS.container.defaultStyles.base.width).toBe("100%");
+    expect(ELEMENT_DEFINITIONS.container.defaultStyles.base.maxWidth).toBeUndefined();
+    expect(ELEMENT_DEFINITIONS.container.defaultStyles.base.marginLeft).toBeUndefined();
+    expect(ELEMENT_DEFINITIONS.container.defaultStyles.base.marginRight).toBeUndefined();
+
+    expect(ELEMENT_DEFINITIONS.section.defaultStyles.base.paddingLeft).toBe("64px");
+    expect(ELEMENT_DEFINITIONS.section.defaultStyles.tablet?.paddingLeft).toBe("36px");
+    expect(ELEMENT_DEFINITIONS.section.defaultStyles.mobile?.paddingLeft).toBe("24px");
+
+    for (const blockType of ["Best Sellers", "Featured Categories", "Promotional Banner"] as const) {
+      const migrated = migrateBlockToV2Node({
+        id: `sec-${blockType.toLowerCase().replace(/\s+/g, "-")}`,
+        type: blockType,
+        label: blockType,
+        visible: true,
+        tone: "light",
+        layout: "overlay",
+        scale: "regular",
+        image: "",
+        heading: blockType,
+        copy: "Copy",
+        action: "Shop",
+        actionUrl: "/store/shop",
+      });
+      expect(migrated.styles.base.paddingLeft).toBe("64px");
+      expect(migrated.styles.tablet?.paddingLeft).toBe("36px");
+      expect(migrated.styles.mobile?.paddingLeft).toBe("24px");
+      const wrap = migrated.children?.[0];
+      if (wrap?.type === "container") {
+        expect(wrap.styles.base.width).toBe("100%");
+        expect(wrap.styles.base.margin).toBe("0");
+        expect(wrap.styles.base.maxWidth).toBeUndefined();
+      }
+    }
+
+    const newsletter = migrateBlockToV2Node({
+      id: "sec-newsletter",
+      type: "Newsletter",
+      label: "Newsletter",
+      visible: true,
+      tone: "forest",
+      layout: "centered",
+      scale: "regular",
+      image: "",
+      heading: "Join",
+      copy: "Updates",
+      action: "Subscribe",
+      actionUrl: "",
+    });
+    expect(newsletter.styles.base.paddingLeft).toBe("64px");
+    expect(newsletter.styles.tablet?.paddingLeft).toBe("36px");
+    expect(newsletter.styles.mobile?.paddingLeft).toBe("24px");
+    const nlWrap = newsletter.children?.[0];
+    expect(nlWrap?.styles.base.maxWidth).toBe("680px");
+    expect(nlWrap?.styles.base.margin).toBe("0 auto");
   });
 });

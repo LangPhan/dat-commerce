@@ -718,7 +718,7 @@ html[data-theme="dark"]:has(.public-store) {
   display: grid;
   grid-template-columns: 1.4fr repeat(3, 1fr);
   gap: 28px;
-  padding: 40px clamp(16px, 5vw, 72px);
+  padding: 40px clamp(16px, 4cqw, 64px);
   background: #1c271f;
   color: #f3f5ef;
 }
