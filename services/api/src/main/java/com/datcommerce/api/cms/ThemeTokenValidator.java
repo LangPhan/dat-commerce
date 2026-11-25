@@ -17,6 +17,8 @@ import org.springframework.util.StringUtils;
 @Component
 public class ThemeTokenValidator {
 
+    private final AnimationValidationService animationValidationService = new AnimationValidationService();
+
     public static final Pattern HEX_COLOR = Pattern.compile("^#[0-9A-Fa-f]{6}$");
     public static final Pattern CSS_VAR_COLOR = Pattern.compile("^var\\(--[A-Za-z0-9_-]{2,48}\\)$");
     private static final Pattern PX_VALUE = Pattern.compile("^(\\d{1,4})px$");
@@ -244,6 +246,10 @@ public class ThemeTokenValidator {
             } else {
                 out.put("customPalette", List.of());
             }
+        }
+
+        if (rawTokens.containsKey("motion") && rawTokens.get("motion") != null) {
+            out.put("motion", animationValidationService.validateAndNormalizeGlobalMotion(rawTokens.get("motion")));
         }
 
         return out;

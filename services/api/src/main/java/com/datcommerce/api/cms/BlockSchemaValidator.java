@@ -17,6 +17,8 @@ import org.springframework.util.StringUtils;
 @Component
 public class BlockSchemaValidator {
 
+    private final AnimationValidationService animationValidationService = new AnimationValidationService();
+
     public static final int MAX_V2_NODES = 250;
     public static final int MAX_V2_DEPTH = 12;
     private static final int MAX_PARTS_PER_NODE = 30;
@@ -247,6 +249,15 @@ public class BlockSchemaValidator {
         }
         if (!visibility.isEmpty()) {
             out.put("visibility", visibility);
+        }
+        if (rawMap.containsKey("motion") && rawMap.get("motion") != null) {
+            Map<String, Object> normalizedMotion = animationValidationService.validateAndNormalizeElementMotion(
+                    rawMap.get("motion"),
+                    id + ".motion"
+            );
+            if (normalizedMotion != null && !normalizedMotion.isEmpty()) {
+                out.put("motion", normalizedMotion);
+            }
         }
 
         Object rawChildrenObj = rawMap.get("children");

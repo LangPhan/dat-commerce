@@ -5,14 +5,18 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/store")
 public class CmsStoreController {
 
     private final CmsService cmsService;
+    private final AnimationPresetService animationPresetService;
 
-    public CmsStoreController(CmsService cmsService) {
+    public CmsStoreController(CmsService cmsService, AnimationPresetService animationPresetService) {
         this.cmsService = cmsService;
+        this.animationPresetService = animationPresetService;
     }
 
     @GetMapping("/pages/{slug}")
@@ -28,5 +32,10 @@ public class CmsStoreController {
     @GetMapping("/navigation/{menuKey}")
     public CmsService.NavigationMenuDto getNavigation(@PathVariable String menuKey) {
         return cmsService.getStoreNavigation(menuKey);
+    }
+
+    @GetMapping("/animation-presets")
+    public List<AnimationPresetService.AnimationPresetDto> listAnimationPresets() {
+        return animationPresetService.listStorePresets();
     }
 }

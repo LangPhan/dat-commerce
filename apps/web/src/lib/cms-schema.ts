@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
 import { BUILTIN_FONT_NAMES } from "@/features/typography/font-catalog";
+import { normalizeGlobalMotion } from "@/features/motion/defaults";
+import { globalMotionSchema } from "@/features/motion/schema";
 import { normalizeGlobalTypography } from "@/features/typography/defaults";
 import { formatCssFontStack } from "@/features/typography/resolve";
 import { globalTypographySchema } from "@/features/typography/schema";
@@ -124,6 +126,7 @@ export const themeTokensSchema = z.object({
       elevated: z.string().optional(),
     })
     .optional(),
+  motion: globalMotionSchema.optional(),
 });
 
 export function apiBlocksToEditorBlocks(content?: PageContentPayload | null): Block[] {
@@ -233,6 +236,22 @@ export function themeTokensToCssVars(tokens?: ThemeTokens | null): CSSProperties
     "--store-font-body": tokens.typography?.bodyFont || "Inter",
     "--store-radius-card": tokens.radius?.card || "10px",
     "--store-radius-button": tokens.radius?.button || "8px",
+    ...(() => {
+      const m = normalizeGlobalMotion(tokens.motion);
+      return {
+        "--motion-fast": `${m.timingTokens.fast}ms`,
+        "--motion-normal": `${m.timingTokens.normal}ms`,
+        "--motion-slow": `${m.timingTokens.slow}ms`,
+        "--motion-duration": `${m.defaultDuration}ms`,
+        "--motion-hover-duration": `${m.defaultHoverDuration}ms`,
+        "--motion-ease-linear": m.easingTokens.linear,
+        "--motion-ease": m.easingTokens.ease,
+        "--motion-ease-in": m.easingTokens.easeIn,
+        "--motion-ease-out": m.easingTokens.easeOut,
+        "--motion-ease-in-out": m.easingTokens.easeInOut,
+        "--motion-ease-custom": m.easingTokens.custom,
+      };
+    })(),
     "--store-max-width": tokens.container?.maxWidth || "1280px",
     "--store-section-y": tokens.spacing?.sectionY || "64px",
     "--store-block-gap": tokens.spacing?.blockGap || "24px",

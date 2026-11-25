@@ -3,6 +3,8 @@ import {
   sanitizeHtmlAttributes,
   sanitizeStyleValues,
 } from "./sanitizers";
+import { sanitizeElementMotion } from "@/features/motion/schema";
+import type { ElementMotionConfig, MotionCategory, ResponsiveMotionOverride } from "@/features/motion/types";
 import { isValidPartKey } from "./parts";
 import {
   CONTAINER_ELEMENT_TYPES,
@@ -142,6 +144,7 @@ export function cloneSubtreeWithFreshIds(
       ...(node.styles?.mobile ? { mobile: { ...node.styles.mobile } } : {}),
       ...(node.styles?.hover ? { hover: { ...node.styles.hover } } : {}),
     },
+    ...(node.motion ? { motion: structuredClone(node.motion) } : {}),
     ...(node.visibility ? { visibility: { ...node.visibility } } : {}),
     ...(node.customCssClasses
       ? { customCssClasses: [...node.customCssClasses] }
@@ -288,9 +291,20 @@ export function validateOperation(
     case "update_visibility":
     case "update_meta":
     case "update_advanced":
+    case "set_element_animation":
+    case "update_element_animation":
+    case "remove_element_animation":
+    case "update_responsive_animation":
     case "replace_subtree": {
       const target = findNode(nodes, op.nodeId);
       if (!target) return `Element '${op.nodeId}' not found`;
+      return null;
+    }
+    case "apply_animation_to_selection": {
+      if (!op.nodeIds.length) return "No target elements selected";
+      for (const id of op.nodeIds) {
+        if (!findNode(nodes, id)) return `Element '${id}' not found`;
+      }
       return null;
     }
     case "wrap_nodes": {
@@ -527,6 +541,139 @@ export function applyOperation(
       return nextNodes;
     }
 
+    case "set_element_animation": {
+      const clean = op.animation ? sanitizeElementMotion(op.animation) : undefined;
+      return mapTree(nodes, op.nodeId, (node) => ({
+        ...node,
+        motion: clean ? { schemaVersion: 1, ...clean } : undefined,
+      }));
+    }
+
+    case "update_element_animation": {
+      return mapTree(nodes, op.nodeId, (node) => {
+        const prev = node.motion || { schemaVersion: 1, enabled: true };
+        const patch = op.patch || {};
+        const merged: ElementMotionConfig = {
+          ...prev,
+          ...patch,
+          schemaVersion: 1,
+          ...(patch.entrance ? { entrance: { ...(prev.entrance || {}), ...patch.entrance } } : {}),
+          ...(patch.scroll ? { scroll: { ...(prev.scroll || {}), ...patch.scroll } } : {}),
+          ...(patch.hover ? { hover: { ...(prev.hover || {}), ...patch.hover } } : {}),
+          ...(patch.interaction ? { interaction: { ...(prev.interaction || {}), ...patch.interaction } } : {}),
+          ...(patch.continuous ? { continuous: { ...(prev.continuous || {}), ...patch.continuous } } : {}),
+          ...(patch.text ? { text: { ...(prev.text || {}), ...patch.text } } : {}),
+          ...(patch.stagger ? { stagger: { ...(prev.stagger || {}), ...patch.stagger } } : {}),
+          ...(patch.responsive
+            ? {
+                responsive: {
+                  ...(prev.responsive || {}),
+                  ...(patch.responsive.tablet
+                    ? {
+                        tablet: {
+                          ...(prev.responsive?.tablet || {}),
+                          ...patch.responsive.tablet,
+                        },
+                      }
+                    : {}),
+                  ...(patch.responsive.mobile
+                    ? {
+                        mobile: {
+                          ...(prev.responsive?.mobile || {}),
+                          ...patch.responsive.mobile,
+                        },
+                      }
+                    : {}),
+                },
+              }
+            : {}),
+        };
+        const clean = sanitizeElementMotion(merged);
+        return { ...node, motion: clean };
+      });
+    }
+
+    case "remove_element_animation": {
+      return mapTree(nodes, op.nodeId, (node) => {
+        if (!node.motion) return node;
+        if (!op.category || op.category === "all") {
+          return { ...node, motion: undefined };
+        }
+        const next: ElementMotionConfig = { ...node.motion };
+        if (op.category === "entrance") delete next.entrance;
+        else if (op.category === "scroll") delete next.scroll;
+        else if (op.category === "hover") delete next.hover;
+        else if (op.category === "interaction") delete next.interaction;
+        else if (op.category === "continuous") delete next.continuous;
+        else if (op.category === "text") delete next.text;
+        else if (op.category === "custom") delete next.presetRef;
+        const hasRemaining = Boolean(
+          next.presetRef ||
+            next.entrance ||
+            next.scroll ||
+            next.hover ||
+            next.interaction ||
+            next.continuous ||
+            next.text ||
+            next.stagger
+        );
+        return { ...node, motion: hasRemaining ? next : undefined };
+      });
+    }
+
+    case "apply_animation_to_selection": {
+      const clean = sanitizeElementMotion(op.animation);
+      if (!clean) return nodes;
+      let working = nodes;
+      for (const id of op.nodeIds) {
+        working = mapTree(working, id, (node) => ({
+          ...node,
+          motion: {
+            ...(node.motion || { schemaVersion: 1, enabled: true }),
+            ...clean,
+            schemaVersion: 1,
+            ...(clean.entrance ? { entrance: { ...(node.motion?.entrance || {}), ...clean.entrance } } : {}),
+            ...(clean.scroll ? { scroll: { ...(node.motion?.scroll || {}), ...clean.scroll } } : {}),
+            ...(clean.hover ? { hover: { ...(node.motion?.hover || {}), ...clean.hover } } : {}),
+            ...(clean.interaction ? { interaction: { ...(node.motion?.interaction || {}), ...clean.interaction } } : {}),
+            ...(clean.continuous ? { continuous: { ...(node.motion?.continuous || {}), ...clean.continuous } } : {}),
+            ...(clean.text ? { text: { ...(node.motion?.text || {}), ...clean.text } } : {}),
+            ...(clean.stagger ? { stagger: { ...(node.motion?.stagger || {}), ...clean.stagger } } : {}),
+          },
+        }));
+      }
+      return working;
+    }
+
+    case "update_responsive_animation": {
+      return mapTree(nodes, op.nodeId, (node) => {
+        const prev = node.motion || { schemaVersion: 1, enabled: true };
+        const nextResp = { ...(prev.responsive || {}) };
+        if (!op.override) {
+          delete nextResp[op.breakpoint];
+        } else {
+          const prevBp = nextResp[op.breakpoint] || {};
+          nextResp[op.breakpoint] = {
+            ...prevBp,
+            ...op.override,
+            ...(op.override.entrance ? { entrance: { ...(prevBp.entrance || {}), ...op.override.entrance } } : {}),
+            ...(op.override.scroll ? { scroll: { ...(prevBp.scroll || {}), ...op.override.scroll } } : {}),
+            ...(op.override.hover ? { hover: { ...(prevBp.hover || {}), ...op.override.hover } } : {}),
+            ...(op.override.interaction ? { interaction: { ...(prevBp.interaction || {}), ...op.override.interaction } } : {}),
+            ...(op.override.continuous ? { continuous: { ...(prevBp.continuous || {}), ...op.override.continuous } } : {}),
+            ...(op.override.text ? { text: { ...(prevBp.text || {}), ...op.override.text } } : {}),
+            ...(op.override.stagger ? { stagger: { ...(prevBp.stagger || {}), ...op.override.stagger } } : {}),
+          };
+        }
+        const merged: ElementMotionConfig = {
+          ...prev,
+          schemaVersion: 1,
+          responsive: Object.keys(nextResp).length ? nextResp : undefined,
+        };
+        return { ...node, motion: sanitizeElementMotion(merged) };
+      });
+    }
+
     case "replace_subtree": {
       return mapTree(nodes, op.nodeId, () => op.node);
     }
@@ -725,6 +872,58 @@ export function normalizeApiOperations(
           });
         }
         break;
+      case "set_element_animation": {
+        const targetId = nodeId || (typeof raw.targetId === "string" ? raw.targetId : "");
+        if (targetId) {
+          const anim = raw.animation ? sanitizeElementMotion(raw.animation) : null;
+          result.push({ type: "set_element_animation", nodeId: targetId, animation: anim ?? null });
+        }
+        break;
+      }
+      case "update_element_animation": {
+        const targetId = nodeId || (typeof raw.targetId === "string" ? raw.targetId : "");
+        const patchObj = (raw.patch || raw.animation) as Partial<ElementMotionConfig> | undefined;
+        if (targetId && patchObj && typeof patchObj === "object") {
+          result.push({ type: "update_element_animation", nodeId: targetId, patch: patchObj });
+        }
+        break;
+      }
+      case "remove_element_animation": {
+        const targetId = nodeId || (typeof raw.targetId === "string" ? raw.targetId : "");
+        if (targetId) {
+          result.push({
+            type: "remove_element_animation",
+            nodeId: targetId,
+            category: typeof raw.category === "string" ? (raw.category as MotionCategory | "all") : "all",
+          });
+        }
+        break;
+      }
+      case "apply_animation_to_selection": {
+        const ids = Array.isArray(raw.nodeIds)
+          ? raw.nodeIds.filter((x): x is string => typeof x === "string")
+          : Array.isArray(raw.targetIds)
+            ? raw.targetIds.filter((x): x is string => typeof x === "string")
+            : [];
+        const anim = sanitizeElementMotion(raw.animation);
+        if (ids.length && anim) {
+          result.push({ type: "apply_animation_to_selection", nodeIds: ids, animation: anim });
+        }
+        break;
+      }
+      case "update_responsive_animation": {
+        const targetId = nodeId || (typeof raw.targetId === "string" ? raw.targetId : "");
+        const bp = raw.breakpoint === "tablet" || raw.breakpoint === "mobile" ? raw.breakpoint : null;
+        if (targetId && bp) {
+          result.push({
+            type: "update_responsive_animation",
+            nodeId: targetId,
+            breakpoint: bp,
+            override: (raw.override as ResponsiveMotionOverride | null) ?? null,
+          });
+        }
+        break;
+      }
       default:
         break;
     }
@@ -809,6 +1008,45 @@ export function computeNodeDiffs(
           }
         }
       }
+    }
+
+    if (JSON.stringify(before.motion || null) !== JSON.stringify(after.motion || null)) {
+      const summarizeMotion = (m?: ElementMotionConfig) => {
+        if (!m || m.enabled === false) return "None";
+        const tags: string[] = [];
+        if (m.entrance?.enabled && m.entrance.preset && m.entrance.preset !== "none") {
+          tags.push(`Entrance: ${m.entrance.preset} (${m.entrance.duration ?? 600}ms)`);
+        }
+        if (m.scroll?.enabled && m.scroll.effect && m.scroll.effect !== "none") {
+          tags.push(`Scroll: ${m.scroll.effect}`);
+        }
+        if (m.hover?.enabled && m.hover.preset && m.hover.preset !== "none") {
+          tags.push(`Hover: ${m.hover.preset}`);
+        }
+        if (m.interaction?.enabled && m.interaction.preset && m.interaction.preset !== "none") {
+          tags.push(`Click: ${m.interaction.preset}`);
+        }
+        if (m.continuous?.enabled && m.continuous.preset && m.continuous.preset !== "none") {
+          tags.push(`Loop: ${m.continuous.preset}`);
+        }
+        if (m.text?.enabled && m.text.preset && m.text.preset !== "none") {
+          tags.push(`Text: ${m.text.preset}`);
+        }
+        if (m.stagger?.enabled) {
+          tags.push(`Stagger: ${m.stagger.interval ?? 80}ms`);
+        }
+        if (m.responsive?.tablet || m.responsive?.mobile) {
+          tags.push("Responsive");
+        }
+        return tags.length ? tags.join(" · ") : "Configured";
+      };
+      diffs.push({
+        nodeId: after.id,
+        nodeLabel: after.label,
+        field: "motion",
+        before: summarizeMotion(before.motion),
+        after: summarizeMotion(after.motion),
+      });
     }
 
     const propKeys = new Set([

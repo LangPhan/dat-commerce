@@ -1,5 +1,11 @@
 import type { CSSProperties } from "react";
 import type { ThemeTokens } from "@/types/api-cms-ai";
+import type {
+  ElementMotionConfig,
+  MotionAiOperation,
+  MotionCategory,
+  ResponsiveMotionOverride,
+} from "@/features/motion/types";
 import type { TypographyAiOperation, TypographyHistoryMeta } from "@/features/typography/types";
 
 export type ViewportMode = "desktop" | "tablet" | "mobile";
@@ -167,6 +173,7 @@ export type ElementNode = {
   props: Record<string, unknown>;
   styles: ResponsiveStyles;
   partStyles?: Record<string, ResponsiveStyles>;
+  motion?: ElementMotionConfig;
   visibility?: ResponsiveVisibility;
   children?: ElementNode[];
   customCssClasses?: string[];
@@ -225,6 +232,32 @@ export type EditorOperation =
   | { type: "duplicate_node"; nodeId: string; newNodeId?: string }
   | { type: "delete_node"; nodeId: string }
   | { type: "replace_subtree"; nodeId: string; node: ElementNode }
+  | {
+      type: "set_element_animation";
+      nodeId: string;
+      animation: ElementMotionConfig | null;
+    }
+  | {
+      type: "update_element_animation";
+      nodeId: string;
+      patch: Partial<ElementMotionConfig>;
+    }
+  | {
+      type: "remove_element_animation";
+      nodeId: string;
+      category?: MotionCategory | "all";
+    }
+  | {
+      type: "apply_animation_to_selection";
+      nodeIds: string[];
+      animation: ElementMotionConfig;
+    }
+  | {
+      type: "update_responsive_animation";
+      nodeId: string;
+      breakpoint: "tablet" | "mobile";
+      override: ResponsiveMotionOverride | null;
+    }
   | { type: "wrap_nodes"; nodeIds: string[]; wrapper: ElementNode }
   | { type: "batch"; operations: EditorOperation[] };
 
@@ -253,7 +286,7 @@ export type DiffRow = {
 
 export type AiChatTurnStatus = "previewing" | "applied" | "reverted" | "error";
 
-export type AiScopeMode = "element" | "section" | "page" | "typography";
+export type AiScopeMode = "element" | "section" | "page" | "typography" | "motion";
 
 export type AiChatTurn = {
   id: string;
@@ -286,6 +319,9 @@ export type AiPreviewSession = {
   previewThemeTokens?: ThemeTokens | null;
   affectedPresets?: string[];
   typographyOperations?: TypographyAiOperation[];
+  motionOperations?: MotionAiOperation[];
+  requiresConfirmation?: boolean;
+  confirmationReason?: string;
   viewMode?: "after" | "before";
 };
 

@@ -1,3 +1,8 @@
+import type {
+  ElementMotionConfig,
+  GlobalMotionSettings,
+  MotionCategory,
+} from "@/features/motion/types";
 import type { GlobalTypographyTokens } from "@/features/typography/types";
 
 export type BlockTypeSlug =
@@ -36,6 +41,7 @@ export type EditorNodePayload = {
   styles: Record<string, Record<string, string | undefined> | undefined>;
   visibility?: Record<string, boolean | undefined>;
   children?: EditorNodePayload[];
+  motion?: ElementMotionConfig;
   customCssClasses?: string[];
   htmlAttributes?: Record<string, string>;
 };
@@ -131,6 +137,7 @@ export type ThemeTokens = {
     card?: string;
     elevated?: string;
   };
+  motion?: GlobalMotionSettings;
 };
 
 export type ThemeVersionDto = {
@@ -284,7 +291,7 @@ export type EditorSuggestRequest = {
   pageId?: string;
   pageSlug?: string;
   viewport?: "desktop" | "tablet" | "mobile";
-  scope?: "element" | "section" | "page" | "typography";
+  scope?: "element" | "section" | "page" | "typography" | "motion";
   selectedNodeIds?: string[];
   prompt: string;
   model?: string;
@@ -317,4 +324,50 @@ export type FontUploadResponse = {
   mimeType: string;
   format: "woff2" | "woff" | "truetype" | string;
   sizeBytes: number;
+};
+
+
+export type AnimationPresetDto = {
+  id: string;
+  presetKey: string;
+  name: string;
+  category: MotionCategory | string;
+  description?: string | null;
+  config: ElementMotionConfig;
+  isSystem: boolean;
+  isFavorite: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateAnimationPresetRequest = {
+  presetKey?: string;
+  name: string;
+  category: MotionCategory;
+  description?: string;
+  config: ElementMotionConfig;
+  favorite?: boolean;
+};
+
+export type UpdateAnimationPresetRequest = {
+  name?: string;
+  category?: MotionCategory;
+  description?: string;
+  config?: ElementMotionConfig;
+  favorite?: boolean;
+  expectedVersion?: number;
+};
+
+export type PageAnimationsResponse = {
+  pageId: string;
+  pageVersion: number;
+  latestVersionNumber: number;
+  animations: Record<string, ElementMotionConfig>;
+};
+
+export type GlobalMotionResponse = {
+  themeVersionId?: string | null;
+  versionNumber: number;
+  motion: GlobalMotionSettings;
 };

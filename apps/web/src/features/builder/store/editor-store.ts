@@ -1,4 +1,9 @@
 import { create } from "zustand";
+import type {
+  ElementMotionConfig,
+  MotionCategory,
+  ResponsiveMotionOverride,
+} from "@/features/motion/types";
 import type { TypographyHistoryMeta } from "@/features/typography/types";
 import type { ThemeTokens } from "@/types/api-cms-ai";
 import {
@@ -71,6 +76,11 @@ export interface EditorStoreState {
   aiDraftPrompt: string;
   aiScope: AiScopeMode;
   aiChatByPage: Record<string, AiChatTurn[]>;
+
+  // Ephemeral canvas motion preview & playback state (never persisted)
+  motionReplayNonceByNodeId: Record<string, number>;
+  motionPausedNodeIds: Record<string, boolean>;
+  motionScrollProgressByNodeId: Record<string, number | null>;
 
   loadPage: (params: {
     pageId: string;
@@ -159,6 +169,36 @@ export interface EditorStoreState {
     keys: StylePropertyKey[],
     breakpoint: "base" | "tablet" | "mobile" | "hover"
   ) => void;
+  setNodeMotion: (
+    nodeId: string,
+    animation: ElementMotionConfig | null,
+    summary?: string
+  ) => void;
+  updateNodeMotion: (
+    nodeId: string,
+    patch: Partial<ElementMotionConfig>,
+    summary?: string
+  ) => void;
+  removeNodeMotion: (
+    nodeId: string,
+    category?: MotionCategory | "all",
+    summary?: string
+  ) => void;
+  updateNodeResponsiveMotion: (
+    nodeId: string,
+    breakpoint: "tablet" | "mobile",
+    override: ResponsiveMotionOverride | null,
+    summary?: string
+  ) => void;
+  applyMotionToSelected: (
+    animation: ElementMotionConfig,
+    summary?: string
+  ) => void;
+  replayNodeMotion: (nodeId: string) => void;
+  toggleNodeMotionPause: (nodeId: string, paused?: boolean) => void;
+  setNodeScrollProgress: (nodeId: string, progress: number | null) => void;
+  resetNodeMotionPreview: (nodeId: string) => void;
+
   toggleNodeVisibility: (nodeId: string) => void;
   toggleNodeLock: (nodeId: string) => void;
   renameNode: (nodeId: string, label: string) => void;
@@ -232,6 +272,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
   aiDraftPrompt: "",
   aiScope: "element",
   aiChatByPage: {},
+
+  motionReplayNonceByNodeId: {},
+  motionPausedNodeIds: {},
+  motionScrollProgressByNodeId: {},
 
   loadPage: (params) => {
     const firstId = params.nodes[0]?.id;
@@ -607,6 +651,102 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
       { summary: `Reset ${breakpoint} styles on ${node.label} (${partKey})` }
     );
   },
+
+  setNodeMotion: (nodeId, animation, summary) => {
+    const node = findNode(get().nodes, nodeId);
+    if (!node || node.locked) return;
+    get().executeOperation(
+      { type: "set_element_animation", nodeId, animation },
+      { summary: summary || (animation ? `Set animation on ${node.label}` : `Clear animation on ${node.label}`) }
+    );
+  },
+
+  updateNodeMotion: (nodeId, patch, summary) => {
+    const node = findNode(get().nodes, nodeId);
+    if (!node || node.locked) return;
+    get().executeOperation(
+      { type: "update_element_animation", nodeId, patch },
+      { summary: summary || `Update animation on ${node.label}` }
+    );
+  },
+
+  removeNodeMotion: (nodeId, category = "all", summary) => {
+    const node = findNode(get().nodes, nodeId);
+    if (!node || node.locked) return;
+    get().executeOperation(
+      { type: "remove_element_animation", nodeId, category },
+      { summary: summary || `Remove ${category === "all" ? "animation" : category + " animation"} on ${node.label}` }
+    );
+  },
+
+  updateNodeResponsiveMotion: (nodeId, breakpoint, override, summary) => {
+    const node = findNode(get().nodes, nodeId);
+    if (!node || node.locked) return;
+    get().executeOperation(
+      { type: "update_responsive_animation", nodeId, breakpoint, override },
+      { summary: summary || `Update ${breakpoint} motion on ${node.label}` }
+    );
+  },
+
+  applyMotionToSelected: (animation, summary) => {
+    const state = get();
+    const targetIds = state.selectedIds.filter((id) => {
+      const n = findNode(state.nodes, id);
+      return Boolean(n && !n.locked);
+    });
+    if (!targetIds.length) return;
+    state.executeOperation(
+      { type: "apply_animation_to_selection", nodeIds: targetIds, animation },
+      {
+        summary:
+          summary ||
+          (targetIds.length === 1
+            ? `Apply animation to ${findNode(state.nodes, targetIds[0])?.label || "element"}`
+            : `Apply animation to ${targetIds.length} elements`),
+      }
+    );
+  },
+
+  replayNodeMotion: (nodeId) =>
+    set((state) => ({
+      motionPausedNodeIds: { ...state.motionPausedNodeIds, [nodeId]: false },
+      motionReplayNonceByNodeId: {
+        ...state.motionReplayNonceByNodeId,
+        [nodeId]: (state.motionReplayNonceByNodeId[nodeId] || 0) + 1,
+      },
+    })),
+
+  toggleNodeMotionPause: (nodeId, paused) =>
+    set((state) => ({
+      motionPausedNodeIds: {
+        ...state.motionPausedNodeIds,
+        [nodeId]: paused !== undefined ? paused : !state.motionPausedNodeIds[nodeId],
+      },
+    })),
+
+  setNodeScrollProgress: (nodeId, progress) =>
+    set((state) => ({
+      motionScrollProgressByNodeId: {
+        ...state.motionScrollProgressByNodeId,
+        [nodeId]: progress === null ? null : Math.max(0, Math.min(100, progress)),
+      },
+    })),
+
+  resetNodeMotionPreview: (nodeId) =>
+    set((state) => {
+      const nextScroll = { ...state.motionScrollProgressByNodeId };
+      delete nextScroll[nodeId];
+      const nextPaused = { ...state.motionPausedNodeIds };
+      delete nextPaused[nodeId];
+      return {
+        motionScrollProgressByNodeId: nextScroll,
+        motionPausedNodeIds: nextPaused,
+        motionReplayNonceByNodeId: {
+          ...state.motionReplayNonceByNodeId,
+          [nodeId]: (state.motionReplayNonceByNodeId[nodeId] || 0) + 1,
+        },
+      };
+    }),
 
   toggleNodeVisibility: (nodeId) => {
     const node = findNode(get().nodes, nodeId);

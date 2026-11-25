@@ -6,6 +6,11 @@ import {
 } from "@/lib/api-client";
 import type {
   AdminThemeResponse,
+  AnimationPresetDto,
+  CreateAnimationPresetRequest,
+  GlobalMotionResponse,
+  PageAnimationsResponse,
+  UpdateAnimationPresetRequest,
   AiActivityDto,
   AiModelSettingsDto,
   EditorSuggestRequest,
@@ -40,6 +45,10 @@ export const cmsStoreApi = {
       `/api/v1/store/navigation/${encodeURIComponent(menuKey)}`,
       { skipAuthRefresh: true }
     ),
+  listAnimationPresets: () =>
+    apiFetch<AnimationPresetDto[]>("/api/v1/store/animation-presets", {
+      skipAuthRefresh: true,
+    }),
 };
 
 export const cmsAdminApi = {
@@ -112,6 +121,56 @@ export const cmsAdminApi = {
       `/api/v1/admin/navigation/${encodeURIComponent(menuKey)}`,
       { method: "PUT", body: { items } }
     ),
+
+  listAnimationPresets: (category?: string) =>
+    apiFetch<AnimationPresetDto[]>(
+      category
+        ? `/api/v1/admin/animation-presets?category=${encodeURIComponent(category)}`
+        : "/api/v1/admin/animation-presets"
+    ),
+  createAnimationPreset: (body: CreateAnimationPresetRequest) =>
+    apiFetch<AnimationPresetDto>("/api/v1/admin/animation-presets", {
+      method: "POST",
+      body,
+    }),
+  updateAnimationPreset: (presetId: string, body: UpdateAnimationPresetRequest) =>
+    apiFetch<AnimationPresetDto>(`/api/v1/admin/animation-presets/${presetId}`, {
+      method: "PUT",
+      body,
+    }),
+  deleteAnimationPreset: (presetId: string) =>
+    apiFetch<void>(`/api/v1/admin/animation-presets/${presetId}`, {
+      method: "DELETE",
+    }),
+  getPageAnimations: (pageId: string) =>
+    apiFetch<PageAnimationsResponse>(`/api/v1/admin/pages/${pageId}/animations`),
+  putElementAnimation: (
+    pageId: string,
+    elementId: string,
+    body: { motion: unknown; expectedVersion?: number; changeSummary?: string }
+  ) =>
+    apiFetch<PageDetailDto>(
+      `/api/v1/admin/pages/${pageId}/elements/${encodeURIComponent(elementId)}/animation`,
+      { method: "PUT", body }
+    ),
+  deleteElementAnimation: (
+    pageId: string,
+    elementId: string,
+    expectedVersion?: number
+  ) =>
+    apiFetch<PageDetailDto>(
+      expectedVersion !== undefined
+        ? `/api/v1/admin/pages/${pageId}/elements/${encodeURIComponent(elementId)}/animation?expectedVersion=${expectedVersion}`
+        : `/api/v1/admin/pages/${pageId}/elements/${encodeURIComponent(elementId)}/animation`,
+      { method: "DELETE" }
+    ),
+  getGlobalMotionSettings: () =>
+    apiFetch<GlobalMotionResponse>("/api/v1/admin/theme/motion-settings"),
+  updateGlobalMotionSettings: (motion: unknown, note?: string) =>
+    apiFetch<ThemeVersionDto>("/api/v1/admin/theme/motion-settings", {
+      method: "PUT",
+      body: { motion, note },
+    }),
 };
 
 export type AiSseHandlers = {
