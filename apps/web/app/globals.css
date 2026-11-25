@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../node_modules/streamdown/dist/*.js";
 @import "../src/features/builder/builder.css";
 @import "../src/features/motion/motion.css";
 
