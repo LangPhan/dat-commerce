@@ -49,6 +49,7 @@ type AuthContextValue = {
   ready: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
+  loginDemoOwner: () => Promise<AuthUser>;
   register: (fullName: string, email: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
@@ -91,6 +92,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const loginDemoOwner = useCallback(async () => {
+    const res = await apiFetch<AuthTokenResponse>("/api/v1/auth/demo-owner", {
+      method: "POST",
+      skipAuthRefresh: true,
+    });
+    setAccessToken(res.accessToken);
+    setUser(res.user);
+    setReady(true);
+    return res.user;
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -148,12 +160,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ready,
       isAdmin: isAdminUser(user),
       login,
+      loginDemoOwner,
       register,
       logout,
       hasPermission,
       hasRole,
     }),
-    [user, ready, login, register, logout, hasPermission, hasRole]
+    [user, ready, login, loginDemoOwner, register, logout, hasPermission, hasRole]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

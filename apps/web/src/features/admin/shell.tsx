@@ -94,7 +94,7 @@ export const navigation: { title: string; items: NavItem[] }[] = [
     title: "AI Workspace",
     items: [
       nav("AI Assistant", "assistant", Sparkles, "ai:use"),
-      nav("AI Settings", "ai-settings", SlidersHorizontal, "ai:use"),
+      nav("AI Settings", "ai-settings", SlidersHorizontal, "ai:settings:write"),
       nav("AI Activity", "ai-activity", History, "ai:use"),
       nav("Automation History", "automation", History, "ai:use"),
       nav("Audit Logs", "audit-logs", ShieldCheck, "audit:read"),
@@ -353,6 +353,28 @@ export function AdminShell({
           </div>
         </header>
 
+        {user?.demo ? (
+          <div
+            role="status"
+            style={{
+              background: "#fffbeb",
+              borderBottom: "1px solid #fde68a",
+              color: "#92400e",
+              padding: "8px 18px",
+              fontSize: "12.5px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              flexShrink: 0,
+            }}
+          >
+            <span>
+              <strong>Admin Demo Sandbox</strong> — Isolated workspace (main store untouched). Design publishing &amp; AI settings are disabled, and demo data auto-deletes after 2 hours
+              {user.demoExpiresAt ? ` (expires ${new Date(user.demoExpiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})` : ""}.
+            </span>
+          </div>
+        ) : null}
         <main className="admin-content">{children}</main>
       </div>
 

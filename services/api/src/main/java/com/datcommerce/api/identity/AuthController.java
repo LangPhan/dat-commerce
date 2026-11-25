@@ -20,10 +20,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final DemoWorkspaceService demoWorkspaceService;
     private final AppProperties appProperties;
 
-    public AuthController(AuthService authService, AppProperties appProperties) {
+    public AuthController(
+            AuthService authService,
+            DemoWorkspaceService demoWorkspaceService,
+            AppProperties appProperties
+    ) {
         this.authService = authService;
+        this.demoWorkspaceService = demoWorkspaceService;
         this.appProperties = appProperties;
     }
 
@@ -71,6 +77,19 @@ public class AuthController {
         );
         writeRefreshCookie(response, result.refreshToken(), appProperties.getJwt().getRefreshTtlSeconds());
         return ResponseEntity.ok(result.toBody());
+    }
+
+    @PostMapping("/demo-owner")
+    public ResponseEntity<AuthService.AuthTokenResponse> startDemoOwner(
+            HttpServletRequest request,
+            HttpServletResponse response
+    ) {
+        AuthService.AuthSessionResult result = demoWorkspaceService.startDemoOwnerSession(
+                request.getHeader(HttpHeaders.USER_AGENT),
+                clientIp(request)
+        );
+        writeRefreshCookie(response, result.refreshToken(), DemoWorkspaceService.DEMO_TTL.toSeconds());
+        return ResponseEntity.status(HttpStatus.CREATED).body(result.toBody());
     }
 
     @PostMapping("/logout")

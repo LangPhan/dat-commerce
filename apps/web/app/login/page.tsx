@@ -32,17 +32,13 @@ const registerSchema = z.object({
 type LoginValues = z.infer<typeof loginSchema>;
 type RegisterValues = z.infer<typeof registerSchema>;
 
-const demoAccounts = [
-  { label: "Owner (Admin)", email: "owner@datcommerce.local", pass: "OwnerPass123!" },
-  { label: "Catalog Mgr", email: "catalog@datcommerce.local", pass: "CatalogPass123!" },
-  { label: "Content Editor", email: "editor@datcommerce.local", pass: "EditorPass123!" },
-  { label: "Customer (Shopper)", email: "customer@datcommerce.local", pass: "CustomerPass123!" },
-];
+
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, ready, login, register: registerAccount } = useAuth();
+  const { user, ready, login, loginDemoOwner, register: registerAccount } = useAuth();
+  const [demoLoading, setDemoLoading] = useState(false);
   const [serverError, setServerError] = useState("");
   const [mode, setMode] = useState<"login" | "register">(() =>
     searchParams.get("mode") === "register" ? "register" : "login"
@@ -284,24 +280,33 @@ function LoginForm() {
 
         <div className="login-demo-box">
           <span className="muted">
-            Demo accounts (Staff → Admin · Customer → Storefront):
+            Try an isolated Admin Demo sandbox (auto-clears after 2 hours; main store stays untouched):
           </span>
           <div className="button-row">
-            {demoAccounts.map((acc) => (
-              <Button
-                key={acc.email}
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  setMode("login");
-                  loginForm.setValue("email", acc.email, { shouldValidate: true });
-                  loginForm.setValue("password", acc.pass, { shouldValidate: true });
-                  setServerError("");
-                }}
-              >
-                {acc.label}
-              </Button>
-            ))}
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={demoLoading}
+              onClick={async () => {
+                setServerError("");
+                setDemoLoading(true);
+                try {
+                  const demoUser = await loginDemoOwner();
+                  router.replace(resolvePostAuthRedirect(demoUser, rawNext));
+                } catch (err) {
+                  if (err instanceof ApiError) {
+                    setServerError(err.message);
+                  } else {
+                    setServerError("Unable to start Admin Demo workspace");
+                  }
+                } finally {
+                  setDemoLoading(false);
+                }
+              }}
+            >
+              <Sparkles size={13} />
+              {demoLoading ? "Starting Admin Demo..." : "Admin Demo"}
+            </Button>
           </div>
         </div>
 

@@ -58,7 +58,7 @@ public class AiAdminController {
     }
 
     @PutMapping("/settings")
-    @PreAuthorize("hasAuthority('ai:use')")
+    @PreAuthorize("hasAuthority('ai:settings:write')")
     public AiDtos.AiModelSettingsDto updateSettings(
             @AuthenticationPrincipal AuthenticatedUser user,
             @Valid @RequestBody AiDtos.UpdateAiModelSettingsRequest request
@@ -188,7 +188,7 @@ public class AiAdminController {
 
     @PostMapping("/customer-usage/{targetUserId}/reset")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAuthority('store:write')")
+    @PreAuthorize("hasAuthority('ai:settings:write')")
     public void resetCustomerUsage(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID targetUserId

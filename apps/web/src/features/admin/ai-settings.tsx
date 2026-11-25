@@ -743,6 +743,9 @@ export function CustomerAiQuotaSettingsSection({
 }
 
 export function AiSettingsView({ notify }: { notify: (msg: string) => void }) {
+  const { hasPermission } = useAuth();
+  const canManageAiSettings = hasPermission("ai:settings:write");
+
   return (
     <>
       <div className="admin-title">
@@ -755,9 +758,24 @@ export function AiSettingsView({ notify }: { notify: (msg: string) => void }) {
       </div>
 
       <div className="admin-page-scroll">
-        <AiModelSettingsPanel notify={notify} />
+        {canManageAiSettings ? (
+          <>
+            <AiModelSettingsPanel notify={notify} />
 
-        <CustomerAiQuotaSettingsSection notify={notify} />
+            <CustomerAiQuotaSettingsSection notify={notify} />
+          </>
+        ) : (
+          <section className="card ai-settings-card" role="status">
+            <div className="ai-settings-card-head">
+              <div>
+                <h2>Owner Access Required</h2>
+                <p className="muted">
+                  Only the primary Store Owner can configure AI model priorities and Storefront Shopping AI daily token limits.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
     </>
   );

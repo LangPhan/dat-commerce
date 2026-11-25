@@ -27,6 +27,8 @@ export type AuthUser = {
   fullName: string;
   roles: string[];
   permissions: string[];
+  demo?: boolean;
+  demoExpiresAt?: string | null;
 };
 
 export type AuthTokenResponse = {

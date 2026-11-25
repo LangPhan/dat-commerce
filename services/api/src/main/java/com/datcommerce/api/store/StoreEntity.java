@@ -48,6 +48,12 @@ public class StoreEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "is_demo", nullable = false)
+    private boolean demo;
+
+    @Column(name = "demo_expires_at")
+    private Instant demoExpiresAt;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -137,6 +143,22 @@ public class StoreEntity {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public boolean isDemo() {
+        return demo;
+    }
+
+    public void setDemo(boolean demo) {
+        this.demo = demo;
+    }
+
+    public Instant getDemoExpiresAt() {
+        return demoExpiresAt;
+    }
+
+    public void setDemoExpiresAt(Instant demoExpiresAt) {
+        this.demoExpiresAt = demoExpiresAt;
     }
 
     public Instant getUpdatedAt() {

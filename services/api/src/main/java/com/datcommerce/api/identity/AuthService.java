@@ -118,7 +118,7 @@ public class AuthService {
                 accessToken,
                 rawRefreshToken,
                 appProperties.getJwt().getAccessTtlSeconds(),
-                MeResponse.from(principal, store.getName())
+                MeResponse.from(principal, store)
         );
     }
 
@@ -137,6 +137,8 @@ public class AuthService {
             throw new ApiException(ErrorCode.UNAUTHORIZED, "Invalid email or password");
         }
 
+        ensureStoreNotExpiredDemo(user.getStoreId());
+
         clearLoginRateLimit(rateLimitKey);
 
         Instant now = Instant.now();
@@ -149,7 +151,7 @@ public class AuthService {
 
         AuthenticatedUser principal = toPrincipal(user);
         String accessToken = jwtService.generateAccessToken(principal);
-        String storeName = storeNameFor(user.getStoreId());
+        StoreEntity storeMeta = storeFor(user.getStoreId());
 
         auditLogService.record(
                 user.getStoreId(),
@@ -168,7 +170,7 @@ public class AuthService {
                 accessToken,
                 rawRefreshToken,
                 appProperties.getJwt().getAccessTtlSeconds(),
-                MeResponse.from(principal, storeName)
+                MeResponse.from(principal, storeMeta)
         );
     }
 
@@ -210,24 +212,29 @@ public class AuthService {
                 .filter(u -> "ACTIVE".equalsIgnoreCase(u.getStatus()))
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED, "User account is unavailable"));
 
+        StoreEntity userStore = ensureStoreNotExpiredDemo(user.getStoreId());
+
         // Ensure roles and permissions are loaded inside transaction
         AuthenticatedUser principal = toPrincipal(user);
 
         String newRawRefresh = generateOpaqueToken();
-        RefreshTokenEntity rotated = saveRefreshToken(user.getId(), newRawRefresh, userAgent, ipAddress, now);
+        long refreshTtl = userStore.isDemo() && userStore.getDemoExpiresAt() != null
+                ? Math.max(60L, Duration.between(now, userStore.getDemoExpiresAt()).toSeconds())
+                : appProperties.getJwt().getRefreshTtlSeconds();
+        RefreshTokenEntity rotated = saveRefreshToken(user.getId(), newRawRefresh, userAgent, ipAddress, now, refreshTtl);
         existing.setRevokedAt(now);
         existing.setReplacedById(rotated.getId());
         refreshTokenRepository.save(existing);
         markRevokedInRedis(existing.getTokenHash(), existing.getExpiresAt(), now);
 
         String accessToken = jwtService.generateAccessToken(principal);
-        String storeName = storeNameFor(user.getStoreId());
+        StoreEntity storeMeta = storeFor(user.getStoreId());
 
         return new AuthSessionResult(
                 accessToken,
                 newRawRefresh,
                 appProperties.getJwt().getAccessTtlSeconds(),
-                MeResponse.from(principal, storeName)
+                MeResponse.from(principal, storeMeta)
         );
     }
 
@@ -262,7 +269,7 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public MeResponse me(AuthenticatedUser principal) {
-        return MeResponse.from(principal, storeNameFor(principal.storeId()));
+        return MeResponse.from(principal, storeFor(principal.storeId()));
     }
 
     public AuthenticatedUser toPrincipal(AdminUserEntity user) {
@@ -286,6 +293,42 @@ public class AuthService {
         );
     }
 
+    @Transactional
+    public AuthSessionResult createSessionForUser(
+            AdminUserEntity user,
+            String userAgent,
+            String ipAddress,
+            long refreshTtlSeconds
+    ) {
+        Instant now = Instant.now();
+        user.setLastLoginAt(now);
+        user.setUpdatedAt(now);
+        userRepository.save(user);
+
+        String rawRefreshToken = generateOpaqueToken();
+        saveRefreshToken(user.getId(), rawRefreshToken, userAgent, ipAddress, now, refreshTtlSeconds);
+
+        AuthenticatedUser principal = toPrincipal(user);
+        String accessToken = jwtService.generateAccessToken(principal);
+        StoreEntity storeMeta = storeFor(user.getStoreId());
+
+        return new AuthSessionResult(
+                accessToken,
+                rawRefreshToken,
+                appProperties.getJwt().getAccessTtlSeconds(),
+                MeResponse.from(principal, storeMeta)
+        );
+    }
+
+    private StoreEntity ensureStoreNotExpiredDemo(UUID storeId) {
+        StoreEntity store = storeRepository.findById(storeId)
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED, "Store workspace is unavailable"));
+        if (store.isDemo() && store.getDemoExpiresAt() != null && store.getDemoExpiresAt().isBefore(Instant.now())) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED, "Demo workspace has expired");
+        }
+        return store;
+    }
+
     private RefreshTokenEntity saveRefreshToken(
             UUID userId,
             String rawToken,
@@ -293,11 +336,22 @@ public class AuthService {
             String ipAddress,
             Instant now
     ) {
+        return saveRefreshToken(userId, rawToken, userAgent, ipAddress, now, appProperties.getJwt().getRefreshTtlSeconds());
+    }
+
+    private RefreshTokenEntity saveRefreshToken(
+            UUID userId,
+            String rawToken,
+            String userAgent,
+            String ipAddress,
+            Instant now,
+            long ttlSeconds
+    ) {
         RefreshTokenEntity entity = new RefreshTokenEntity();
         entity.setId(UUID.randomUUID());
         entity.setUserId(userId);
         entity.setTokenHash(sha256Hex(rawToken));
-        entity.setExpiresAt(now.plusSeconds(appProperties.getJwt().getRefreshTtlSeconds()));
+        entity.setExpiresAt(now.plusSeconds(Math.max(60L, ttlSeconds)));
         entity.setUserAgent(truncate(userAgent, 500));
         entity.setIpAddress(truncate(ipAddress, 64));
         entity.setCreatedAt(now);
@@ -364,7 +418,7 @@ public class AuthService {
             // Best-effort rate counter
         }
         try {
-            UUID storeId = storeRepository.findAll().stream().findFirst().map(StoreEntity::getId).orElse(null);
+            UUID storeId = storeRepository.findByCode("terrain-supply").or(() -> storeRepository.findAll().stream().findFirst()).map(StoreEntity::getId).orElse(null);
             if (storeId != null) {
                 auditLogService.record(
                         storeId, null, email,
@@ -385,10 +439,8 @@ public class AuthService {
         }
     }
 
-    private String storeNameFor(UUID storeId) {
-        return storeRepository.findById(storeId)
-                .map(StoreEntity::getName)
-                .orElse("Dat Commerce");
+    private StoreEntity storeFor(UUID storeId) {
+        return storeRepository.findById(storeId).orElse(null);
     }
 
     private static String generateOpaqueToken() {
@@ -435,8 +487,24 @@ public class AuthService {
             String email,
             String fullName,
             List<String> roles,
-            List<String> permissions
+            List<String> permissions,
+            boolean demo,
+            Instant demoExpiresAt
     ) {
+        static MeResponse from(AuthenticatedUser user, StoreEntity store) {
+            return new MeResponse(
+                    user.userId(),
+                    user.storeId(),
+                    store != null ? store.getName() : "Dat Commerce",
+                    user.email(),
+                    user.fullName(),
+                    user.roles(),
+                    user.permissions(),
+                    store != null && store.isDemo(),
+                    store != null ? store.getDemoExpiresAt() : null
+            );
+        }
+
         static MeResponse from(AuthenticatedUser user, String storeName) {
             return new MeResponse(
                     user.userId(),
@@ -445,7 +513,9 @@ public class AuthService {
                     user.email(),
                     user.fullName(),
                     user.roles(),
-                    user.permissions()
+                    user.permissions(),
+                    false,
+                    null
             );
         }
     }

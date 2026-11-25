@@ -12,7 +12,7 @@ vi.mock("@/features/auth/auth-context", () => ({
       email: "owner@datcommerce.local",
       fullName: "Alex Morgan",
       roles: ["OWNER"],
-      permissions: ["ai:read", "ai:write"],
+      permissions: ["ai:read", "ai:write", "ai:settings:write"],
     },
   }),
 }));

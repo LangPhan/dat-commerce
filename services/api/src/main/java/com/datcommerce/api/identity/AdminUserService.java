@@ -69,6 +69,7 @@ public class AdminUserService {
         }
 
         Set<RoleEntity> resolvedRoles = resolveRoles(req.roles());
+        guardDemoRoleAssignment(actor, resolvedRoles);
         Instant now = Instant.now();
 
         AdminUserEntity user = new AdminUserEntity();
@@ -137,6 +138,7 @@ public class AdminUserService {
 
         if (req.roles() != null && !req.roles().isEmpty()) {
             Set<RoleEntity> nextRoles = resolveRoles(req.roles());
+            guardDemoRoleAssignment(actor, nextRoles);
             boolean hadOwner = previousRoles.contains("OWNER");
             boolean keepsOwner = nextRoles.stream().anyMatch(r -> "OWNER".equals(r.getCode()));
             if (actor.userId().equals(target.getId()) && hadOwner && !keepsOwner) {
@@ -167,6 +169,24 @@ public class AdminUserService {
         );
 
         return UserResponse.from(saved);
+    }
+
+
+    private static void guardDemoRoleAssignment(AuthenticatedUser actor, Set<RoleEntity> roles) {
+        boolean actorIsDemoOnly = actor.roles().contains("DEMO_OWNER") && !actor.roles().contains("OWNER");
+        if (!actorIsDemoOnly) {
+            return;
+        }
+        boolean assignsRestricted = roles.stream().anyMatch(r -> {
+            String code = r.getCode();
+            return "OWNER".equals(code) || "ADMIN".equals(code) || "CONTENT_EDITOR".equals(code);
+        });
+        if (assignsRestricted) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN,
+                    "Demo Owner cannot assign OWNER, ADMIN, or CONTENT_EDITOR roles"
+            );
+        }
     }
 
     private Set<RoleEntity> resolveRoles(List<String> requestedCodes) {

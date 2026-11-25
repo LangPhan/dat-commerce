@@ -61,11 +61,14 @@ public class AiSettingsService {
     public AiDtos.AiModelSettingsDto getSettings(UUID storeId) {
         StoreEntity store = storeRepository.findById(storeId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Store not found"));
+        StoreEntity effectiveStore = store.isDemo()
+                ? storeRepository.findByCode("terrain-supply").orElse(store)
+                : store;
 
         GatewayCatalog catalog = loadGatewayCatalog();
-        List<String> persisted = readPersistedEnabledIds(store);
+        List<String> persisted = readPersistedEnabledIds(effectiveStore);
         List<String> enabled = resolveEffectiveEnabledIds(persisted, catalog.models());
-        CustomerAiConfig custCfg = readCustomerAiConfig(store, enabled);
+        CustomerAiConfig custCfg = readCustomerAiConfig(effectiveStore, enabled);
         return buildDto(enabled, catalog, custCfg);
     }
 
