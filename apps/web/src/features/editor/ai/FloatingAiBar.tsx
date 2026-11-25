@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AiModelSettingsPanel } from "@/features/admin/ai-settings";
+import { useOptionalAuth } from "@/features/auth/auth-context";
 import {
   collectEditablePartsMap,
   getElementPart,
@@ -187,6 +188,8 @@ export function FloatingAiBar({
   canWrite: boolean;
   onNotify: (msg: string) => void;
 }) {
+  const auth = useOptionalAuth();
+  const canManageAiSettings = auth ? auth.hasPermission("ai:settings:write") : false;
   const { models, defaultModelId } = useAiModels();
   const [selectedModel, setSelectedModel] = useState<AIModelId>(defaultModelId);
   const manualModelRef = useRef(false);
@@ -997,13 +1000,15 @@ export function FloatingAiBar({
               }}
             />
 
-            <IconButton
-              label="Configure AI Models"
-              title="AI Model Settings (select & reorder priority)"
-              onClick={() => setSettingsOpen(true)}
-            >
-              <Settings2 size={14} />
-            </IconButton>
+            {canManageAiSettings ? (
+              <IconButton
+                label="Configure AI Models"
+                title="AI Model Settings (select & reorder priority)"
+                onClick={() => setSettingsOpen(true)}
+              >
+                <Settings2 size={14} />
+              </IconButton>
+            ) : null}
 
             <IconButton
               label="Hide AI chat"
