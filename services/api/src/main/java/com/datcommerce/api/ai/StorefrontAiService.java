@@ -31,7 +31,7 @@ public class StorefrontAiService {
             1. Answer customer product questions accurately using ONLY live catalog data returned by shop.* tools (prices, variants, stock, specs, ratings, promotions). Never fabricate prices or availability.
             2. Make tailored product recommendations and present comparisons cleanly in Markdown (bullet lists or concise tables when helpful).
             3. When a customer asks to add a product to their cart, call `shop.add_to_cart` with the resolved `variantId` (or `productSlug` + optional `sku`) and quantity.
-            4. When a customer asks to prepare/fill checkout or shipping information, call `shop.prefill_checkout`. NEVER claim an order has been placed or paid — ALWAYS tell the customer their checkout form is prefilled for review and they must click "Place order" themselves.
+            4. When a customer asks to prepare/fill checkout or shipping information, call `shop.prefill_checkout` immediately with all details already provided by the customer (leave unknown optional fields empty; shippingMethod defaults to "standard" unless customer asks for express). NEVER claim an order has been placed or paid — ALWAYS tell the customer their checkout form is prefilled for review and they must click "Place order" themselves.
             5. Match the customer's language (English or Vietnamese). Keep replies clear, friendly, and concise.
             """;
 
@@ -45,8 +45,8 @@ public class StorefrontAiService {
     private final NineRouterAiGateway nineRouterGateway;
     private final AppProperties appProperties;
     private final ObjectMapper objectMapper;
+    private final StorefrontAiPersistenceService persistenceService;
 
-    @Autowired
     public StorefrontAiService(
             CustomerAiConversationRepository conversationRepository,
             CustomerAiMessageRepository messageRepository,
@@ -59,6 +59,35 @@ public class StorefrontAiService {
             AppProperties appProperties,
             ObjectMapper objectMapper
     ) {
+        this(
+                conversationRepository,
+                messageRepository,
+                storeRepository,
+                settingsService,
+                quotaService,
+                toolService,
+                mockGateway,
+                nineRouterGateway,
+                appProperties,
+                objectMapper,
+                null
+        );
+    }
+
+    @Autowired
+    public StorefrontAiService(
+            CustomerAiConversationRepository conversationRepository,
+            CustomerAiMessageRepository messageRepository,
+            StoreRepository storeRepository,
+            AiSettingsService settingsService,
+            AiTokenQuotaService quotaService,
+            StorefrontAiToolService toolService,
+            MockAiModelGateway mockGateway,
+            NineRouterAiGateway nineRouterGateway,
+            AppProperties appProperties,
+            ObjectMapper objectMapper,
+            StorefrontAiPersistenceService persistenceService
+    ) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.storeRepository = storeRepository;
@@ -69,6 +98,7 @@ public class StorefrontAiService {
         this.nineRouterGateway = nineRouterGateway;
         this.appProperties = appProperties;
         this.objectMapper = objectMapper;
+        this.persistenceService = persistenceService;
     }
 
     private UUID defaultStoreId() {
@@ -118,7 +148,10 @@ public class StorefrontAiService {
         conversationRepository.delete(conv);
     }
 
-    @Transactional
+    /**
+     * Deliberately NOT @Transactional so external LLM HTTP calls and caught tool ApiExceptions
+     * (e.g. promo validation or slug fallback) never mark an outer JPA transaction rollbackOnly.
+     */
     public AiDtos.StorefrontChatResponse chat(
             AuthenticatedUser actor,
             String cartSessionToken,
@@ -151,7 +184,6 @@ public class StorefrontAiService {
             conv.setModel(modelId);
             conv.setCreatedAt(now);
             conv.setUpdatedAt(now);
-            conversationRepository.save(conv);
             existingMessages = List.of();
         }
 
@@ -240,14 +272,6 @@ public class StorefrontAiService {
                 ? turn.content().trim()
                 : buildFallbackReply(sideEffects);
 
-        AiDtos.CustomerAiQuotaDto quotaAfter = quotaService.recordUsage(
-                storeId,
-                actor.userId(),
-                totalPromptTokens,
-                totalCompletionTokens,
-                finalReply
-        );
-
         CustomerAiMessageEntity userMsg = new CustomerAiMessageEntity();
         userMsg.setId(UUID.randomUUID());
         userMsg.setConversationId(conv.getId());
@@ -258,7 +282,6 @@ public class StorefrontAiService {
         userMsg.setPromptTokens(0);
         userMsg.setCompletionTokens(0);
         userMsg.setCreatedAt(now);
-        messageRepository.save(userMsg);
 
         List<AiDtos.StorefrontProductRecommendationDto> recs = sideEffects.recommendedProducts();
         List<Map<String, Object>> actionsJson = new ArrayList<>();
@@ -286,10 +309,33 @@ public class StorefrontAiService {
         assistantMsg.setCompletionTokens(totalCompletionTokens);
         assistantMsg.setModel(modelId);
         assistantMsg.setCreatedAt(Instant.now());
-        messageRepository.save(assistantMsg);
 
         conv.setUpdatedAt(Instant.now());
-        conversationRepository.save(conv);
+
+        AiDtos.CustomerAiQuotaDto quotaAfter;
+        if (persistenceService != null) {
+            quotaAfter = persistenceService.saveCompletedTurn(
+                    storeId,
+                    actor.userId(),
+                    conv,
+                    userMsg,
+                    assistantMsg,
+                    totalPromptTokens,
+                    totalCompletionTokens,
+                    finalReply
+            );
+        } else {
+            quotaAfter = quotaService.recordUsage(
+                    storeId,
+                    actor.userId(),
+                    totalPromptTokens,
+                    totalCompletionTokens,
+                    finalReply
+            );
+            conversationRepository.save(conv);
+            messageRepository.save(userMsg);
+            messageRepository.save(assistantMsg);
+        }
 
         return new AiDtos.StorefrontChatResponse(
                 conv.getId(),

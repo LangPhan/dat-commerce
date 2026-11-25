@@ -215,4 +215,25 @@ class StorefrontAiServiceTest {
                 .extracting(ex -> ((ApiException) ex).getCode())
                 .isEqualTo(ErrorCode.NOT_FOUND);
     }
+
+    @Test
+    void prefillsCheckoutEvenWhenPromotionCodeIsInvalid() {
+        when(quotaService.assertCanUse(storeId, customer.userId())).thenReturn(
+                new AiDtos.CustomerAiQuotaDto(true, 20000, 100, 19900, 1, Instant.now().plusSeconds(3600), "gpt-6-luna")
+        );
+        when(quotaService.recordUsage(eq(storeId), eq(customer.userId()), anyInt(), anyInt(), anyString()))
+                .thenReturn(new AiDtos.CustomerAiQuotaDto(true, 20000, 275, 19725, 2, Instant.now().plusSeconds(3600), "gpt-6-luna"));
+        when(cartService.applyPromotion(any(), eq("WELCOME15")))
+                .thenThrow(new ApiException(ErrorCode.BAD_REQUEST, "Invalid promotion code"));
+
+        AiDtos.StorefrontChatResponse res = service.chat(
+                customer,
+                "sess-1",
+                new AiDtos.StorefrontChatRequest(null, "Prefill checkout to 123 Nguyen Hue Ho Chi Minh City with WELCOME15", "/store/cart", null)
+        );
+
+        assertThat(res.checkoutPrefill()).isNotNull();
+        assertThat(res.checkoutPrefill().line1()).isEqualTo("123 Nguyen Hue");
+        assertThat(res.checkoutAutoSubmit()).isFalse();
+    }
 }

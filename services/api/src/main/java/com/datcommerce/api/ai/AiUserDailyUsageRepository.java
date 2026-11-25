@@ -17,7 +17,7 @@ public interface AiUserDailyUsageRepository
             LocalDate usageDate
     );
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
             value = """
                     INSERT INTO ai_user_daily_token_usage
