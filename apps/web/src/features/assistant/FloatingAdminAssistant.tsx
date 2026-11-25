@@ -28,6 +28,7 @@ import { aiAdminApi } from "@/lib/cms-ai-api";
 import { cn } from "@/lib/format";
 import { AssistantChatPanel } from "./AssistantChatPanel";
 import { useAdminAssistantStore } from "./assistant-ui-store";
+import { Button } from "@base-ui/react";
 
 export function FloatingAdminAssistant({
   view,
@@ -76,7 +77,7 @@ export function FloatingAdminAssistant({
 
   const conversations = useMemo(
     () => conversationsQuery.data || [],
-    [conversationsQuery.data]
+    [conversationsQuery.data],
   );
 
   if (!canUseAi || hiddenOnView) {
@@ -112,7 +113,7 @@ export function FloatingAdminAssistant({
                   type="button"
                   aria-label="Switch conversation"
                   title="Conversation history"
-                  className="icon-btn"
+                  className="icon-btn flex justify-center items-center rounded-sm"
                 >
                   <History size={14} />
                 </PopoverTrigger>
@@ -141,7 +142,7 @@ export function FloatingAdminAssistant({
                         type="button"
                         className={cn(
                           "admin-ai-thread-menu-item",
-                          activeThreadId === c.id && "active"
+                          activeThreadId === c.id && "active",
                         )}
                         onClick={() => {
                           setActiveThreadId(c.id);
@@ -166,21 +167,24 @@ export function FloatingAdminAssistant({
 
               <IconButton
                 label={expanded ? "Compact panel" : "Expand panel"}
-                title={expanded ? "Compact panel" : "Expand panel for wide tables"}
+                title={
+                  expanded ? "Compact panel" : "Expand panel for wide tables"
+                }
                 onClick={() => setExpanded(!expanded)}
               >
                 {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </IconButton>
 
-              <Link
-                href="/admin/assistant"
-                className="icon-btn"
-                aria-label="Open full AI Assistant workspace"
-                title="Open full AI Assistant page"
-                onClick={() => setOpen(false)}
-              >
-                <ExternalLink size={14} />
-              </Link>
+              <Button className="icon-btn flex justify-center items-center rounded-sm">
+                <Link
+                  href="/admin/assistant"
+                  aria-label="Open full AI Assistant workspace"
+                  title="Open full AI Assistant page"
+                  onClick={() => setOpen(false)}
+                >
+                  <ExternalLink size={14} />
+                </Link>
+              </Button>
 
               <IconButton
                 label="Close floating AI Assistant"

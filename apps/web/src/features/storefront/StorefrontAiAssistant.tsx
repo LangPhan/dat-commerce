@@ -6,6 +6,7 @@ import {
   ArrowRight,
   CheckCircle2,
   History,
+  LoaderCircle,
   Lock,
   Plus,
   ShoppingBag,
@@ -599,6 +600,33 @@ export function StorefrontAiAssistant({
                         </Message>
                       ))
                     )}
+
+                    {chatMutation.isPending ? (
+                      <Message from="assistant" key="assistant-thinking">
+                        <MessageContent>
+                          <div
+                            className="store-ai-thinking"
+                            role="status"
+                            aria-live="polite"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 8,
+                              fontSize: 13,
+                              opacity: 0.75,
+                            }}
+                          >
+                            <LoaderCircle
+                              size={14}
+                              className="spin"
+                              aria-hidden="true"
+                            />
+                            <span>Thinking...</span>
+                          </div>
+                        </MessageContent>
+                      </Message>
+                    ) : null}
+
                     <ConversationScrollButton />
                   </ConversationContent>
                 </Conversation>
@@ -650,7 +678,9 @@ export function StorefrontAiAssistant({
                     right={
                       <PromptInputSubmit
                         busy={chatMutation.isPending}
-                        disabled={!draft.trim() || isQuotaBlocked}
+                        disabled={
+                          !draft.trim() || chatMutation.isPending || isQuotaBlocked
+                        }
                       />
                     }
                   />

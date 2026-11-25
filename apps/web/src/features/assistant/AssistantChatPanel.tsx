@@ -66,6 +66,23 @@ type StreamingToolRow = {
   errorMessage?: string | null;
 };
 
+type StreamingState = {
+  /** Conversation this stream belongs to. Null while a new conversation is being created. */
+  conversationId: string | null;
+  /** Text displayed in the temporary user message. */
+  prompt: string;
+  /** Exact content sent to the API, including any attachment reference. */
+  requestContent: string;
+  status: string;
+  text: string;
+  tools: StreamingToolRow[];
+};
+
+type ErrorState = {
+  thread: string;
+  msg: string;
+};
+
 function suggestionsForView(view?: string, compact = false): string[] {
   const byView: Record<string, string[]> = {
     products: [
@@ -111,7 +128,6 @@ function suggestionsForView(view?: string, compact = false): string[] {
 
 export function AssistantChatPanel({
   mode = "full",
-  conversations,
   selectedId,
   onSelectThread,
   contextHint,
@@ -137,41 +153,56 @@ export function AssistantChatPanel({
   const setPrompt = mode === "drawer" ? setStoreDraft : setLocalPrompt;
 
   const [attachment, setAttachment] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [streamingPrompt, setStreamingPrompt] = useState("");
-  const [streamingStatus, setStreamingStatus] = useState("");
-  const [streamingText, setStreamingText] = useState("");
-  const [streamingTools, setStreamingTools] = useState<StreamingToolRow[]>([]);
-  const [errorState, setErrorState] = useState<{ thread: string; msg: string }>({ thread: "", msg: "" });
+  const [streaming, setStreaming] = useState<StreamingState | null>(null);
+  const [errorState, setErrorState] = useState<ErrorState>({
+    thread: "",
+    msg: "",
+  });
   const [reviewPlan, setReviewPlan] = useState<AiChangePlanDto | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const sendLockRef = useRef(false);
+
+  const busy = streaming !== null;
 
   const resolvedModel =
     selectedModel && availableModels.some((m) => m.id === selectedModel)
       ? selectedModel
       : defaultModelId;
 
+  // Use selectedId directly. Falling back to conversations[0] can briefly
+  // point a newly-created thread at the previously selected conversation.
   const activeThreadId =
-    selectedId === "new"
-      ? undefined
-      : conversations.find((c) => c.id === selectedId)?.id ||
-        conversations[0]?.id;
+    selectedId && selectedId !== "new" ? selectedId : undefined;
 
   const detailQuery = useQuery({
     queryKey: ["ai-conversation", activeThreadId],
     queryFn: () => aiAdminApi.getConversation(activeThreadId!),
     enabled: Boolean(activeThreadId),
+    // Do not reuse the previous query's data as placeholder data.
+    // When a new conversation is created, that would briefly render the old
+    // conversation under the new conversation ID while the new detail loads.
+    // TanStack Query still serves cached data for this exact query key when
+    // the user revisits an already-loaded conversation.
+    // Revisited conversations should normally render from cache immediately.
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 
   const detail = detailQuery.data;
+  const threadKey = activeThreadId || "new";
+  const errorBanner = errorState.thread === threadKey ? errorState.msg : "";
+
+  function setThreadError(conversationId: string | undefined, msg: string) {
+    setErrorState({ thread: conversationId || "new", msg });
+  }
+
+  function setErrorBanner(msg: string) {
+    setThreadError(activeThreadId, msg);
+  }
 
   function invalidateAfterMutation() {
-    if (activeThreadId) {
-      queryClient.invalidateQueries({
-        queryKey: ["ai-conversation", activeThreadId],
-      });
-    }
+    queryClient.invalidateQueries({ queryKey: ["ai-conversation"] });
     queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
     queryClient.invalidateQueries({ queryKey: ["ai-activity"] });
     queryClient.invalidateQueries({ queryKey: ["admin-products"] });
@@ -191,7 +222,7 @@ export function AssistantChatPanel({
     },
     onError: (err) => {
       setErrorBanner(
-        err instanceof ApiError ? err.message : "Failed to apply Change Plan"
+        err instanceof ApiError ? err.message : "Failed to apply Change Plan",
       );
     },
   });
@@ -206,7 +237,7 @@ export function AssistantChatPanel({
     },
     onError: (err) => {
       setErrorBanner(
-        err instanceof ApiError ? err.message : "Failed to reject Change Plan"
+        err instanceof ApiError ? err.message : "Failed to reject Change Plan",
       );
     },
   });
@@ -219,120 +250,252 @@ export function AssistantChatPanel({
     },
     onError: (err) => {
       setErrorBanner(
-        err instanceof ApiError ? err.message : "Failed to rollback Change Plan"
+        err instanceof ApiError ? err.message : "Failed to rollback Change Plan",
       );
     },
   });
 
-  const threadKey = activeThreadId || "new";
-  const errorBanner = errorState.thread === threadKey ? errorState.msg : "";
-  const setErrorBanner = (msg: string) => setErrorState({ thread: threadKey, msg });
+  async function refreshConversation(conversationId: string) {
+    // Wait for the detail query to finish before removing the temporary
+    // streaming message. This prevents a blank frame between local and server data.
+    await queryClient.invalidateQueries({
+      queryKey: ["ai-conversation", conversationId],
+      refetchType: "all",
+    });
+  }
 
   async function send(overridePrompt?: string) {
     const rawText = (overridePrompt ?? prompt).trim();
-    if (!rawText || busy) return;
 
-    const fullPrompt = attachment
-      ? `${rawText}\n\n[Attached file reference: ${attachment}]`
+    // A ref lock prevents two submit events in the same render cycle from
+    // creating two conversations/messages before React updates the state.
+    if (!rawText || sendLockRef.current) return;
+
+    sendLockRef.current = true;
+
+    const submittedAttachment = attachment;
+    const fullPrompt = submittedAttachment
+      ? `${rawText}\n\n[Attached file reference: ${submittedAttachment}]`
       : rawText;
 
-    setErrorBanner("");
-    setBusy(true);
-    setStreamingPrompt(rawText);
-    setStreamingStatus("Starting Dat AI Operator…");
-    setStreamingText("");
-    setStreamingTools([]);
+    let targetConvId = activeThreadId;
+
+    setThreadError(targetConvId, "");
+    setStreaming({
+      conversationId: targetConvId || null,
+      prompt: rawText,
+      requestContent: fullPrompt,
+      status: "Starting Dat AI Operator…",
+      text: "",
+      tools: [],
+    });
     setPrompt("");
     setAttachment("");
 
     try {
-      let targetConvId = activeThreadId;
       if (!targetConvId) {
-        const created = await aiAdminApi.createConversation(
-          rawText.slice(0, 72)
-        );
+        const created = await aiAdminApi.createConversation(rawText.slice(0, 72));
         targetConvId = created.id;
+
+        setStreaming((current) =>
+          current
+            ? { ...current, conversationId: created.id }
+            : current,
+        );
+
         onSelectThread(created.id);
-        queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
+        void queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
       }
 
+      const conversationId = targetConvId;
+
       await aiAdminApi.streamMessage(
-        targetConvId,
+        conversationId,
         { prompt: fullPrompt, model: resolvedModel },
         {
-          onStatus: (s) => setStreamingStatus(s.message || s.phase),
-          onToolStarted: (t) => {
-            setStreamingTools((curr) => [
-              ...curr,
-              {
-                id: t.callId || newId(),
-                toolName: t.tool,
+          onStatus: (status) => {
+            setStreaming((current) =>
+              current
+                ? {
+                    ...current,
+                    status: status.message || status.phase,
+                  }
+                : current,
+            );
+          },
+          onToolStarted: (tool) => {
+            const toolId = tool.callId || newId();
+
+            setStreaming((current) => {
+              if (!current) return current;
+
+              const existingIndex = current.tools.findIndex(
+                (row) => row.id === toolId,
+              );
+              const nextTools = [...current.tools];
+              const nextRow: StreamingToolRow = {
+                id: toolId,
+                toolName: tool.tool,
                 status: "running",
                 durationMs: 0,
-              },
-            ]);
+              };
+
+              if (existingIndex >= 0) nextTools[existingIndex] = nextRow;
+              else nextTools.push(nextRow);
+
+              return { ...current, tools: nextTools };
+            });
           },
-          onToolCompleted: (tc) => {
-            const payload = (tc.toolCall || {}) as Partial<AiToolCallDto>;
-            setStreamingTools((curr) => {
-              const next = [...curr];
-              const idx = next.findIndex(
-                (s) => s.id === payload.id || s.status === "running"
-              );
-              const row: StreamingToolRow = {
-                id: payload.id || newId(),
-                toolName: payload.toolName || "tool",
-                status: tc.status === "FAILED" ? "failed" : "completed",
+          onToolCompleted: (toolCompleted) => {
+            const payload = (toolCompleted.toolCall || {}) as Partial<AiToolCallDto>;
+            const fallbackId = payload.id || newId();
+
+            setStreaming((current) => {
+              if (!current) return current;
+
+              let index = payload.id
+                ? current.tools.findIndex((row) => row.id === payload.id)
+                : -1;
+
+              // Some APIs use different IDs for the start and completion
+              // events. Match by tool name only when exactly one call is running.
+              if (index < 0 && payload.toolName) {
+                const matchingRunning = current.tools
+                  .map((row, rowIndex) => ({ row, rowIndex }))
+                  .filter(
+                    ({ row }) =>
+                      row.status === "running" &&
+                      row.toolName === payload.toolName,
+                  );
+
+                if (matchingRunning.length === 1) {
+                  index = matchingRunning[0].rowIndex;
+                }
+              }
+
+              if (index < 0) {
+                const running = current.tools
+                  .map((row, rowIndex) => ({ row, rowIndex }))
+                  .filter(({ row }) => row.status === "running");
+
+                // Only use the fallback when there is exactly one running
+                // tool. Never replace an arbitrary running tool when several
+                // tools are executing concurrently.
+                if (running.length === 1) index = running[0].rowIndex;
+              }
+
+              const previous = index >= 0 ? current.tools[index] : undefined;
+              const completedRow: StreamingToolRow = {
+                id: previous?.id || fallbackId,
+                toolName: payload.toolName || previous?.toolName || "tool",
+                status: toolCompleted.status === "FAILED" ? "failed" : "completed",
                 durationMs: payload.durationMs || 0,
                 arguments: payload.arguments,
                 resultSummary: payload.resultSummary,
                 errorMessage: payload.errorMessage,
               };
-              if (idx >= 0) next[idx] = row;
-              else next.push(row);
-              return next;
+
+              const nextTools = [...current.tools];
+              if (index >= 0) nextTools[index] = completedRow;
+              else nextTools.push(completedRow);
+
+              return { ...current, tools: nextTools };
             });
           },
           onMessageDelta: (delta) => {
-            setStreamingText((prev) => prev + (delta.text || ""));
+            if (!delta.text) return;
+            setStreaming((current) =>
+              current
+                ? { ...current, text: current.text + delta.text }
+                : current,
+            );
           },
           onPlanCreated: () => {
-            queryClient.invalidateQueries({ queryKey: ["ai-activity"] });
+            void queryClient.invalidateQueries({ queryKey: ["ai-activity"] });
           },
           onCompleted: () => {
-            queryClient.invalidateQueries({
-              queryKey: ["ai-conversation", targetConvId],
-            });
-            queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
-            queryClient.invalidateQueries({ queryKey: ["ai-activity"] });
+            setStreaming((current) =>
+              current
+                ? { ...current, status: "Finishing response…" }
+                : current,
+            );
           },
-          onError: (msg) => setErrorBanner(msg),
-        }
+          onError: (message) => {
+            setThreadError(conversationId, message);
+          },
+        },
       );
+
+      // Keep the temporary user/assistant messages visible until the server
+      // has returned the persisted conversation messages.
+      await refreshConversation(conversationId);
+
+      void queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
+      void queryClient.invalidateQueries({ queryKey: ["ai-activity"] });
     } catch (err) {
-      setErrorBanner(
-        err instanceof ApiError ? err.message : "AI stream request failed"
+      setThreadError(
+        targetConvId,
+        err instanceof ApiError ? err.message : "AI stream request failed",
       );
+
+      // Restore the draft so a failed request does not make the user's input
+      // disappear. Keep the attachment reference as well.
+      setPrompt(rawText);
+      setAttachment(submittedAttachment);
+
+      if (targetConvId) {
+        try {
+          await refreshConversation(targetConvId);
+        } catch {
+          // Keep the original stream error visible if the refresh also fails.
+        }
+      }
     } finally {
-      setBusy(false);
-      setStreamingPrompt("");
-      setStreamingStatus("");
-      setStreamingText("");
-      setStreamingTools([]);
+      setStreaming(null);
+      sendLockRef.current = false;
     }
   }
 
   const messages = detail?.messages || [];
   const toolCalls = detail?.toolCalls || [];
   const changePlans = detail?.changePlans || [];
-  const linkedMessageIds = new Set(messages.map((m) => m.id));
+  const linkedMessageIds = new Set(messages.map((message) => message.id));
   const orphanPlans = changePlans.filter(
-    (p) => !p.messageId || !linkedMessageIds.has(p.messageId)
+    (plan) => !plan.messageId || !linkedMessageIds.has(plan.messageId),
   );
 
   const suggestions = useMemo(
     () => suggestionsForView(contextHint?.view, mode === "drawer"),
-    [contextHint?.view, mode]
+    [contextHint?.view, mode],
+  );
+
+  // Render stream data only in the conversation where it was started. If a
+  // user switches threads during a request, the stream will not appear in the
+  // newly selected conversation.
+  const visibleStreaming =
+    streaming &&
+    (streaming.conversationId === (activeThreadId || null) ||
+      (selectedId === "new" && !activeThreadId))
+      ? streaming
+      : null;
+
+  const latestUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role.toLowerCase() === "user");
+  const pendingUserAlreadyPersisted =
+    Boolean(visibleStreaming) &&
+    latestUserMessage?.content === visibleStreaming?.requestContent;
+
+  const streamingAssistantAlreadyPersisted =
+    Boolean(visibleStreaming?.text) &&
+    messages.some(
+      (message) =>
+        message.role.toLowerCase() !== "user" &&
+        message.content === visibleStreaming?.text,
+    );
+
+  const isInitialLoading = Boolean(
+    activeThreadId && detailQuery.isLoading && !detailQuery.data && !visibleStreaming,
   );
 
   function renderPlanCard(plan: AiChangePlanDto) {
@@ -393,7 +556,9 @@ export function AssistantChatPanel({
     );
   }
 
-  const stickKey = `${activeThreadId || "new"}-${messages.length}-${streamingText.length}-${streamingTools.length}`;
+  // Do not include token length or tool count here. Those values change for
+  // every stream chunk and can repeatedly retrigger the conversation scroll.
+  const stickKey = `${activeThreadId || "new"}-${messages.length}`;
 
   return (
     <div className={cn("ai-chat-panel", mode === "drawer" && "is-drawer")}>
@@ -419,54 +584,62 @@ export function AssistantChatPanel({
       <div className="ai-el-conversation-wrap">
         <Conversation stickToBottomKey={stickKey}>
           <ConversationContent>
-            {detailQuery.isLoading && activeThreadId ? (
+            {isInitialLoading ? (
               <Skeleton rows={4} />
-            ) : !messages.length && !busy ? (
-              <ConversationEmptyState
-                icon={<Sparkles size={18} />}
-                title={
-                  mode === "drawer" && contextHint?.title
-                    ? `Ask Dat AI about ${contextHint.title}`
-                    : "What would you like to operate on?"
-                }
-                description="Query store analytics, inspect collections & products in rich tables, or stage server-validated Change Plans with one-click rollback."
-              >
-                <Suggestions
-                  items={suggestions}
-                  compact={mode === "drawer"}
-                  onSelect={(text) => {
-                    setPrompt(text);
-                    void send(text);
-                  }}
-                />
-              </ConversationEmptyState>
+            ) : detailQuery.isError && !detailQuery.data && activeThreadId ? (
+              <div className="ai-el-error-banner" role="alert">
+                {detailQuery.error instanceof Error
+                  ? detailQuery.error.message
+                  : "Failed to load conversation."}
+              </div>
             ) : (
               <>
-                {messages.map((msg) => {
-                  if (msg.role.toLowerCase() === "user") {
+                {!messages.length && !visibleStreaming ? (
+                  <ConversationEmptyState
+                    icon={<Sparkles size={18} />}
+                    title={
+                      mode === "drawer" && contextHint?.title
+                        ? `Ask Dat AI about ${contextHint.title}`
+                        : "What would you like to operate on?"
+                    }
+                    description="Query store analytics, inspect collections & products in rich tables, or stage server-validated Change Plans with one-click rollback."
+                  >
+                    <Suggestions
+                      items={suggestions}
+                      compact={mode === "drawer"}
+                      onSelect={(text) => {
+                        setPrompt(text);
+                        void send(text);
+                      }}
+                    />
+                  </ConversationEmptyState>
+                ) : null}
+
+                {messages.map((message) => {
+                  if (message.role.toLowerCase() === "user") {
                     return (
-                      <Message from="user" key={msg.id}>
-                        <MessageContent>{msg.content}</MessageContent>
+                      <Message from="user" key={message.id}>
+                        <MessageContent>{message.content}</MessageContent>
                       </Message>
                     );
                   }
 
-                  const msgTools = toolCalls.filter(
-                    (tc) => tc.messageId === msg.id
+                  const messageTools = toolCalls.filter(
+                    (toolCall) => toolCall.messageId === message.id,
                   );
-                  const msgPlans = changePlans.filter(
-                    (p) => p.messageId === msg.id
+                  const messagePlans = changePlans.filter(
+                    (plan) => plan.messageId === message.id,
                   );
                   const modelLabel =
-                    AI_MODELS.find((m) => m.id === msg.model)?.label ||
-                    msg.model ||
+                    AI_MODELS.find((model) => model.id === message.model)?.label ||
+                    message.model ||
                     "Operator";
-                  const hasPagePlan = msgPlans.some(
-                    (p) => p.planType === "PAGE_CHANGE"
+                  const hasPagePlan = messagePlans.some(
+                    (plan) => plan.planType === "PAGE_CHANGE",
                   );
 
                   return (
-                    <Message from="assistant" key={msg.id}>
+                    <Message from="assistant" key={message.id}>
                       <MessageHeader>
                         <AIAvatarBadge />
                         <div className="ai-el-meta">
@@ -474,26 +647,29 @@ export function AssistantChatPanel({
                           <span className="muted">· {modelLabel}</span>
                         </div>
                         <MessageActions>
-                          <MessageCopyAction text={msg.content} />
+                          <MessageCopyAction text={message.content} />
                         </MessageActions>
                       </MessageHeader>
 
-                      {msgTools.length ? (
+                      {messageTools.length ? (
                         <div className="ai-el-tools-stack">
-                          {msgTools.map((tc) => (
+                          {messageTools.map((toolCall) => (
                             <Tool
-                              key={tc.id}
-                              name={tc.toolName}
+                              key={toolCall.id}
+                              name={toolCall.toolName}
                               status={
-                                tc.status === "FAILED" ? "failed" : "completed"
+                                toolCall.status === "FAILED" ? "failed" : "completed"
                               }
-                              durationMs={tc.durationMs}
+                              durationMs={toolCall.durationMs}
                             >
-                              <ToolSection title="Input" data={tc.arguments} />
                               <ToolSection
-                                title={tc.errorMessage ? "Error" : "Result"}
-                                data={tc.resultSummary}
-                                error={tc.errorMessage}
+                                title="Input"
+                                data={toolCall.arguments}
+                              />
+                              <ToolSection
+                                title={toolCall.errorMessage ? "Error" : "Result"}
+                                data={toolCall.resultSummary}
+                                error={toolCall.errorMessage}
                               />
                             </Tool>
                           ))}
@@ -501,7 +677,7 @@ export function AssistantChatPanel({
                       ) : null}
 
                       <MessageContent>
-                        <MessageResponse>{msg.content}</MessageResponse>
+                        <MessageResponse>{message.content}</MessageResponse>
                       </MessageContent>
 
                       {hasPagePlan ? (
@@ -512,7 +688,7 @@ export function AssistantChatPanel({
                         </div>
                       ) : null}
 
-                      {msgPlans.map((plan) => renderPlanCard(plan))}
+                      {messagePlans.map((plan) => renderPlanCard(plan))}
                     </Message>
                   );
                 })}
@@ -521,53 +697,60 @@ export function AssistantChatPanel({
                   <div key={plan.id}>{renderPlanCard(plan)}</div>
                 ))}
 
-                {busy ? (
+                {visibleStreaming ? (
                   <>
-                    <Message from="user">
-                      <MessageContent>{streamingPrompt}</MessageContent>
-                    </Message>
-                    <Message from="assistant">
-                      <MessageHeader>
-                        <AIAvatarBadge />
-                        <div className="ai-el-meta">
-                          <strong>Dat AI</strong>
-                          <span className="muted">· Streaming</span>
+                    {!pendingUserAlreadyPersisted ? (
+                      <Message from="user" key="pending-user-message">
+                        <MessageContent>{visibleStreaming.prompt}</MessageContent>
+                      </Message>
+                    ) : null}
+
+                    {!streamingAssistantAlreadyPersisted ? (
+                      <Message from="assistant" key="pending-assistant-message">
+                        <MessageHeader>
+                          <AIAvatarBadge />
+                          <div className="ai-el-meta">
+                            <strong>Dat AI</strong>
+                            <span className="muted">· Streaming</span>
+                          </div>
+                        </MessageHeader>
+
+                        {visibleStreaming.tools.length ? (
+                          <div className="ai-el-tools-stack">
+                            {visibleStreaming.tools.map((tool) => (
+                              <Tool
+                                key={tool.id}
+                                name={tool.toolName}
+                                status={tool.status}
+                                durationMs={tool.durationMs}
+                              >
+                                <ToolSection title="Input" data={tool.arguments} />
+                                <ToolSection
+                                  title="Result"
+                                  data={tool.resultSummary}
+                                  error={tool.errorMessage}
+                                />
+                              </Tool>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {visibleStreaming.text ? (
+                          <MessageContent>
+                            <MessageResponse isAnimating>
+                              {visibleStreaming.text}
+                            </MessageResponse>
+                          </MessageContent>
+                        ) : null}
+
+                        <div className="streaming" role="status" aria-live="polite">
+                          <LoaderCircle size={14} className="spin" />
+                          <span>
+                            {visibleStreaming.status || "Streaming from 9Router…"}
+                          </span>
                         </div>
-                      </MessageHeader>
-
-                      {streamingTools.length ? (
-                        <div className="ai-el-tools-stack">
-                          {streamingTools.map((st) => (
-                            <Tool
-                              key={st.id}
-                              name={st.toolName}
-                              status={st.status}
-                              durationMs={st.durationMs}
-                            >
-                              <ToolSection title="Input" data={st.arguments} />
-                              <ToolSection
-                                title="Result"
-                                data={st.resultSummary}
-                                error={st.errorMessage}
-                              />
-                            </Tool>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {streamingText ? (
-                        <MessageContent>
-                          <MessageResponse isAnimating>
-                            {streamingText}
-                          </MessageResponse>
-                        </MessageContent>
-                      ) : null}
-
-                      <div className="streaming">
-                        <LoaderCircle size={14} className="spin" />
-                        <span>{streamingStatus || "Streaming from 9Router…"}</span>
-                      </div>
-                    </Message>
+                      </Message>
+                    ) : null}
                   </>
                 ) : null}
               </>
@@ -578,8 +761,8 @@ export function AssistantChatPanel({
       </div>
 
       <PromptInput
-        onSubmit={(e) => {
-          e.preventDefault();
+        onSubmit={(event) => {
+          event.preventDefault();
           void send();
         }}
       >
@@ -609,10 +792,10 @@ export function AssistantChatPanel({
           ref={fileRef}
           type="file"
           hidden
-          onChange={(e) => {
-            const file = e.target.files?.[0];
+          onChange={(event) => {
+            const file = event.target.files?.[0];
             if (file) setAttachment(file.name);
-            e.target.value = "";
+            event.target.value = "";
           }}
         />
 
@@ -639,7 +822,12 @@ export function AssistantChatPanel({
               )}
             </>
           }
-          right={<PromptInputSubmit busy={busy} disabled={!prompt.trim()} />}
+          right={
+            <PromptInputSubmit
+              busy={busy}
+              disabled={!prompt.trim() || busy}
+            />
+          }
         />
       </PromptInput>
 
