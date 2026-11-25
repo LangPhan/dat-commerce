@@ -46,6 +46,9 @@ public class MockAiModelGateway implements AiModelGateway {
         if ("editor_suggest".equals(String.valueOf(ctx.get("mode")))) {
             return generateEditorSuggestTurn(prompt, lower, ctx);
         }
+        if ("storefront_chat".equals(String.valueOf(ctx.get("mode")))) {
+            return generateStorefrontTurn(request, prompt, lower, toolMsgs, ctx);
+        }
 
         // Round 0: emit initial read or propose tool calls, or ask clarification if ambiguous
         if (toolMsgs.isEmpty()) {
@@ -907,6 +910,116 @@ public class MockAiModelGateway implements AiModelGateway {
         } catch (Exception ex) {
             return textResponse("{\"summary\":\"Update typography\",\"explanation\":\"\",\"operations\":[]}", 100, 40);
         }
+    }
+
+
+    private GatewayTurnResponse generateStorefrontTurn(
+            GatewayRequest request,
+            String prompt,
+            String lower,
+            List<GatewayMessage> toolMsgs,
+            Map<String, Object> ctx
+    ) {
+        if (toolMsgs.isEmpty()) {
+            if (lower.contains("prefill") || lower.contains("checkout") || lower.contains("đặt hàng")
+                    || lower.contains("điền thông tin") || lower.contains("giao đến") || lower.contains("address")
+                    || lower.contains("địa chỉ")) {
+                Map<String, Object> args = new LinkedHashMap<>();
+                args.put("customerName", String.valueOf(ctx.getOrDefault("customerName", "Samir Patel")));
+                args.put("customerEmail", String.valueOf(ctx.getOrDefault("customerEmail", "customer@datcommerce.local")));
+                args.put("line1", lower.contains("nguyen hue") ? "123 Nguyen Hue" : "742 Evergreen Terrace");
+                args.put("city", lower.contains("ho chi minh") || lower.contains("hcm") ? "Ho Chi Minh City" : "Seattle");
+                args.put("state", lower.contains("ho chi minh") || lower.contains("hcm") ? "HCM" : "WA");
+                args.put("postalCode", lower.contains("700000") ? "700000" : "98101");
+                args.put("shippingMethod", lower.contains("express") || lower.contains("nhanh") ? "express" : "standard");
+                if (lower.contains("welcome15")) {
+                    args.put("promotionCode", "WELCOME15");
+                }
+                return toolResponse(List.of(new GatewayToolCall(callId(), "shop.prefill_checkout", args)), 120, 40);
+            }
+            if (lower.contains("promo") || lower.contains("discount") || lower.contains("coupon")
+                    || lower.contains("khuyến mãi") || lower.contains("giảm giá") || lower.contains("mã giảm")) {
+                return toolResponse(List.of(new GatewayToolCall(callId(), "shop.list_active_promotions", Map.of())), 95, 22);
+            }
+            String slug = ctx.get("productSlug") != null ? String.valueOf(ctx.get("productSlug")) : "";
+            if (StringUtils.hasText(slug) && !(lower.contains("add to cart") || lower.contains("thêm vào giỏ"))) {
+                return toolResponse(List.of(new GatewayToolCall(callId(), "shop.get_product_details", Map.of("slugOrQuery", slug))), 105, 24);
+            }
+            String q = extractSearchTerm(prompt);
+            Map<String, Object> searchArgs = new LinkedHashMap<>();
+            searchArgs.put("q", q);
+            searchArgs.put("limit", 4);
+            return toolResponse(List.of(new GatewayToolCall(callId(), "shop.search_products", searchArgs)), 105, 24);
+        }
+
+        GatewayMessage lastTool = toolMsgs.getLast();
+        JsonNode result = parseNode(lastTool.content());
+
+        if (request.round() == 1 && "shop.search_products".equals(lastTool.toolName())
+                && (lower.contains("add to cart") || lower.contains("thêm vào giỏ") || lower.contains("bỏ vào giỏ"))) {
+            JsonNode products = result.path("products");
+            if (products.isArray() && !products.isEmpty()) {
+                JsonNode first = products.get(0);
+                JsonNode variants = first.path("variants");
+                if (variants.isArray() && !variants.isEmpty()) {
+                    String variantId = variants.get(0).path("variantId").asText("");
+                    if (StringUtils.hasText(variantId)) {
+                        return toolResponse(List.of(new GatewayToolCall(
+                                callId(),
+                                "shop.add_to_cart",
+                                Map.of("variantId", variantId, "quantity", 1)
+                        )), 125, 30);
+                    }
+                }
+            }
+        }
+
+        if ("shop.prefill_checkout".equals(lastTool.toolName())) {
+            return textResponse(
+                    "I have prefilled your checkout details for review. Please click **Review & Place Order** to verify and submit your order yourself.",
+                    135, 36
+            );
+        }
+        if ("shop.add_to_cart".equals(lastTool.toolName())) {
+            int count = result.path("cartItemCount").asInt(1);
+            return textResponse(
+                    "Added to your cart! You now have **" + count + "** item(s) ready in your bag.",
+                    130, 32
+            );
+        }
+        if ("shop.list_active_promotions".equals(lastTool.toolName())) {
+            JsonNode promos = result.path("promotions");
+            if (promos.isArray() && !promos.isEmpty()) {
+                StringBuilder sb = new StringBuilder("Here are the active store promotions:\n\n| Code | Offer | Type |\n|---|---|---|\n");
+                for (JsonNode pr : promos) {
+                    sb.append("| `").append(pr.path("code").asText()).append("` | ")
+                            .append(pr.path("name").asText()).append(" | ")
+                            .append(pr.path("type").asText()).append(" ").append(pr.path("value").asText()).append(" |\n");
+                }
+                return textResponse(sb.toString(), 130, 48);
+            }
+            return textResponse("There are currently no active promotion codes.", 90, 20);
+        }
+
+        JsonNode products = result.path("products");
+        if (products.isArray() && !products.isEmpty()) {
+            StringBuilder sb = new StringBuilder("Here are recommended products matching your request:\n\n| Product | Price | Stock |\n|---|---:|---:|\n");
+            for (JsonNode prod : products) {
+                sb.append("| ").append(prod.path("name").asText())
+                        .append(" | $").append(prod.path("minPrice").asText())
+                        .append(" | ").append(prod.path("totalStock").asInt(0)).append(" |\n");
+            }
+            return textResponse(sb.toString(), 140, 56);
+        }
+        JsonNode single = result.path("product");
+        if (!single.isMissingNode() && single.has("name")) {
+            return textResponse(
+                    "**" + single.path("name").asText() + "** (" + single.path("brand").asText() + ") — $"
+                            + single.path("minPrice").asText() + ", Stock: " + single.path("totalStock").asInt(0),
+                    125, 34
+            );
+        }
+        return textResponse("I checked the live catalog — let me know which item you want to inspect or add to your cart.", 95, 26);
     }
 
     private static String extractSearchTerm(String prompt) {

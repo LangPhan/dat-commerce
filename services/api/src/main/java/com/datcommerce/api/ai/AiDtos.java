@@ -1,5 +1,8 @@
 package com.datcommerce.api.ai;
 
+import com.datcommerce.api.cart.CartService;
+import java.math.BigDecimal;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Max;
@@ -223,6 +226,95 @@ public final class AiDtos {
     public record AiActivityDto(
             List<ConversationSummaryDto> conversations,
             List<ChangePlanDto> changePlans
+    ) {
+    }
+
+    // ---- Storefront Customer Shopping AI ----
+
+    public record StorefrontChatRequest(
+            UUID conversationId,
+            @NotBlank @Size(max = 4000) String message,
+            @Size(max = 500) String currentPath,
+            @Size(max = 200) String productSlug
+    ) {
+    }
+
+    public record StorefrontProductRecommendationDto(
+            UUID productId,
+            UUID defaultVariantId,
+            String slug,
+            String name,
+            String brand,
+            BigDecimal price,
+            String imageUrl,
+            String variantTitle,
+            String sku,
+            int availableStock
+    ) {
+    }
+
+    public record CheckoutPrefillDto(
+            String customerName,
+            String customerEmail,
+            String line1,
+            String city,
+            String state,
+            String postalCode,
+            String shippingMethod,
+            String promotionCode,
+            String note
+    ) {
+    }
+
+    public record StorefrontChatResponse(
+            UUID conversationId,
+            String reply,
+            String model,
+            int promptTokens,
+            int completionTokens,
+            List<StorefrontProductRecommendationDto> recommendedProducts,
+            CartService.CartResponse updatedCart,
+            CheckoutPrefillDto checkoutPrefill,
+            boolean checkoutAutoSubmit,
+            CustomerAiQuotaDto quota
+    ) {
+    }
+
+    public record CustomerConversationSummaryDto(
+            UUID id,
+            String title,
+            String model,
+            Instant createdAt,
+            Instant updatedAt
+    ) {
+        static CustomerConversationSummaryDto from(CustomerAiConversationEntity e) {
+            return new CustomerConversationSummaryDto(
+                    e.getId(),
+                    e.getTitle(),
+                    e.getModel(),
+                    e.getCreatedAt(),
+                    e.getUpdatedAt()
+            );
+        }
+    }
+
+    public record CustomerMessageDto(
+            UUID id,
+            String role,
+            String content,
+            String model,
+            int promptTokens,
+            int completionTokens,
+            List<StorefrontProductRecommendationDto> recommendedProducts,
+            CheckoutPrefillDto checkoutPrefill,
+            Instant createdAt
+    ) {
+    }
+
+    public record CustomerConversationDetailDto(
+            CustomerConversationSummaryDto conversation,
+            List<CustomerMessageDto> messages,
+            CustomerAiQuotaDto quota
     ) {
     }
 }
