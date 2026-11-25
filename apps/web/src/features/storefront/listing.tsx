@@ -19,6 +19,7 @@ import { storeApi } from "@/lib/commerce-api";
 import { ProductCard } from "./blocks";
 
 const PAGE_SIZE = 6;
+const SEARCH_DEBOUNCE_MS = 300;
 
 const SORT_ITEMS = [
   { value: "featured", label: "Featured" },
@@ -59,6 +60,16 @@ export function Listing({
 
   const activeCategory = categoryOverride !== null ? categoryOverride : urlCategory;
   const activeQuery = queryOverride !== null ? queryOverride : urlQuery;
+  const [debouncedQuery, setDebouncedQuery] = useState(activeQuery);
+
+  useEffect(() => {
+    const trimmed = activeQuery.trim();
+    if (trimmed === debouncedQuery.trim()) return;
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(activeQuery);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [activeQuery, debouncedQuery]);
 
   const categoriesQuery = useQuery({
     queryKey: ["store-categories"],
@@ -68,7 +79,7 @@ export function Listing({
   const productsQuery = useQuery({
     queryKey: [
       "store-products",
-      activeQuery,
+      debouncedQuery,
       activeCategory,
       maxPrice,
       sort,
@@ -77,7 +88,7 @@ export function Listing({
     ],
     queryFn: () =>
       storeApi.listProducts({
-        q: activeQuery.trim() || undefined,
+        q: debouncedQuery.trim() || undefined,
         category: activeCategory || undefined,
         maxPrice: maxPrice ? Number(maxPrice) : undefined,
         sort,
@@ -130,6 +141,7 @@ export function Listing({
   function clearFilters() {
     setCategoryOverride("");
     setQueryOverride("");
+    setDebouncedQuery("");
     setMaxPrice("");
     setAttrs({});
     setPage(1);

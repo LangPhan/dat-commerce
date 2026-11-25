@@ -744,7 +744,7 @@ export function CustomerAiQuotaSettingsSection({
 
 export function AiSettingsView({ notify }: { notify: (msg: string) => void }) {
   return (
-    <div className="admin-page">
+    <>
       <div className="admin-title">
         <div>
           <h1>AI Model Settings</h1>
@@ -754,9 +754,11 @@ export function AiSettingsView({ notify }: { notify: (msg: string) => void }) {
         </div>
       </div>
 
-      <AiModelSettingsPanel notify={notify} />
+      <div className="admin-page-scroll">
+        <AiModelSettingsPanel notify={notify} />
 
-      <CustomerAiQuotaSettingsSection notify={notify} />
-    </div>
+        <CustomerAiQuotaSettingsSection notify={notify} />
+      </div>
+    </>
   );
 }

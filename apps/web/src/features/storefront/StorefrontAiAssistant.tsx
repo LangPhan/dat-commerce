@@ -290,9 +290,9 @@ export function StorefrontAiAssistant({
                 <strong>Shopping AI</strong>
                 <span className="store-ai-drawer-sub">
                   {user ? (
-                    <Badge tone="green">{user.fullName || user.email}</Badge>
+                    <span className="store-ai-user-chip">{user.fullName || user.email}</span>
                   ) : (
-                    <Badge tone="neutral">Sign in required</Badge>
+                    <span className="store-ai-user-chip is-guest">Sign in required</span>
                   )}
                 </span>
               </div>
