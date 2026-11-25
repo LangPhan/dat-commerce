@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useMediaQuery } from '@mantine/hooks';
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
 import {
@@ -82,7 +83,7 @@ export function Storefront({ route }: { route: string[] }) {
     email: "",
   });
   const [toast, setToast] = useState("");
-
+  const isMobile = useMediaQuery('(max-width: 56.24em)');
   const [view = "", id] = route;
   const cmsSlug = !view
     ? "home"
@@ -248,6 +249,7 @@ export function Storefront({ route }: { route: string[] }) {
       content = (
         <PageRenderer
           mode="live"
+          forceViewport= {isMobile ? "mobile" : undefined}
           nodes={cmsPageQuery.data.content.nodes}
           typography={themeQuery.data?.tokens?.typography}
           globalMotion={themeQuery.data?.tokens?.motion}
