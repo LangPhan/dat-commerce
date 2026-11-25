@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const apiInternalUrl = process.env.API_INTERNAL_URL || "http://localhost:8080";
 
 const config: NextConfig = {
-  output: "standalone",
+  output: process.env.DOCKER_BUILD === "true" ? "standalone" : undefined,
   devIndicators: false,
   agentRules: false,
   async rewrites() {
@@ -11,6 +11,10 @@ const config: NextConfig = {
       {
         source: "/api/:path*",
         destination: `${apiInternalUrl}/api/:path*`,
+      },
+      {
+        source: "/storage/:path*",
+        destination: `${apiInternalUrl}/storage/:path*`,
       },
     ];
   },
