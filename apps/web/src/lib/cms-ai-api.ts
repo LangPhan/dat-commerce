@@ -4,6 +4,7 @@ import {
   getAccessToken,
   refreshSessionToken,
 } from "@/lib/api-client";
+import { getCartSessionHeaders, syncCartSessionToken } from "@/lib/commerce-api";
 import type {
   AdminThemeResponse,
   AnimationPresetDto,
@@ -12,6 +13,11 @@ import type {
   PageAnimationsResponse,
   UpdateAnimationPresetRequest,
   AdminCustomerUsageRowDto,
+  CustomerAiQuotaDto,
+  CustomerConversationDetailDto,
+  CustomerConversationSummaryDto,
+  StorefrontChatRequest,
+  StorefrontChatResponse,
   AiActivityDto,
   AiModelSettingsDto,
   EditorSuggestRequest,
@@ -371,4 +377,29 @@ export const aiAdminApi = {
     apiFetch<void>(`/api/v1/admin/ai/customer-usage/${userId}/reset`, {
       method: "POST",
     }),
+};
+
+export const storefrontAiApi = {
+  getQuota: () => apiFetch<CustomerAiQuotaDto>("/api/v1/store/ai/quota"),
+  listConversations: () =>
+    apiFetch<CustomerConversationSummaryDto[]>("/api/v1/store/ai/conversations"),
+  getConversation: (conversationId: string) =>
+    apiFetch<CustomerConversationDetailDto>(
+      `/api/v1/store/ai/conversations/${conversationId}`
+    ),
+  deleteConversation: (conversationId: string) =>
+    apiFetch<void>(`/api/v1/store/ai/conversations/${conversationId}`, {
+      method: "DELETE",
+    }),
+  chat: async (body: StorefrontChatRequest) => {
+    const res = await apiFetch<StorefrontChatResponse>("/api/v1/store/ai/chat", {
+      method: "POST",
+      headers: getCartSessionHeaders(),
+      body,
+    });
+    if (res.updatedCart?.sessionToken) {
+      syncCartSessionToken(res.updatedCart.sessionToken);
+    }
+    return res;
+  },
 };

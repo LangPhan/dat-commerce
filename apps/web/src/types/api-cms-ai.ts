@@ -1,3 +1,5 @@
+import type { CartResponse } from "./api-commerce";
+
 import type {
   ElementMotionConfig,
   GlobalMotionSettings,
@@ -440,4 +442,85 @@ export type GlobalMotionResponse = {
   themeVersionId?: string | null;
   versionNumber: number;
   motion: GlobalMotionSettings;
+};
+
+export type CustomerAiQuotaDto = {
+  enabled: boolean;
+  dailyLimit: number;
+  usedTokens: number;
+  remainingTokens: number;
+  requestCount: number;
+  resetsAt: string;
+  modelId?: string | null;
+};
+
+export type StorefrontProductRecommendationDto = {
+  productId: string;
+  defaultVariantId?: string | null;
+  slug: string;
+  name: string;
+  brand: string;
+  price: number;
+  imageUrl?: string | null;
+  variantTitle?: string | null;
+  sku?: string | null;
+  availableStock: number;
+};
+
+export type CheckoutPrefillDto = {
+  customerName?: string | null;
+  customerEmail?: string | null;
+  line1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  shippingMethod?: "standard" | "express" | string | null;
+  promotionCode?: string | null;
+  note?: string | null;
+};
+
+export type StorefrontChatRequest = {
+  conversationId?: string | null;
+  message: string;
+  currentPath?: string;
+  productSlug?: string;
+};
+
+export type StorefrontChatResponse = {
+  conversationId: string;
+  reply: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  recommendedProducts: StorefrontProductRecommendationDto[];
+  updatedCart?: CartResponse | null;
+  checkoutPrefill?: CheckoutPrefillDto | null;
+  checkoutAutoSubmit: boolean;
+  quota: CustomerAiQuotaDto;
+};
+
+export type CustomerConversationSummaryDto = {
+  id: string;
+  title: string;
+  model: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CustomerMessageDto = {
+  id: string;
+  role: "user" | "assistant" | string;
+  content: string;
+  model?: string | null;
+  promptTokens: number;
+  completionTokens: number;
+  recommendedProducts?: StorefrontProductRecommendationDto[];
+  checkoutPrefill?: CheckoutPrefillDto | null;
+  createdAt: string;
+};
+
+export type CustomerConversationDetailDto = {
+  conversation: CustomerConversationSummaryDto;
+  messages: CustomerMessageDto[];
+  quota: CustomerAiQuotaDto;
 };

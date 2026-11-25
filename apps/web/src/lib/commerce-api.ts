@@ -69,6 +69,14 @@ function cartHeaders(): Record<string, string> | undefined {
   return token ? { "X-Cart-Session": token } : undefined;
 }
 
+export function getCartSessionHeaders(): Record<string, string> | undefined {
+  return cartHeaders();
+}
+
+export function syncCartSessionToken(token: string | null | undefined) {
+  setStoredCartSession(token);
+}
+
 export const adminCatalogApi = {
   listProductTypes: () =>
     apiFetch<ProductTypeDto[]>("/api/v1/admin/product-types"),

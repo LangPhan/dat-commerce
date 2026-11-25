@@ -31,6 +31,7 @@ import { GlobalTypographyStyleTag } from "@/features/typography/GlobalTypography
 import { ProductCard, StoreBlock, type StoreProductItem } from "./blocks";
 import { CartPage, CheckoutPage, ConfirmationPage } from "./cart-checkout";
 import { StoreFooter, StoreHeader } from "./header-footer";
+import { StorefrontAiAssistant } from "./StorefrontAiAssistant";
 import { extractPreloadImageUrls, StorePageReveal } from "./page-reveal";
 import { Listing } from "./listing";
 import { ProductDetail } from "./product-detail";
@@ -684,6 +685,11 @@ export function Storefront({ route }: { route: string[] }) {
         <StoreFooter />
         <Toast message={toast} />
       </StorePageReveal>
+      <StorefrontAiAssistant
+        currentPath={view ? `/store/${view}${id ? `/${encodeURIComponent(id)}` : ""}` : "/"}
+        productSlug={view === "product" ? id : undefined}
+        onNotify={setToast}
+      />
     </div>
   );
 }

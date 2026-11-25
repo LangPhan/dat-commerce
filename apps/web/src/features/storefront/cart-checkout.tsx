@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CheckCircle2, Minus, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Minus, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useOptionalAuth } from "@/features/auth/auth-context";
 import { ApiError } from "@/lib/api-client";
+import type { CheckoutPrefillDto } from "@/types/api-cms-ai";
+import { useCheckoutPrefillStore } from "./checkout-prefill-store";
 import { storeApi } from "@/lib/commerce-api";
 import { formatDateTime, newId, usd, usdExact } from "@/lib/format";
 import type { CartResponse, OrderDto } from "@/types/api-commerce";
@@ -252,13 +255,72 @@ export function CheckoutPage({
   onOrderPlaced: (order: OrderDto) => void;
   notify: (msg: string) => void;
 }) {
+  const auth = useOptionalAuth();
+  const authUser = auth?.user ?? null;
+  const prefill = useCheckoutPrefillStore((s) => s.prefill);
+  const prefillUpdatedAt = useCheckoutPrefillStore((s) => s.updatedAt);
+  const clearPrefill = useCheckoutPrefillStore((s) => s.clearPrefill);
+
+  const formKey = `${prefillUpdatedAt ?? 0}:${authUser?.id ?? "guest"}`;
+
+  return (
+    <CheckoutFormBody
+      key={formKey}
+      cart={cart}
+      loading={loading}
+      defaultProfile={defaultProfile}
+      authUserName={authUser?.fullName || ""}
+      authUserEmail={authUser?.email || ""}
+      prefill={prefill}
+      onClearPrefill={clearPrefill}
+      onOrderPlaced={onOrderPlaced}
+      notify={notify}
+    />
+  );
+}
+
+function CheckoutFormBody({
+  cart,
+  loading,
+  defaultProfile,
+  authUserName,
+  authUserEmail,
+  prefill,
+  onClearPrefill,
+  onOrderPlaced,
+  notify,
+}: {
+  cart?: CartResponse;
+  loading: boolean;
+  defaultProfile: { name: string; email: string; defaultAddress?: string };
+  authUserName: string;
+  authUserEmail: string;
+  prefill: CheckoutPrefillDto | null;
+  onClearPrefill: () => void;
+  onOrderPlaced: (order: OrderDto) => void;
+  notify: (msg: string) => void;
+}) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const [deliveryMethod, setDeliveryMethod] = useState<"standard" | "express">(
-    "standard"
+  const [customerName, setCustomerName] = useState(
+    () => prefill?.customerName || authUserName || defaultProfile.name || ""
   );
-  const [promoInput, setPromoInput] = useState(cart?.promotionCode || "");
+  const [customerEmail, setCustomerEmail] = useState(
+    () => prefill?.customerEmail || authUserEmail || defaultProfile.email || ""
+  );
+  const [line1, setLine1] = useState(
+    () => prefill?.line1 || defaultProfile.defaultAddress || ""
+  );
+  const [city, setCity] = useState(() => prefill?.city || "");
+  const [stateVal, setStateVal] = useState(() => prefill?.state || "");
+  const [postalCode, setPostalCode] = useState(() => prefill?.postalCode || "");
+  const [deliveryMethod, setDeliveryMethod] = useState<"standard" | "express">(
+    () => (prefill?.shippingMethod === "express" ? "express" : "standard")
+  );
+  const [promoInput, setPromoInput] = useState(
+    () => prefill?.promotionCode || cart?.promotionCode || ""
+  );
   const [promoError, setPromoError] = useState("");
   const [checkoutError, setCheckoutError] = useState("");
   const [idempotencyKey] = useState(() => newId());
@@ -301,6 +363,7 @@ export function CheckoutPage({
         idempotencyKey
       ),
     onSuccess: (order) => {
+      onClearPrefill();
       queryClient.invalidateQueries({ queryKey: ["store-cart"] });
       onOrderPlaced(order);
       router.push(`/store/confirmation/${encodeURIComponent(order.orderNumber)}`);
@@ -344,31 +407,60 @@ export function CheckoutPage({
   return (
     <div className="store-container">
       <h1>Checkout</h1>
+      {prefill ? (
+        <div
+          className="checkout-prefill-banner"
+          role="status"
+          data-testid="checkout-ai-prefill-banner"
+        >
+          <div className="checkout-prefill-text">
+            <Sparkles size={15} />
+            <div>
+              <strong>Prefilled by Shopping AI</strong>
+              <span>
+                Please review all contact, shipping address, and delivery options below before clicking Place order.
+              </span>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              onClearPrefill();
+              notify("Cleared AI checkout prefill");
+            }}
+          >
+            <X size={13} /> Clear prefill
+          </Button>
+        </div>
+      ) : null}
+
       <div className="checkout-grid">
         <form
           className="form-stack panel"
           onSubmit={(e) => {
             e.preventDefault();
             setCheckoutError("");
-            const fd = new FormData(e.currentTarget);
             checkoutMutation.mutate({
-              customerName: String(fd.get("name") || "").trim(),
-              customerEmail: String(fd.get("email") || "").trim(),
-              line1: String(fd.get("address") || "").trim(),
-              city: String(fd.get("city") || "").trim(),
-              state: String(fd.get("state") || "").trim() || undefined,
-              postalCode: String(fd.get("postal") || "").trim(),
+              customerName: customerName.trim(),
+              customerEmail: customerEmail.trim(),
+              line1: line1.trim(),
+              city: city.trim(),
+              state: stateVal.trim() || undefined,
+              postalCode: postalCode.trim(),
             });
           }}
         >
-          <h2>Contact & delivery</h2>
+          <h2>Contact &amp; delivery</h2>
           <div className="form-pair">
             <label>
               Full name
               <input
                 name="name"
                 autoComplete="name"
-                defaultValue={defaultProfile.name}
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
                 required
               />
             </label>
@@ -377,7 +469,8 @@ export function CheckoutPage({
               <input
                 name="email"
                 type="email"
-                defaultValue={defaultProfile.email}
+                value={customerEmail}
+                onChange={(e) => setCustomerEmail(e.target.value)}
                 required
               />
             </label>
@@ -387,22 +480,41 @@ export function CheckoutPage({
             <input
               name="address"
               autoComplete="street-address"
-              defaultValue={defaultProfile.defaultAddress || ""}
+              value={line1}
+              onChange={(e) => setLine1(e.target.value)}
               required
             />
           </label>
           <div className="form-pair">
             <label>
               City
-              <input name="city" autoComplete="address-level2" required />
+              <input
+                name="city"
+                autoComplete="address-level2"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                required
+              />
             </label>
             <label>
               State / Region
-              <input name="state" autoComplete="address-level1" placeholder="WA" />
+              <input
+                name="state"
+                autoComplete="address-level1"
+                placeholder="WA"
+                value={stateVal}
+                onChange={(e) => setStateVal(e.target.value)}
+              />
             </label>
             <label>
               Postal code
-              <input name="postal" autoComplete="postal-code" required />
+              <input
+                name="postal"
+                autoComplete="postal-code"
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                required
+              />
             </label>
           </div>
 
