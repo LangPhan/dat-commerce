@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Toast } from "@/components/ui/toast";
 import { AuthGuard } from "@/features/auth/auth-guard";
 import { useAppTheme, useStoredBoolean } from "@/lib/theme";
 import { AdminShell } from "./shell";
@@ -42,8 +43,19 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  if (view === "editor") {
+    return (
+      <AuthGuard requiredPermission="content:read" requireAdmin>
+        <AdminToastContext.Provider value={setToast}>
+          {children}
+          <Toast message={toast} />
+        </AdminToastContext.Provider>
+      </AuthGuard>
+    );
+  }
+
   return (
-    <AuthGuard>
+    <AuthGuard requireAdmin>
       <AdminToastContext.Provider value={setToast}>
         <AdminShell
           view={view}

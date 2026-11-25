@@ -63,8 +63,10 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
+                        .requestMatchers("/api/v1/store/ai/**").authenticated()
                         .requestMatchers(
                                 "/api/v1/auth/login",
+                                "/api/v1/auth/register",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/logout",
                                 "/api/v1/store/**",

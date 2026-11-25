@@ -138,7 +138,7 @@ export function Listing({
   return (
     <div className="store-container">
       <div className="crumb">
-        <Link href="/store">Home</Link> / {search ? "Search" : "Shop"}
+        <Link href="/">Home</Link> / {search ? "Search" : "Shop"}
         {activeCategory ? ` / ${activeCategoryObj?.name || activeCategory}` : ""}
       </div>
       <h1>

@@ -115,7 +115,7 @@ export const navigation: { title: string; items: NavItem[] }[] = [
 ];
 
 export const adminLink = (path: string) =>
-  path === "editor" ? "/" : path ? "/admin/" + path : "/admin";
+  path ? "/admin/" + path : "/admin";
 
 function initialsFor(name?: string) {
   if (!name) return "DC";
@@ -191,7 +191,7 @@ export function AdminShell({
       label: "Open Customer Storefront",
       group: "Quick Actions",
       icon: <ExternalLink size={15} />,
-      run: () => router.push("/store"),
+      run: () => router.push("/"),
     },
     {
       id: "action-toggle-theme",
@@ -319,12 +319,12 @@ export function AdminShell({
             </IconButton>
 
             {hasPermission("content:read") ? (
-              <Link className="btn store-shortcut" href="/">
+              <Link className="btn store-shortcut" href="/admin/editor">
                 <Sparkles size={14} /> Visual Editor
               </Link>
             ) : null}
 
-            <Link className="btn store-shortcut" href="/store" target="_blank">
+            <Link className="btn store-shortcut" href="/" target="_blank">
               View store <ExternalLink size={13} />
             </Link>
 

@@ -10,6 +10,7 @@ import { AiSettingsView } from "./ai-settings";
 import { Attributes } from "./attributes";
 import { AuditLogsView } from "./audit-logs";
 import { CategoryManager } from "./categories";
+import { Editor } from "@/features/editor/editor";
 import { Dashboard } from "./dashboard";
 import { Orders } from "./orders";
 import { ProductTypesManager } from "./product-types";
@@ -109,6 +110,13 @@ export function Admin() {
           title={activeItem?.title || "Store Design"}
           notify={setToast}
         />
+      </AuthGuard>
+    );
+  }
+  if (view === "editor") {
+    return (
+      <AuthGuard requiredPermission="content:read">
+        <Editor />
       </AuthGuard>
     );
   }

@@ -506,7 +506,7 @@ export function AssistantChatPanel({
 
                       {hasPagePlan ? (
                         <div style={{ marginTop: 8 }}>
-                          <Link href="/" className="btn btn-sm">
+                          <Link href="/admin/editor" className="btn btn-sm">
                             Open Visual Theme Editor <ArrowUpRight size={13} />
                           </Link>
                         </div>

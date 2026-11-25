@@ -147,7 +147,11 @@ export function UsersManagement({ notify }: { notify: (msg: string) => void }) {
       header: "Role",
       cell: (member) => {
         const isSelf = member.id === currentUser?.id;
-        const primaryRole = member.roles[0] || "VIEWER";
+        const isCustomer = member.roles.length === 0;
+        const primaryRole = member.roles[0] || "CUSTOMER";
+        if (isCustomer) {
+          return <Badge tone="neutral">Customer</Badge>;
+        }
         return canWrite && !isSelf && roles.length > 0 ? (
           <Select
             items={rowRoleItems}

@@ -1,10 +1,5 @@
-import { AuthGuard } from "@/features/auth/auth-guard";
-import { Editor } from "@/features/editor/editor";
+import { Storefront } from "@/features/storefront/storefront";
 
-export default function Page() {
-  return (
-    <AuthGuard requiredPermission="content:read">
-      <Editor />
-    </AuthGuard>
-  );
+export default function HomePage() {
+  return <Storefront route={[]} />;
 }

@@ -45,6 +45,25 @@ public class DevAdminSeeder implements ApplicationRunner {
         seedUser(store.getId(), "catalog@datcommerce.local", "Sora Takahashi", "CatalogPass123!", "CATALOG_MANAGER");
         seedUser(store.getId(), "editor@datcommerce.local", "Maya Lin", "EditorPass123!", "CONTENT_EDITOR");
         seedUser(store.getId(), "viewer@datcommerce.local", "Jordan Reed", "ViewerPass123!", "VIEWER");
+        seedCustomer(store.getId(), "customer@datcommerce.local", "Samir Patel", "CustomerPass123!");
+    }
+
+    private void seedCustomer(UUID storeId, String email, String fullName, String rawPassword) {
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            return;
+        }
+        Instant now = Instant.now();
+        AdminUserEntity user = new AdminUserEntity();
+        user.setId(UUID.randomUUID());
+        user.setStoreId(storeId);
+        user.setEmail(email);
+        user.setFullName(fullName);
+        user.setPasswordHash(passwordEncoder.encode(rawPassword));
+        user.setStatus("ACTIVE");
+        user.setRoles(Set.of());
+        user.setCreatedAt(now);
+        user.setUpdatedAt(now);
+        userRepository.save(user);
     }
 
     private void seedUser(UUID storeId, String email, String fullName, String rawPassword, String roleCode) {

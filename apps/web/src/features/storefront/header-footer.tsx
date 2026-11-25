@@ -6,15 +6,29 @@ import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   Heart,
+  LayoutDashboard,
+  LogIn,
+  LogOut,
   Menu,
   Mountain,
+  Palette,
   Search,
   ShoppingBag,
+  UserPlus,
   UserRound,
   X,
 } from "lucide-react";
 import { useState } from "react";
 import { IconButton } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { isAdminUser, useOptionalAuth } from "@/features/auth/auth-context";
 import { cmsStoreApi } from "@/lib/cms-ai-api";
 import { usd } from "@/lib/format";
 import { initialStoreMenu } from "@/mocks/pages";
@@ -23,7 +37,7 @@ export function StoreHeader({
   preview = false,
   cart = 0,
   wishlistCount = 0,
-  currentPath = "/store",
+  currentPath = "/",
   storeNameOverride,
   freeShippingThresholdOverride,
 }: {
@@ -35,9 +49,14 @@ export function StoreHeader({
   freeShippingThresholdOverride?: number;
 }) {
   const router = useRouter();
+  const auth = useOptionalAuth();
+  const user = auth?.user ?? null;
+  const isAdmin = isAdminUser(user);
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const navQuery = useQuery({
     queryKey: ["store-nav", "main"],
@@ -71,7 +90,7 @@ export function StoreHeader({
           {menuOpen ? <X size={19} /> : <Menu size={19} />}
         </button>
 
-        <Link href="/store" className="terrain-logo" tabIndex={preview ? -1 : 0}>
+        <Link href="/" className="terrain-logo" tabIndex={preview ? -1 : 0}>
           <Mountain size={20} strokeWidth={2.2} />
           <span>{storeName}</span>
         </Link>
@@ -81,13 +100,15 @@ export function StoreHeader({
           aria-label="Store navigation"
         >
           {links.map((link) => {
-            const active =
-              currentPath === link.url ||
-              (link.url !== "/store" && currentPath.startsWith(link.url));
+            const href = link.url === "/store" ? "/" : link.url;
+            const isHome = href === "/";
+            const active = isHome
+              ? currentPath === "/" || currentPath === "/store"
+              : currentPath === href || currentPath.startsWith(href);
             return (
               <Link
                 key={link.id}
-                href={link.url}
+                href={href}
                 className={active ? "active" : ""}
                 aria-current={active ? "page" : undefined}
                 tabIndex={preview ? -1 : 0}
@@ -121,13 +142,119 @@ export function StoreHeader({
             <Heart size={17} />
             {wishlistCount > 0 ? <small>{wishlistCount}</small> : null}
           </Link>
-          <Link
-            href="/store/account"
-            aria-label="Account"
-            tabIndex={preview ? -1 : 0}
-          >
-            <UserRound size={17} />
-          </Link>
+
+          {preview ? (
+            <Link href="/store/account" aria-label="Account" tabIndex={-1}>
+              <UserRound size={17} />
+            </Link>
+          ) : (
+            <Popover open={accountOpen} onOpenChange={setAccountOpen}>
+              <PopoverTrigger
+                type="button"
+                aria-label={user ? `Account (${user.fullName})` : "Account"}
+                title={user ? `${user.fullName} (${user.email})` : "Sign in or manage account"}
+                className={user ? "store-account-trigger is-signed-in" : "store-account-trigger"}
+              >
+                <UserRound size={17} />
+                {user ? <span className="store-account-dot" aria-hidden="true" /> : null}
+              </PopoverTrigger>
+              <PopoverContent side="bottom" align="end" className="w-[240px]">
+                <PopoverHeader>
+                  <PopoverTitle>
+                    {user ? user.fullName : "Customer Account"}
+                  </PopoverTitle>
+                  <PopoverDescription>
+                    {user
+                      ? user.email
+                      : "Sign in to unlock Shopping AI, or shop as a guest anytime."}
+                  </PopoverDescription>
+                </PopoverHeader>
+
+                <div className="store-account-menu">
+                  {user ? (
+                    <>
+                      <Link
+                        href="/store/account"
+                        className="store-account-item"
+                        onClick={() => setAccountOpen(false)}
+                      >
+                        <UserRound size={14} />
+                        <span>Account &amp; Profile</span>
+                      </Link>
+                      <Link
+                        href="/store/history"
+                        className="store-account-item"
+                        onClick={() => setAccountOpen(false)}
+                      >
+                        <ShoppingBag size={14} />
+                        <span>Order History</span>
+                      </Link>
+                      {isAdmin ? (
+                        <>
+                          <Link
+                            href="/admin"
+                            className="store-account-item"
+                            onClick={() => setAccountOpen(false)}
+                          >
+                            <LayoutDashboard size={14} />
+                            <span>Admin Dashboard</span>
+                          </Link>
+                          <Link
+                            href="/admin/editor"
+                            className="store-account-item"
+                            onClick={() => setAccountOpen(false)}
+                          >
+                            <Palette size={14} />
+                            <span>Theme Editor</span>
+                          </Link>
+                        </>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="store-account-item is-danger"
+                        onClick={async () => {
+                          setAccountOpen(false);
+                          await auth?.logout();
+                          router.refresh();
+                        }}
+                      >
+                        <LogOut size={14} />
+                        <span>Sign Out</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        href={`/login?next=${encodeURIComponent(currentPath || "/")}`}
+                        className="store-account-item is-primary"
+                        onClick={() => setAccountOpen(false)}
+                      >
+                        <LogIn size={14} />
+                        <span>Sign In</span>
+                      </Link>
+                      <Link
+                        href={`/login?mode=register&next=${encodeURIComponent(currentPath || "/")}`}
+                        className="store-account-item"
+                        onClick={() => setAccountOpen(false)}
+                      >
+                        <UserPlus size={14} />
+                        <span>Create Free Account</span>
+                      </Link>
+                      <Link
+                        href="/store/history"
+                        className="store-account-item"
+                        onClick={() => setAccountOpen(false)}
+                      >
+                        <ShoppingBag size={14} />
+                        <span>Guest Order History</span>
+                      </Link>
+                    </>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+
           <Link
             href="/store/cart"
             aria-label={`Cart (${cart})`}
@@ -174,7 +301,7 @@ export function StoreFooter({ storeName = "Terrain Supply" }: { storeName?: stri
   return (
     <footer className="store-footer">
       <div className="store-footer-col">
-        <Link href="/store" className="terrain-logo">
+        <Link href="/" className="terrain-logo">
           <Mountain size={22} />
           <span>{storeName.toUpperCase()}</span>
         </Link>
@@ -204,7 +331,7 @@ export function StoreFooter({ storeName = "Terrain Supply" }: { storeName?: stri
         <Link href="/store/about">About us</Link>
         <Link href="/store/contact">Contact support</Link>
         <Link href="/admin">Merchant admin</Link>
-        <Link href="/">AI Store Editor</Link>
+        <Link href="/admin/editor">Theme Editor</Link>
       </div>
 
       <div className="store-footer-bottom">

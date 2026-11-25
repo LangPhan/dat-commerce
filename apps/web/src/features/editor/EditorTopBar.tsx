@@ -121,7 +121,7 @@ export function EditorTopBar({
   const canUndo = historyIndex >= 0;
   const canRedo = historyIndex < history.length - 1;
   const liveHref =
-    pageSlug === "home" ? "/store" : `/store/${encodeURIComponent(pageSlug)}`;
+    pageSlug === "home" ? "/" : `/store/${encodeURIComponent(pageSlug)}`;
 
   return (
     <header className="ed-topbar">

@@ -21,6 +21,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -61,6 +62,64 @@ public class AuthService {
         this.appProperties = appProperties;
         this.redisTemplate = redisTemplate;
         this.auditLogService = auditLogService;
+    }
+
+    @Transactional(noRollbackFor = ApiException.class)
+    public AuthSessionResult register(RegisterRequest request, String userAgent, String ipAddress) {
+        String normalizedEmail = request.email().trim().toLowerCase(Locale.ROOT);
+        String safeIp = StringUtils.hasText(ipAddress) ? ipAddress.trim() : "unknown";
+        String rateLimitKey = "auth:rl:register:" + sha256Hex(safeIp);
+        enforceRegisterRateLimit(rateLimitKey);
+
+        if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
+            throw new ApiException(ErrorCode.CONFLICT, "An account with this email already exists");
+        }
+
+        StoreEntity store = storeRepository.findByCode("terrain-supply")
+                .orElseGet(() -> storeRepository.findAll().stream().findFirst()
+                        .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Store not initialized")));
+
+        Instant now = Instant.now();
+        AdminUserEntity user = new AdminUserEntity();
+        user.setId(UUID.randomUUID());
+        user.setStoreId(store.getId());
+        user.setEmail(normalizedEmail);
+        user.setFullName(request.fullName().trim());
+        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setStatus("ACTIVE");
+        user.setRoles(Set.of());
+        user.setLastLoginAt(now);
+        user.setCreatedAt(now);
+        user.setUpdatedAt(now);
+        userRepository.save(user);
+
+        recordRegisterAttempt(rateLimitKey);
+
+        String rawRefreshToken = generateOpaqueToken();
+        saveRefreshToken(user.getId(), rawRefreshToken, userAgent, ipAddress, now);
+
+        AuthenticatedUser principal = toPrincipal(user);
+        String accessToken = jwtService.generateAccessToken(principal);
+
+        auditLogService.record(
+                store.getId(),
+                user.getId(),
+                user.getEmail(),
+                "AUTH_REGISTER",
+                "ACCOUNT",
+                user.getId().toString(),
+                null,
+                Map.of("roles", List.of()),
+                Map.of("ip", safeIp),
+                null
+        );
+
+        return new AuthSessionResult(
+                accessToken,
+                rawRefreshToken,
+                appProperties.getJwt().getAccessTtlSeconds(),
+                MeResponse.from(principal, store.getName())
+        );
     }
 
     @Transactional(noRollbackFor = ApiException.class)
@@ -252,6 +311,33 @@ public class AuthService {
         }
     }
 
+    private void enforceRegisterRateLimit(String key) {
+        try {
+            String raw = redisTemplate.opsForValue().get(key);
+            if (raw != null && Long.parseLong(raw) >= 15L) {
+                throw new ApiException(
+                        ErrorCode.RATE_LIMITED,
+                        "Too many registration attempts from this network. Please retry later."
+                );
+            }
+        } catch (ApiException ex) {
+            throw ex;
+        } catch (Exception ignored) {
+            // Do not fail registration if Redis is unavailable
+        }
+    }
+
+    private void recordRegisterAttempt(String key) {
+        try {
+            Long count = redisTemplate.opsForValue().increment(key);
+            if (count != null && count == 1L) {
+                redisTemplate.expire(key, Duration.ofMinutes(15));
+            }
+        } catch (Exception ignored) {
+            // Best-effort counter
+        }
+    }
+
     private void enforceLoginRateLimit(String key) {
         try {
             String raw = redisTemplate.opsForValue().get(key);
@@ -324,6 +410,13 @@ public class AuthService {
     private static String truncate(String val, int maxLen) {
         if (val == null) return null;
         return val.length() <= maxLen ? val : val.substring(0, maxLen);
+    }
+
+    public record RegisterRequest(
+            @NotBlank @jakarta.validation.constraints.Size(min = 2, max = 160) String fullName,
+            @NotBlank @Email @jakarta.validation.constraints.Size(max = 255) String email,
+            @NotBlank @jakarta.validation.constraints.Size(min = 8, max = 128) String password
+    ) {
     }
 
     public record LoginRequest(

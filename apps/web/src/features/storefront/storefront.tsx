@@ -677,7 +677,7 @@ export function Storefront({ route }: { route: string[] }) {
         <StoreHeader
           cart={cartCount}
           wishlistCount={wishlist.length}
-          currentPath={view ? `/store/${view}` : "/store"}
+          currentPath={view ? `/store/${view}` : "/"}
           freeShippingThresholdOverride={cart?.freeShippingThreshold}
         />
         <main>{content}</main>

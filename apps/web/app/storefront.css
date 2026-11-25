@@ -1396,3 +1396,64 @@ html[data-theme="dark"]:has(.public-store) {
     flex-wrap: wrap;
   }
 }
+/* ---- STOREFRONT ACCOUNT POPOVER & AI SHOPPING TRIGGER ---- */
+.store-account-trigger {
+  position: relative;
+}
+
+.store-account-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--green, #1e6b46);
+  border: 1.5px solid #ffffff;
+}
+
+.store-account-menu {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.store-account-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.store-account-item:hover {
+  background: var(--subtle);
+}
+
+.store-account-item.is-primary {
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.store-account-item.is-primary:hover {
+  background: var(--accent-hover);
+}
+
+.store-account-item.is-danger {
+  color: var(--red, #b22e42);
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 7px 7px;
+  margin-top: 4px;
+  padding-top: 9px;
+}

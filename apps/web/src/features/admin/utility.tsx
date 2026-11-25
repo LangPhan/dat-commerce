@@ -690,7 +690,7 @@ function PagesView({ notify }: { notify: (msg: string) => void }) {
     {
       id: "slug",
       header: "Slug",
-      cell: (p) => <code>{p.slug === "home" ? "/store" : `/store/${p.slug}`}</code>,
+      cell: (p) => <code>{p.slug === "home" ? "/" : `/store/${p.slug}`}</code>,
     },
     {
       id: "status",
@@ -710,12 +710,12 @@ function PagesView({ notify }: { notify: (msg: string) => void }) {
       header: "Actions",
       align: "right",
       cell: (p) => {
-        const livePath = p.slug === "home" ? "/store" : `/store/${p.slug}`;
+        const livePath = p.slug === "home" ? "/" : `/store/${p.slug}`;
         return (
           <div className="button-row" style={{ justifyContent: "flex-end" }}>
             <Link
               className="btn btn-sm primary"
-              href={`/?page=${encodeURIComponent(p.slug)}`}
+              href={`/admin/editor?page=${encodeURIComponent(p.slug)}`}
             >
               Edit in Visual Editor
             </Link>

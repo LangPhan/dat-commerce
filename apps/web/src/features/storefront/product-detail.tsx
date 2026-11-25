@@ -80,7 +80,7 @@ function ProductDetailInner({
   return (
     <div className="store-container">
       <div className="crumb">
-        <Link href="/store">Home</Link> /{" "}
+        <Link href="/">Home</Link> /{" "}
         {primaryCat ? (
           <Link href={`/store/shop?category=${encodeURIComponent(primaryCat.slug)}`}>
             {primaryCat.name}

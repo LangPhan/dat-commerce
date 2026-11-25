@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
@@ -39,6 +40,21 @@ public class AuthController {
         );
         writeRefreshCookie(response, result.refreshToken(), appProperties.getJwt().getRefreshTtlSeconds());
         return ResponseEntity.ok(result.toBody());
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<AuthService.AuthTokenResponse> register(
+            @Valid @RequestBody AuthService.RegisterRequest body,
+            HttpServletRequest request,
+            HttpServletResponse response
+    ) {
+        AuthService.AuthSessionResult result = authService.register(
+                body,
+                request.getHeader(HttpHeaders.USER_AGENT),
+                clientIp(request)
+        );
+        writeRefreshCookie(response, result.refreshToken(), appProperties.getJwt().getRefreshTtlSeconds());
+        return ResponseEntity.status(HttpStatus.CREATED).body(result.toBody());
     }
 
     @PostMapping("/refresh")
