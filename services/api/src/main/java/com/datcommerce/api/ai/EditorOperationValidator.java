@@ -1,5 +1,6 @@
 package com.datcommerce.api.ai;
 
+import com.datcommerce.api.cms.AnimationValidationService;
 import com.datcommerce.api.cms.BlockSchemaValidator;
 import com.datcommerce.api.cms.ThemeTokenValidator;
 import com.datcommerce.api.common.exception.ApiException;
@@ -35,8 +36,19 @@ public class EditorOperationValidator {
             "replace_subtree",
             "update_typography_font",
             "update_typography_preset",
-            "reset_typography_preset"
+            "reset_typography_preset",
+            "set_element_animation",
+            "update_element_animation",
+            "remove_element_animation",
+            "apply_animation_to_selection",
+            "update_responsive_animation",
+            "update_global_motion",
+            "create_animation_preset"
     );
+    private static final Set<String> MOTION_CATEGORIES = Set.of(
+            "entrance", "scroll", "hover", "interaction", "continuous", "text", "stagger", "all"
+    );
+    private final AnimationValidationService animationValidator = new AnimationValidationService();
     private static final Set<String> ALLOWED_BREAKPOINTS = Set.of("base", "tablet", "mobile", "hover");
 
     public List<Map<String, Object>> validateAndNormalize(
@@ -380,6 +392,116 @@ public class EditorOperationValidator {
                     }
                     opOut.put("target", target);
                 }
+                case "set_element_animation", "update_element_animation" -> {
+                    Object rawNodeId = raw.get("nodeId") != null ? raw.get("nodeId") : raw.get("targetId");
+                    String nodeId = requireTargetNode(rawNodeId, normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    Map<String, Object> rawMotion = extractMotionPayload(raw, opType);
+                    Map<String, Object> cleanMotion = animationValidator.validateAndNormalizeElementMotion(
+                            rawMotion, "ai." + opType + "." + nodeId
+                    );
+                    opOut.put("nodeId", nodeId);
+                    opOut.put("motion", cleanMotion);
+                }
+                case "remove_element_animation" -> {
+                    Object rawNodeId = raw.get("nodeId") != null ? raw.get("nodeId") : raw.get("targetId");
+                    String nodeId = requireTargetNode(rawNodeId, normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    String category = str(raw.get("category")).toLowerCase(Locale.ROOT);
+                    opOut.put("nodeId", nodeId);
+                    if (StringUtils.hasText(category) && !"all".equals(category)) {
+                        if (!MOTION_CATEGORIES.contains(category)) {
+                            throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid animation category to remove: " + category);
+                        }
+                        opOut.put("category", category);
+                    }
+                }
+                case "apply_animation_to_selection" -> {
+                    List<String> targetIds = new ArrayList<>();
+                    Object rawIds = raw.get("nodeIds") != null ? raw.get("nodeIds") : raw.get("targetIds");
+                    if (rawIds instanceof List<?> list) {
+                        for (Object item : list) {
+                            String nid = requireTargetNode(item, normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                            if (!targetIds.contains(nid)) {
+                                targetIds.add(nid);
+                            }
+                        }
+                    } else if (allowedTargetIds != null && !allowedTargetIds.isEmpty()) {
+                        targetIds.addAll(allowedTargetIds);
+                    }
+                    if (targetIds.isEmpty()) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "apply_animation_to_selection requires at least one valid target nodeId");
+                    }
+                    Map<String, Object> rawMotion = extractMotionPayload(raw, opType);
+                    Map<String, Object> cleanMotion = animationValidator.validateAndNormalizeElementMotion(
+                            rawMotion, "ai." + opType
+                    );
+                    opOut.put("nodeIds", targetIds);
+                    opOut.put("motion", cleanMotion);
+                }
+                case "update_responsive_animation" -> {
+                    Object rawNodeId = raw.get("nodeId") != null ? raw.get("nodeId") : raw.get("targetId");
+                    String nodeId = requireTargetNode(rawNodeId, normalizedScope, allowedTargetIds, insertedIds, existingPageIds, opType);
+                    String bp = str(raw.get("breakpoint")).toLowerCase(Locale.ROOT);
+                    if (!"tablet".equals(bp) && !"mobile".equals(bp)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "update_responsive_animation breakpoint must be tablet or mobile");
+                    }
+                    Map<String, Object> rawOverride = raw.get("override") instanceof Map<?, ?>
+                            ? mapOf(raw.get("override"), "update_responsive_animation.override")
+                            : (raw.get("motion") instanceof Map<?, ?>
+                                ? mapOf(raw.get("motion"), "update_responsive_animation.motion")
+                                : new LinkedHashMap<>());
+                    if (raw.get("enabled") != null && !rawOverride.containsKey("enabled")) {
+                        rawOverride.put("enabled", Boolean.TRUE.equals(raw.get("enabled")));
+                    }
+                    if (Boolean.TRUE.equals(raw.get("disabled"))) {
+                        rawOverride.put("enabled", false);
+                    }
+                    Map<String, Object> wrapped = new LinkedHashMap<>();
+                    wrapped.put("responsive", Map.of(bp, rawOverride));
+                    Map<String, Object> validated = animationValidator.validateAndNormalizeElementMotion(
+                            wrapped, "ai.update_responsive_animation." + nodeId
+                    );
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> respMap = (Map<String, Object>) validated.get("responsive");
+                    opOut.put("nodeId", nodeId);
+                    opOut.put("breakpoint", bp);
+                    opOut.put("override", respMap != null && respMap.get(bp) != null ? respMap.get(bp) : Map.of("enabled", false));
+                }
+                case "update_global_motion" -> {
+                    requireMotionGlobalScope(normalizedScope, opType);
+                    Object rawMotionObj = raw.get("motion") != null ? raw.get("motion") : raw.get("patch");
+                    if (rawMotionObj == null) {
+                        Map<String, Object> copy = new LinkedHashMap<>(raw);
+                        copy.remove("type");
+                        rawMotionObj = copy;
+                    }
+                    Map<String, Object> cleanGlobal = animationValidator.validateAndNormalizeGlobalMotion(rawMotionObj);
+                    opOut.put("motion", cleanGlobal);
+                }
+                case "create_animation_preset" -> {
+                    String name = str(raw.get("name"));
+                    if (!StringUtils.hasText(name) || name.length() > 100) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "create_animation_preset name must be 1..100 chars");
+                    }
+                    String category = str(raw.get("category")).toLowerCase(Locale.ROOT);
+                    if (!StringUtils.hasText(category)) {
+                        category = "entrance";
+                    }
+                    if (!AnimationValidationService.ALLOWED_CATEGORIES.contains(category)) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid preset category: " + category);
+                    }
+                    String description = str(raw.get("description"));
+                    if (description.length() > 300) {
+                        description = description.substring(0, 300);
+                    }
+                    Map<String, Object> rawCfg = raw.get("config") instanceof Map<?, ?>
+                            ? mapOf(raw.get("config"), "create_animation_preset.config")
+                            : extractMotionPayload(raw, opType);
+                    Map<String, Object> cleanCfg = animationValidator.validatePresetConfig(category, rawCfg);
+                    opOut.put("name", name);
+                    opOut.put("category", category);
+                    opOut.put("description", description);
+                    opOut.put("config", cleanCfg);
+                }
             }
 
             cleaned.add(opOut);
@@ -449,6 +571,59 @@ public class EditorOperationValidator {
             }
         });
         return out;
+    }
+
+    private static Map<String, Object> extractMotionPayload(Map<String, Object> raw, String opType) {
+        if (raw.get("motion") instanceof Map<?, ?>) {
+            return mapOf(raw.get("motion"), opType + ".motion");
+        }
+        if (raw.get("patch") instanceof Map<?, ?>) {
+            return mapOf(raw.get("patch"), opType + ".patch");
+        }
+        // Normalize shorthand AI shape: { category: "entrance", preset: "fadeInUp", duration: 600, ... }
+        String category = str(raw.get("category")).toLowerCase(Locale.ROOT);
+        if (StringUtils.hasText(category) && MOTION_CATEGORIES.contains(category) && !"all".equals(category)) {
+            Map<String, Object> sub = new LinkedHashMap<>();
+            sub.put("enabled", true);
+            for (String k : List.of("preset", "mode", "effect", "duration", "delay", "easing", "trigger", "triggers",
+                    "direction", "repeat", "once", "threshold", "distance", "scale", "rotate", "opacity", "blur",
+                    "shadow", "speed", "intensity", "start", "end", "offset", "stickyOffset", "stickyDuration",
+                    "min", "max", "infinite", "splitBy", "staggerMs", "initialDelay", "interval", "maxDelay", "order")) {
+                if (raw.containsKey(k) && raw.get(k) != null) {
+                    sub.put(k, raw.get(k));
+                }
+            }
+            Map<String, Object> motion = new LinkedHashMap<>();
+            motion.put("enabled", true);
+            motion.put(category, sub);
+            return motion;
+        }
+        // Also support top-level category maps directly on the op object
+        Map<String, Object> direct = new LinkedHashMap<>();
+        boolean found = false;
+        for (String cat : List.of("entrance", "scroll", "hover", "interaction", "continuous", "text", "stagger", "responsive")) {
+            if (raw.get(cat) instanceof Map<?, ?>) {
+                direct.put(cat, raw.get(cat));
+                found = true;
+            }
+        }
+        if (found) {
+            direct.put("enabled", raw.get("enabled") == null ? true : Boolean.TRUE.equals(raw.get("enabled")));
+            if (raw.get("presetRef") instanceof String pr && StringUtils.hasText(pr)) {
+                direct.put("presetRef", pr.trim());
+            }
+            return direct;
+        }
+        throw new ApiException(ErrorCode.VALIDATION_ERROR, opType + " requires a motion configuration object");
+    }
+
+    private static void requireMotionGlobalScope(String scope, String opType) {
+        if (!"motion".equals(scope) && !"page".equals(scope)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "AI operation '" + opType + "' requires motion or page scope (current scope: " + scope + ")"
+            );
+        }
     }
 
     private static void requireTypographyScope(String scope, String opType) {

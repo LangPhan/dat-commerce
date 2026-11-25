@@ -270,4 +270,104 @@ class EditorOperationValidatorTest {
                 )
         );
     }
+
+    @Test
+    void validatesMotionOperationsAndRejectsUnsafeOrOutOfScope() {
+        // Shorthand set_element_animation normalizes into validated motion config
+        List<Map<String, Object>> ok = validator.validateAndNormalize(
+                List.of(
+                        Map.of(
+                                "type", "set_element_animation",
+                                "targetId", "hero-h1",
+                                "category", "entrance",
+                                "preset", "fadeInUp",
+                                "duration", 600,
+                                "easing", "easeOut"
+                        ),
+                        Map.of(
+                                "type", "update_responsive_animation",
+                                "nodeId", "hero-h1",
+                                "breakpoint", "mobile",
+                                "disabled", true
+                        ),
+                        Map.of(
+                                "type", "create_animation_preset",
+                                "name", "Hero Rise",
+                                "category", "entrance",
+                                "config", Map.of(
+                                        "enabled", true,
+                                        "entrance", Map.of("enabled", true, "preset", "fadeInUp", "duration", 550)
+                                )
+                        )
+                ),
+                "element",
+                Set.of("hero-h1"),
+                Set.of("hero-h1", "other-node")
+        );
+        assertEquals(3, ok.size());
+        assertEquals("hero-h1", ok.get(0).get("nodeId"));
+        assertTrue(ok.get(0).get("motion") instanceof Map<?, ?>);
+
+        // Global motion allowed in motion scope
+        List<Map<String, Object>> gmOps = validator.validateAndNormalize(
+                List.of(Map.of(
+                        "type", "update_global_motion",
+                        "motion", Map.of("enabled", true, "mobileBehavior", "reduced", "defaultDuration", 480)
+                )),
+                "motion",
+                Set.of(),
+                Set.of("hero-h1")
+        );
+        assertEquals(1, gmOps.size());
+        assertEquals("update_global_motion", gmOps.get(0).get("type"));
+
+        // Rejects unknown preset
+        assertThrows(ApiException.class, () -> validator.validateAndNormalize(
+                List.of(Map.of(
+                        "type", "set_element_animation",
+                        "nodeId", "hero-h1",
+                        "category", "entrance",
+                        "preset", "evilJsSpin"
+                )),
+                "element",
+                Set.of("hero-h1"),
+                Set.of("hero-h1")
+        ));
+
+        // Rejects out-of-scope target node
+        assertThrows(ApiException.class, () -> validator.validateAndNormalize(
+                List.of(Map.of(
+                        "type", "remove_element_animation",
+                        "nodeId", "other-node"
+                )),
+                "element",
+                Set.of("hero-h1"),
+                Set.of("hero-h1", "other-node")
+        ));
+
+        // Rejects update_global_motion in element scope
+        assertThrows(ApiException.class, () -> validator.validateAndNormalize(
+                List.of(Map.of(
+                        "type", "update_global_motion",
+                        "motion", Map.of("enabled", false)
+                )),
+                "element",
+                Set.of("hero-h1"),
+                Set.of("hero-h1")
+        ));
+
+        // Rejects script injection inside preset description
+        assertThrows(ApiException.class, () -> validator.validateAndNormalize(
+                List.of(Map.of(
+                        "type", "create_animation_preset",
+                        "name", "Bad",
+                        "category", "entrance",
+                        "description", "<script>alert(1)</script>",
+                        "config", Map.of("enabled", true)
+                )),
+                "motion",
+                Set.of(),
+                Set.of()
+        ));
+    }
 }

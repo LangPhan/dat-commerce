@@ -58,6 +58,23 @@ public class EditorAiService {
                - Built-in Google/System font families: Inter, Plus Jakarta Sans, DM Sans, Poppins, Montserrat, Manrope, Outfit, Work Sans, Lato, Open Sans, Roboto, Nunito, Source Sans 3, Rubik, Space Grotesk, Syne, Sora, Urbanist, Figtree, Geist, Playfair Display, Cormorant Garamond, Fraunces, Lora, Merriweather, Libre Baskerville, DM Serif Display, Bodoni Moda, EB Garamond, Crimson Pro, Georgia, Times New Roman, JetBrains Mono, Fira Code, IBM Plex Mono, Space Mono, Source Code Pro, System UI, Arial, Helvetica, Verdana, Trebuchet MS, Courier New (plus any custom uploaded font present in `themeTokens.typography.fonts`).
                - When updating "all headings", emit `update_typography_preset` for `h1`, `h2`, `h3`, `h4`, `h5`, `h6` cleanly without altering `body`, `body_small`, or `caption` unless requested.
                - Preserve local element style overrides and semantic HTML tags; keep WCAG-friendly font contrast and readable line heights.
+            8. Animation & Motion operations (available in any scope for element animations, and in `motion` or `page` scope for global motion):
+               - `{"type":"set_element_animation","nodeId":"<id>","motion":{"enabled":true,"entrance":{"enabled":true,"preset":"fadeInUp","duration":600,"delay":0,"easing":"easeOut","trigger":"viewport","once":true}}}`
+               - `{"type":"update_element_animation","nodeId":"<id>","motion":{"hover":{"enabled":true,"preset":"scaleUp","duration":220,"easing":"easeOut","scale":1.04}}}`
+               - `{"type":"remove_element_animation","nodeId":"<id>","category":"all|entrance|scroll|hover|interaction|continuous|text|stagger"}`
+               - `{"type":"apply_animation_to_selection","nodeIds":["<id1>","<id2>"],"motion":{...}}`
+               - `{"type":"update_responsive_animation","nodeId":"<id>","breakpoint":"tablet|mobile","override":{"enabled":false}}`
+               - `{"type":"update_global_motion","motion":{"enabled":true,"scrollEffectsEnabled":true,"hoverEffectsEnabled":true,"mobileBehavior":"full|reduced|disabled","reducedMotionPolicy":"respect-system|always-reduced|essential-only","defaultDuration":550,"defaultEasing":"easeOut"}}`
+               - `{"type":"create_animation_preset","name":"My Preset","category":"entrance|scroll|hover|interaction|continuous|text|custom","description":"Short note","config":{"enabled":true,"entrance":{"enabled":true,"preset":"fadeInUp","duration":600}}}`
+               - Allowed presets:
+                 * entrance: fadeIn, fadeInUp, fadeInDown, fadeInLeft, fadeInRight, slideInUp, slideInDown, slideInLeft, slideInRight, zoomIn, zoomInUp, zoomInDown, zoomInLeft, zoomInRight, bounceIn, bounceInUp, bounceInDown, rotateIn, rotateInUp, rotateInDown, flipInX, flipInY, backInUp, backInDown, lightSpeedIn
+                 * scroll modes: reveal, linked, parallax, sticky; scroll effects: scrollFade, scrollSlide, scrollZoom, revealTop, revealBottom, revealLeft, revealRight, translateX, translateY, scale, rotate, opacity, blur, skew, parallaxVertical, parallaxHorizontal, parallaxBackground, stickyScale, stickyFade, stickyTransform
+                 * hover: scaleUp, scaleDown, moveUp, moveDown, moveLeft, moveRight, rotate, tilt, fade, shadow, glow, blur, borderHighlight, underlineReveal
+                 * interaction: buttonPress, clickScaleDown, iconRotate, accordionExpand, toggleTransition, modalEntrance
+                 * continuous: floating, pulse, bounce, swing, shake, rotate, wobble, breathing, shimmer, wave
+                 * text: textFadeIn, textSlideUp, textSlideDown, textBlurReveal, staggerChar, staggerWord, staggerLine, typingEffect, textReveal, gradientTextMove
+                 * stagger: {"enabled":true,"preset":"fadeInUp","interval":90,"maxDelay":700,"direction":"forward|reverse|center","order":"sequential|row|column"}
+               - Never generate raw JavaScript, CSS @keyframes, HTML, or auto-publish commands. Keep motion tasteful and accessible.
 
             Output JSON shape:
             {
@@ -97,8 +114,8 @@ public class EditorAiService {
         String scope = StringUtils.hasText(request.scope())
                 ? request.scope().trim().toLowerCase(Locale.ROOT)
                 : "element";
-        if (!Set.of("element", "section", "page", "typography").contains(scope)) {
-            throw new ApiException(ErrorCode.VALIDATION_ERROR, "scope must be element, section, page, or typography");
+        if (!Set.of("element", "section", "page", "typography", "motion").contains(scope)) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, "scope must be element, section, page, typography, or motion");
         }
 
         String viewport = StringUtils.hasText(request.viewport())
@@ -129,7 +146,7 @@ public class EditorAiService {
                 collectTreeIds(item, existingPageIds);
             }
         }
-        if ("page".equals(scope)) {
+        if ("page".equals(scope) || "motion".equals(scope)) {
             allowedTargetIds.addAll(existingPageIds);
         }
 

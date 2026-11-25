@@ -284,4 +284,53 @@ class EditorAiServiceTest {
         assertTrue(userPayload.contains("\"editableParts\""));
         assertTrue(userPayload.contains("best-grid"));
     }
+
+    @Test
+    void supportsMotionScopeAndValidatedAnimationOperations() {
+        String gatewayJson = """
+                {
+                  "summary": "Fade in heading & reduce mobile motion",
+                  "explanation": "Added fadeInUp entrance and mobile reduced motion policy.",
+                  "operations": [
+                    {
+                      "type": "set_element_animation",
+                      "nodeId": "hero-heading",
+                      "motion": {
+                        "enabled": true,
+                        "entrance": { "enabled": true, "preset": "fadeInUp", "duration": 600, "easing": "easeOut" }
+                      }
+                    },
+                    {
+                      "type": "update_global_motion",
+                      "motion": { "enabled": true, "mobileBehavior": "reduced" }
+                    }
+                  ]
+                }
+                """;
+        when(mockGateway.generateTurn(any(AiModelGateway.GatewayRequest.class)))
+                .thenReturn(new AiModelGateway.GatewayTurnResponse(gatewayJson, List.of(), 120, 80, "stop"));
+
+        EditorAiService.EditorSuggestResponse response = service.suggest(
+                actor,
+                new EditorAiService.EditorSuggestRequest(
+                        UUID.randomUUID(),
+                        "home",
+                        "desktop",
+                        "motion",
+                        List.of("hero-heading"),
+                        "Make heading fade in up over 600ms and reduce motion on mobile",
+                        "gpt-6-luna",
+                        Map.of("id", "hero-heading", "type", "heading"),
+                        List.of(Map.of("id", "hero-heading", "type", "heading")),
+                        Map.of(),
+                        List.of(),
+                        null,
+                        Map.of()
+                )
+        );
+
+        assertEquals(2, response.operations().size());
+        assertEquals("set_element_animation", response.operations().get(0).get("type"));
+        assertEquals("update_global_motion", response.operations().get(1).get("type"));
+    }
 }

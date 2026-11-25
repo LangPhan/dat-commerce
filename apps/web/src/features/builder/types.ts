@@ -320,8 +320,17 @@ export type AiPreviewSession = {
   affectedPresets?: string[];
   typographyOperations?: TypographyAiOperation[];
   motionOperations?: MotionAiOperation[];
+  motionPresetOps?: Array<{
+    type: "create_animation_preset";
+    name: string;
+    category: string;
+    description?: string;
+    config: Record<string, unknown>;
+  }>;
   requiresConfirmation?: boolean;
   confirmationReason?: string;
+  confirmationReasons?: string[];
+  animatedNodeIds?: string[];
   viewMode?: "after" | "before";
 };
 

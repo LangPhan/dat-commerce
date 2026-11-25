@@ -472,6 +472,10 @@ public class MockAiModelGateway implements AiModelGateway {
             return generateTypographySuggestTurn(lower);
         }
 
+        if ("motion".equals(scope) || isMotionPrompt(lower)) {
+            return generateMotionSuggestTurn(prompt, lower, targetId, scope);
+        }
+
         Map<String, Object> styles = new LinkedHashMap<>();
         String summary = "Apply contextual visual update";
         if (lower.contains("color") && extractHex(prompt, "").length() == 7) {
@@ -529,6 +533,156 @@ public class MockAiModelGateway implements AiModelGateway {
             return textResponse(objectMapper.writeValueAsString(jsonOut), 180, 95);
         } catch (Exception ex) {
             return textResponse("{\"summary\":\"Update styles\",\"explanation\":\"\",\"operations\":[]}", 100, 40);
+        }
+    }
+
+    private static boolean isMotionPrompt(String lower) {
+        return lower.contains("animate")
+                || lower.contains("animation")
+                || lower.contains("fade in")
+                || lower.contains("slide in")
+                || lower.contains("zoom in")
+                || lower.contains("bounce")
+                || lower.contains("parallax")
+                || lower.contains("hover")
+                || lower.contains("stagger")
+                || lower.contains("floating")
+                || lower.contains("pulse")
+                || lower.contains("word by word")
+                || lower.contains("word-by-word")
+                || lower.contains("typing effect")
+                || lower.contains("reduced motion")
+                || lower.contains("disable animation")
+                || lower.contains("remove animation")
+                || lower.contains("motion");
+    }
+
+    private GatewayTurnResponse generateMotionSuggestTurn(
+            String prompt,
+            String lower,
+            String targetId,
+            String scope
+    ) {
+        String summary;
+        String explanation;
+        List<Map<String, Object>> ops = new ArrayList<>();
+
+        if ("motion".equals(scope) || lower.contains("global motion") || lower.contains("reduced motion") || lower.contains("across the site")) {
+            Map<String, Object> gm = new LinkedHashMap<>();
+            if (lower.contains("disable") || lower.contains("turn off")) {
+                gm.put("enabled", false);
+                summary = "Disable animations globally";
+                explanation = "Turned off storefront animations globally while preserving individual element configurations.";
+            } else if (lower.contains("mobile") && lower.contains("reduce")) {
+                gm.put("mobileBehavior", "reduced");
+                summary = "Reduce animation intensity on mobile";
+                explanation = "Set mobile behavior to reduced so entrance durations shorten and heavy parallax/loops stay off on mobile.";
+            } else {
+                gm.put("enabled", true);
+                gm.put("defaultDuration", lower.contains("fast") || lower.contains("snappy") ? 360 : 520);
+                gm.put("defaultEasing", "easeOut");
+                gm.put("mobileBehavior", "reduced");
+                summary = "Apply refined global motion defaults";
+                explanation = "Updated global motion defaults with smooth easeOut timing and mobile-friendly reduced motion.";
+            }
+            ops.add(Map.of("type", "update_global_motion", "motion", gm));
+        } else if (StringUtils.hasText(targetId) && (lower.contains("remove animation") || lower.contains("clear animation"))) {
+            ops.add(Map.of("type", "remove_element_animation", "nodeId", targetId, "category", "all"));
+            summary = "Remove element animations";
+            explanation = "Cleared all animation configurations from the selected element.";
+        } else if (StringUtils.hasText(targetId) && lower.contains("mobile") && (lower.contains("disable") || lower.contains("turn off"))) {
+            ops.add(Map.of(
+                    "type", "update_responsive_animation",
+                    "nodeId", targetId,
+                    "breakpoint", "mobile",
+                    "override", Map.of("enabled", false)
+            ));
+            summary = "Disable animation on mobile";
+            explanation = "Added a mobile breakpoint override disabling animations on small viewports.";
+        } else if (StringUtils.hasText(targetId) && (lower.contains("word by word") || lower.contains("word-by-word") || lower.contains("typing"))) {
+            String preset = lower.contains("typing") ? "typingEffect" : "staggerWord";
+            ops.add(Map.of(
+                    "type", "update_element_animation",
+                    "nodeId", targetId,
+                    "motion", Map.of(
+                            "enabled", true,
+                            "text", Map.of("enabled", true, "preset", preset, "staggerMs", 55, "duration", 520, "trigger", "viewport")
+                    )
+            ));
+            summary = "Animate text with " + preset;
+            explanation = "Applied an accessible semantic text animation preserving screen-reader text.";
+        } else if (StringUtils.hasText(targetId) && lower.contains("parallax")) {
+            ops.add(Map.of(
+                    "type", "update_element_animation",
+                    "nodeId", targetId,
+                    "motion", Map.of(
+                            "enabled", true,
+                            "scroll", Map.of("enabled", true, "mode", "parallax", "effect", "parallaxVertical", "speed", 36, "intensity", 36)
+                    )
+            ));
+            summary = "Add subtle vertical parallax";
+            explanation = "Configured GPU-composited vertical scroll parallax on the selected element.";
+        } else if (StringUtils.hasText(targetId) && lower.contains("hover")) {
+            String hoverPreset = lower.contains("scale") ? "scaleUp" : (lower.contains("glow") ? "glow" : "moveUp");
+            ops.add(Map.of(
+                    "type", "update_element_animation",
+                    "nodeId", targetId,
+                    "motion", Map.of(
+                            "enabled", true,
+                            "hover", Map.of("enabled", true, "preset", hoverPreset, "duration", 220, "easing", "easeOut")
+                    )
+            ));
+            summary = "Add hover " + hoverPreset + " effect";
+            explanation = "Added a smooth pointer-only hover transition with touch-device safety.";
+        } else if (StringUtils.hasText(targetId) && lower.contains("stagger")) {
+            ops.add(Map.of(
+                    "type", "update_element_animation",
+                    "nodeId", targetId,
+                    "motion", Map.of(
+                            "enabled", true,
+                            "stagger", Map.of("enabled", true, "preset", "fadeInUp", "interval", 90, "maxDelay", 650, "direction", "forward", "order", "sequential")
+                    )
+            ));
+            summary = "Add staggered entrance to children";
+            explanation = "Configured staggered fadeInUp reveals across child items with capped maximum delay.";
+        } else if (StringUtils.hasText(targetId)) {
+            String preset = lower.contains("zoom") ? "zoomIn"
+                    : (lower.contains("slide") ? "slideInUp"
+                    : (lower.contains("bounce") ? "bounceIn" : "fadeInUp"));
+            int duration = lower.contains("800") ? 800 : (lower.contains("600") ? 600 : 550);
+            ops.add(Map.of(
+                    "type", "set_element_animation",
+                    "nodeId", targetId,
+                    "motion", Map.of(
+                            "enabled", true,
+                            "entrance", Map.of(
+                                    "enabled", true,
+                                    "preset", preset,
+                                    "duration", duration,
+                                    "delay", 0,
+                                    "easing", "easeOut",
+                                    "trigger", "viewport",
+                                    "once", true
+                            )
+                    )
+            ));
+            summary = "Apply " + preset + " entrance (" + duration + "ms)";
+            explanation = "Configured a smooth " + preset + " entrance animation on the selected element.";
+        } else {
+            summary = "Apply subtle global motion";
+            explanation = "No element selected; updated global motion defaults.";
+            ops.add(Map.of("type", "update_global_motion", "motion", Map.of("enabled", true, "defaultDuration", 520, "defaultEasing", "easeOut")));
+        }
+
+        try {
+            String json = objectMapper.writeValueAsString(Map.of(
+                    "summary", summary,
+                    "explanation", explanation,
+                    "operations", ops
+            ));
+            return textResponse(json, 190, 110);
+        } catch (Exception ex) {
+            return textResponse("{\"summary\":\"Motion update\",\"explanation\":\"\",\"operations\":[]}", 80, 40);
         }
     }
 

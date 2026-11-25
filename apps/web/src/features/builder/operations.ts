@@ -875,14 +875,15 @@ export function normalizeApiOperations(
       case "set_element_animation": {
         const targetId = nodeId || (typeof raw.targetId === "string" ? raw.targetId : "");
         if (targetId) {
-          const anim = raw.animation ? sanitizeElementMotion(raw.animation) : null;
+          const animSource = raw.animation ?? raw.motion ?? raw.patch;
+          const anim = animSource ? sanitizeElementMotion(animSource) : null;
           result.push({ type: "set_element_animation", nodeId: targetId, animation: anim ?? null });
         }
         break;
       }
       case "update_element_animation": {
         const targetId = nodeId || (typeof raw.targetId === "string" ? raw.targetId : "");
-        const patchObj = (raw.patch || raw.animation) as Partial<ElementMotionConfig> | undefined;
+        const patchObj = (raw.patch || raw.motion || raw.animation) as Partial<ElementMotionConfig> | undefined;
         if (targetId && patchObj && typeof patchObj === "object") {
           result.push({ type: "update_element_animation", nodeId: targetId, patch: patchObj });
         }
@@ -905,7 +906,7 @@ export function normalizeApiOperations(
           : Array.isArray(raw.targetIds)
             ? raw.targetIds.filter((x): x is string => typeof x === "string")
             : [];
-        const anim = sanitizeElementMotion(raw.animation);
+        const anim = sanitizeElementMotion(raw.animation ?? raw.motion ?? raw.patch);
         if (ids.length && anim) {
           result.push({ type: "apply_animation_to_selection", nodeIds: ids, animation: anim });
         }

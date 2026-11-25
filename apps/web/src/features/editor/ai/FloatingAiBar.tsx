@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ChevronDown,
@@ -56,12 +56,16 @@ import type {
   ElementNode,
 } from "@/features/builder/types";
 import {
-  applyTypographyOperations,
-  partitionAiOperations,
-} from "@/features/typography/ai-operations";
+  analyzeAiMotionConfirmation,
+  applyGlobalMotionAiOperations,
+  partitionAllEditorAiOperations,
+} from "@/features/motion/ai-operations";
+import { normalizeGlobalMotion } from "@/features/motion/defaults";
+import type { ElementMotionConfig, MotionCategory } from "@/features/motion/types";
+import { applyTypographyOperations } from "@/features/typography/ai-operations";
 import { normalizeGlobalTypography } from "@/features/typography/defaults";
 import { useAiModels } from "@/hooks/use-ai-models";
-import { aiAdminApi } from "@/lib/cms-ai-api";
+import { aiAdminApi, cmsAdminApi } from "@/lib/cms-ai-api";
 import type { AIModelId } from "@/types/ai";
 import type { EditorChatHistoryItem } from "@/types/api-cms-ai";
 
@@ -70,6 +74,7 @@ const SCOPE_OPTIONS: { value: AiScopeMode; label: string }[] = [
   { value: "section", label: "Section" },
   { value: "page", label: "Entire Page" },
   { value: "typography", label: "Global Typography" },
+  { value: "motion", label: "Global Motion" },
 ];
 
 function quickChipsForNode(
@@ -77,6 +82,14 @@ function quickChipsForNode(
   partKey?: string | null,
   scope?: AiScopeMode
 ): string[] {
+  if (scope === "motion") {
+    return [
+      "Make storefront animations subtle and fast",
+      "Reduce animation intensity on mobile",
+      "Disable animations globally",
+      "Animate hero heading fade in from bottom over 600ms",
+    ];
+  }
   if (scope === "typography") {
     return [
       "Use Playfair Display for headings and Inter for body",
@@ -123,14 +136,15 @@ function quickChipsForNode(
       "Change text color to #2563eb",
       "Make the font size 56px",
       "Center align text",
-      "Make this heading uppercase",
+      "Make this heading fade in from bottom over 600ms",
+      "Animate this heading word by word",
     ];
   }
   if (node.type === "button" || node.type === "add_to_cart") {
     return [
       "Make button larger with rounded corners",
       "Add a subtle shadow",
-      "Use dark slate background",
+      "Add subtle hover scale up on this button",
     ];
   }
   if (isContainerType(node.type)) {
@@ -161,9 +175,11 @@ export function FloatingAiBar({
   const [selectedModel, setSelectedModel] = useState<AIModelId>(defaultModelId);
   const manualModelRef = useRef(false);
 
+  const queryClient = useQueryClient();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [threadCollapsed, setThreadCollapsed] = useState(false);
+  const [confirmedRisk, setConfirmedRisk] = useState(false);
 
   const pageId = useEditorStore((s) => s.pageId);
   const pageSlug = useEditorStore((s) => s.pageSlug);
@@ -196,6 +212,7 @@ export function FloatingAiBar({
   const clearAiChatForPage = useEditorStore((s) => s.clearAiChatForPage);
   const selectNode = useEditorStore((s) => s.selectNode);
   const expandAncestors = useEditorStore((s) => s.expandAncestors);
+  const replayNodeMotion = useEditorStore((s) => s.replayNodeMotion);
 
   const pageKey = pageId || pageSlug || "home";
   const turns = useMemo(
@@ -229,7 +246,11 @@ export function FloatingAiBar({
   }, [nodes, selectedIds]);
 
   const effectiveScope: AiScopeMode =
-    scope === "typography" ? "typography" : !primaryNode ? "page" : scope;
+    scope === "typography" || scope === "motion"
+      ? scope
+      : !primaryNode
+        ? "page"
+        : scope;
 
   const currentPropertyChips = useMemo(() => {
     if (!primaryNode) return [];
@@ -313,6 +334,7 @@ export function FloatingAiBar({
           ? {
               ...themeTokens,
               typography: normalizeGlobalTypography(themeTokens.typography),
+              motion: normalizeGlobalMotion(themeTokens.motion),
             }
           : undefined,
         history: vars.historyPayload,
@@ -330,11 +352,14 @@ export function FloatingAiBar({
       const targetLabel =
         vars.reqScope === "typography"
           ? "Global Typography"
-          : vars.targetNode
-            ? `${vars.targetNode.label}${partLabel ? ` › ${partLabel}` : ""}`
-            : `${pageSlug} (page)`;
+          : vars.reqScope === "motion"
+            ? "Global Motion"
+            : vars.targetNode
+              ? `${vars.targetNode.label}${partLabel ? ` › ${partLabel}` : ""}`
+              : `${pageSlug} (page)`;
 
-      const { nodeOps, typographyOps } = partitionAiOperations(res.operations || []);
+      const { nodeOps, typographyOps, globalMotionOps, presetCreateOps } =
+        partitionAllEditorAiOperations(res.operations || []);
       const normalizedOps = nodeOps.length ? normalizeApiOperations(nodeOps) : [];
       const previewNodes = normalizedOps.length ? applyOperations(nodes, normalizedOps) : nodes;
       const nodeDiffs = normalizedOps.length ? computeNodeDiffs(nodes, previewNodes) : [];
@@ -342,8 +367,8 @@ export function FloatingAiBar({
       let previewThemeTokens = themeTokens;
       let affectedPresets: string[] = [];
       const typoDiffRows: DiffRow[] = [];
-      if (typographyOps.length && themeTokens) {
-        const applied = applyTypographyOperations(themeTokens, typographyOps);
+      if (typographyOps.length && previewThemeTokens) {
+        const applied = applyTypographyOperations(previewThemeTokens, typographyOps);
         if (applied.diffs.length) {
           previewThemeTokens = applied.nextTokens;
           affectedPresets = applied.affectedPresets;
@@ -371,8 +396,37 @@ export function FloatingAiBar({
         }
       }
 
-      const diffs = [...nodeDiffs, ...typoDiffRows];
-      const totalOps = normalizedOps.length + typographyOps.length;
+      const motionDiffRows: DiffRow[] = [];
+      if (globalMotionOps.length && previewThemeTokens) {
+        const appliedMotion = applyGlobalMotionAiOperations(
+          previewThemeTokens,
+          globalMotionOps
+        );
+        previewThemeTokens = appliedMotion.nextTokens;
+        motionDiffRows.push(...appliedMotion.diffs);
+      }
+      for (const presetOp of presetCreateOps) {
+        motionDiffRows.push({
+          nodeId: "animation-preset",
+          nodeLabel: "Animation Library",
+          field: `preset.${presetOp.category}`,
+          before: "New",
+          after: presetOp.name,
+        });
+      }
+
+      const confirmAnalysis = analyzeAiMotionConfirmation(
+        normalizedOps,
+        globalMotionOps
+      );
+      setConfirmedRisk(false);
+
+      const diffs = [...nodeDiffs, ...typoDiffRows, ...motionDiffRows];
+      const totalOps =
+        normalizedOps.length +
+        typographyOps.length +
+        globalMotionOps.length +
+        presetCreateOps.length;
       const turnId = `ai-turn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
       if (!totalOps || !diffs.length) {
@@ -430,8 +484,23 @@ export function FloatingAiBar({
         beforeThemeTokens: themeTokens,
         previewThemeTokens: previewThemeTokens !== themeTokens ? previewThemeTokens : undefined,
         affectedPresets,
+        motionPresetOps: presetCreateOps.length
+          ? presetCreateOps.map((p) => ({
+              type: "create_animation_preset" as const,
+              name: p.name,
+              category: p.category,
+              description: p.description,
+              config: p.config as Record<string, unknown>,
+            }))
+          : undefined,
+        requiresConfirmation: confirmAnalysis.required,
+        confirmationReasons: confirmAnalysis.reasons,
+        animatedNodeIds: confirmAnalysis.animatedNodeIds,
         viewMode: "after",
       });
+      for (const nid of confirmAnalysis.animatedNodeIds) {
+        replayNodeMotion(nid);
+      }
     },
     onError: (err, vars) => {
       const msg = err instanceof Error ? err.message : "AI suggestion failed";
@@ -553,7 +622,12 @@ export function FloatingAiBar({
                 <button
                   type="button"
                   className={aiPreview.viewMode !== "before" ? "active" : undefined}
-                  onClick={() => setAiPreviewViewMode("after")}
+                  onClick={() => {
+                    setAiPreviewViewMode("after");
+                    for (const nid of aiPreview.animatedNodeIds || []) {
+                      replayNodeMotion(nid);
+                    }
+                  }}
                 >
                   After
                 </button>
@@ -572,9 +646,32 @@ export function FloatingAiBar({
               <Button
                 size="sm"
                 variant="primary"
-                onClick={() => {
+                disabled={Boolean(aiPreview.requiresConfirmation && !confirmedRisk)}
+                onClick={async () => {
                   const summary = aiPreview.summary;
+                  const presetOps = aiPreview.motionPresetOps || [];
+                  const animatedIds = aiPreview.animatedNodeIds || [];
                   applyAiPreview();
+                  setConfirmedRisk(false);
+                  for (const nid of animatedIds) {
+                    replayNodeMotion(nid);
+                  }
+                  if (presetOps.length) {
+                    for (const pOp of presetOps) {
+                      try {
+                        await cmsAdminApi.createAnimationPreset({
+                          name: pOp.name,
+                          category: (pOp.category as MotionCategory) || "entrance",
+                          description: pOp.description || "",
+                          config: pOp.config as ElementMotionConfig,
+                        });
+                      } catch {
+                        // Keep applied canvas changes even if preset creation fails
+                      }
+                    }
+                    void queryClient.invalidateQueries({ queryKey: ["cms-animation-presets"] });
+                    void queryClient.invalidateQueries({ queryKey: ["store-animation-presets"] });
+                  }
                   onNotify(`Applied AI change: ${summary}`);
                 }}
               >
@@ -585,6 +682,23 @@ export function FloatingAiBar({
 
           {aiPreview.explanation ? (
             <p className="ed-ai-preview-desc">{aiPreview.explanation}</p>
+          ) : null}
+
+          {aiPreview.requiresConfirmation ? (
+            <label
+              className="ed-motion-a11y-warn"
+              style={{ marginBottom: 8, cursor: "pointer", alignItems: "center" }}
+            >
+              <input
+                type="checkbox"
+                checked={confirmedRisk}
+                onChange={(e) => setConfirmedRisk(e.target.checked)}
+              />
+              <span>
+                <strong>Confirmation required:</strong>{" "}
+                {(aiPreview.confirmationReasons || []).join(" · ")}. Tick to enable Apply.
+              </span>
+            </label>
           ) : null}
 
           <div className="ed-ai-diff-strip">
