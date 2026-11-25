@@ -54,6 +54,7 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
           theme={theme}
           setTheme={(next) => setTheme(next === "dark" ? "dark" : "light")}
           toast={toast}
+          notify={setToast}
         >
           {children}
         </AdminShell>

@@ -36,6 +36,7 @@ import { Button, IconButton } from "@/components/ui/button";
 import { CommandPalette, type CommandItem } from "@/components/ui/command-palette";
 import { Breadcrumbs } from "@/components/ui/data-display";
 import { Toast } from "@/components/ui/toast";
+import { FloatingAdminAssistant } from "@/features/assistant/FloatingAdminAssistant";
 import { useAuth } from "@/features/auth/auth-context";
 
 export type NavItem = {
@@ -135,6 +136,7 @@ export function AdminShell({
   theme,
   setTheme,
   toast,
+  notify,
   children,
 }: {
   view: string;
@@ -145,6 +147,7 @@ export function AdminShell({
   theme: string;
   setTheme: (next: string) => void;
   toast: string;
+  notify?: (msg: string) => void;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -361,6 +364,12 @@ export function AdminShell({
           close={() => setCommandOpen(false)}
         />
       ) : null}
+
+      <FloatingAdminAssistant
+        view={view}
+        pageTitle={activeItem?.title || "Dashboard"}
+        notify={notify}
+      />
 
       <Toast message={toast} />
     </div>
