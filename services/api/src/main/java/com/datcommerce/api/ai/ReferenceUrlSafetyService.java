@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -79,6 +80,7 @@ public class ReferenceUrlSafetyService {
         InetAddress[] resolve(String host) throws UnknownHostException;
     }
 
+    @Autowired
     public ReferenceUrlSafetyService(
             ObjectMapper objectMapper,
             @Value("${app.ai.safe-browsing-api-key:}") String safeBrowsingApiKey
