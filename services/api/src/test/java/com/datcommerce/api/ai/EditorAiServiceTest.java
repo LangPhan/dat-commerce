@@ -333,4 +333,95 @@ class EditorAiServiceTest {
         assertEquals("set_element_animation", response.operations().get(0).get("type"));
         assertEquals("update_global_motion", response.operations().get(1).get("type"));
     }
+
+    @Test
+    void executesReadOnlyDesignToolLoopAndReportsUsedStoreDataSources() {
+        EditorDesignDataService designData = Mockito.mock(EditorDesignDataService.class);
+        when(designData.buildCompactStoreManifest(actor.storeId())).thenReturn(Map.of(
+                "collections", List.of(Map.of("name", "Summer Trail", "slug", "summer-trail", "productCount", 4))
+        ));
+        when(designData.designToolDefinitions()).thenReturn(List.of(
+                new AiModelGateway.ToolDefinition("design.list_collections", "List collections", Map.of("type", "object", "properties", Map.of()))
+        ));
+        when(designData.executeDesignTool(actor.storeId(), "design.list_collections", Map.of("includeProducts", true)))
+                .thenReturn(new EditorDesignDataService.DesignToolExecutionResult(
+                        "collections",
+                        Map.of("count", 1, "collections", List.of(Map.of("name", "Summer Trail", "slug", "summer-trail")))
+                ));
+
+        AppProperties props = new AppProperties();
+        props.getAi().setGatewayMode("mock");
+        EditorAiService dataAwareService = new EditorAiService(
+                settingsService,
+                operationValidator,
+                mockGateway,
+                nineRouterGateway,
+                props,
+                auditLogService,
+                new ObjectMapper(),
+                designData
+        );
+
+        AiModelGateway.GatewayToolCall call = new AiModelGateway.GatewayToolCall(
+                "call_1", "design.list_collections", Map.of("includeProducts", true)
+        );
+        String finalJson = """
+                {
+                  "summary": "Build Summer Trail collection section",
+                  "explanation": "Created a showcase for the Summer Trail collection using live store data.",
+                  "operations": [
+                    {
+                      "type": "insert_node",
+                      "parentId": null,
+                      "index": 1,
+                      "node": {
+                        "id": "sec-col-1",
+                        "type": "section",
+                        "label": "Summer Trail Showcase",
+                        "visible": true,
+                        "locked": false,
+                        "props": {},
+                        "styles": { "base": { "paddingTop": "48px", "paddingBottom": "48px" } },
+                        "children": [
+                          {
+                            "id": "col-h-1",
+                            "type": "heading",
+                            "label": "Heading",
+                            "visible": true,
+                            "locked": false,
+                            "props": { "text": "Summer Trail", "tag": "h2", "href": "/store/shop?collection=summer-trail" },
+                            "styles": { "base": {} }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """;
+        when(mockGateway.generateTurn(any(AiModelGateway.GatewayRequest.class)))
+                .thenReturn(new AiModelGateway.GatewayTurnResponse("", List.of(call), 100, 30, "tool_calls"))
+                .thenReturn(new AiModelGateway.GatewayTurnResponse(finalJson, List.of(), 180, 95, "stop"));
+
+        EditorAiService.EditorSuggestResponse response = dataAwareService.suggest(
+                actor,
+                new EditorAiService.EditorSuggestRequest(
+                        UUID.randomUUID(),
+                        "home",
+                        "desktop",
+                        "page",
+                        List.of(),
+                        "Create a design for our Collections",
+                        "gpt-6-luna",
+                        List.of(),
+                        List.of(),
+                        Map.of(),
+                        List.of(),
+                        null,
+                        Map.of()
+                )
+        );
+
+        assertEquals(1, response.operations().size());
+        assertTrue(response.usedDataSources().contains("collections"));
+    }
 }

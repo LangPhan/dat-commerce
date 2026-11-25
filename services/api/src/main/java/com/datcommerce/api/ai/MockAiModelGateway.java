@@ -476,6 +476,10 @@ public class MockAiModelGateway implements AiModelGateway {
             return generateMotionSuggestTurn(prompt, lower, targetId, scope);
         }
 
+        if (ctx.get("storeData") instanceof Map<?, ?> storeData && isStoreDataDesignPrompt(lower)) {
+            return generateStoreDataDesignTurn(lower, storeData);
+        }
+
         Map<String, Object> styles = new LinkedHashMap<>();
         String summary = "Apply contextual visual update";
         if (lower.contains("color") && extractHex(prompt, "").length() == 7) {
@@ -533,6 +537,190 @@ public class MockAiModelGateway implements AiModelGateway {
             return textResponse(objectMapper.writeValueAsString(jsonOut), 180, 95);
         } catch (Exception ex) {
             return textResponse("{\"summary\":\"Update styles\",\"explanation\":\"\",\"operations\":[]}", 100, 40);
+        }
+    }
+
+    private static boolean isStoreDataDesignPrompt(String lower) {
+        return lower.contains("collection")
+                || lower.contains("bộ sưu tập")
+                || lower.contains("promo")
+                || lower.contains("discount")
+                || lower.contains("khuyến mãi")
+                || lower.contains("mã giảm giá");
+    }
+
+    private GatewayTurnResponse generateStoreDataDesignTurn(String lower, Map<?, ?> storeData) {
+        if (lower.contains("promo") || lower.contains("discount") || lower.contains("khuyến mãi") || lower.contains("mã giảm giá")) {
+            String code = "WELCOME15";
+            String title = "Limited-Time Store Offer";
+            String subtitle = "Save on your next order with our active store discount.";
+            if (storeData.get("promotions") instanceof List<?> promos && !promos.isEmpty() && promos.get(0) instanceof Map<?, ?> pr) {
+                if (pr.get("code") != null) code = String.valueOf(pr.get("code"));
+                if (pr.get("name") != null) title = String.valueOf(pr.get("name"));
+                if (pr.get("value") != null) subtitle = "Use code " + code + " at checkout to save " + pr.get("value") + ".";
+            }
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("id", "sec_promo_" + UUID.randomUUID().toString().substring(0, 6));
+            node.put("type", "promotion_banner");
+            node.put("label", "Active Promotion Banner");
+            node.put("visible", true);
+            node.put("locked", false);
+            node.put("props", Map.of(
+                    "eyebrow", "ACTIVE OFFER · CODE " + code,
+                    "title", title,
+                    "subtitle", subtitle,
+                    "ctaLabel", "Shop Offer",
+                    "ctaHref", "/store/shop"
+            ));
+            node.put("styles", Map.of("base", Map.of("paddingTop", "48px", "paddingBottom", "48px")));
+            Map<String, Object> op = new LinkedHashMap<>();
+            op.put("type", "insert_node");
+            op.put("parentId", null);
+            op.put("index", 1);
+            op.put("node", node);
+            try {
+                return textResponse(objectMapper.writeValueAsString(Map.of(
+                        "summary", "Add live promotion banner (" + code + ")",
+                        "explanation", "Created a promotional banner grounded in your active store discount code " + code + ".",
+                        "operations", List.of(op)
+                )), 210, 140);
+            } catch (Exception ex) {
+                return textResponse("{\"summary\":\"Promo banner\",\"explanation\":\"\",\"operations\":[]}", 60, 30);
+            }
+        }
+
+        // Collections showcase grounded in real store collections & images
+        List<Map<String, Object>> cards = new ArrayList<>();
+        if (storeData.get("collections") instanceof List<?> cols) {
+            int idx = 0;
+            for (Object obj : cols) {
+                if (!(obj instanceof Map<?, ?> c)) continue;
+                String name = c.get("name") != null ? String.valueOf(c.get("name")) : "Collection";
+                String slug = c.get("slug") != null ? String.valueOf(c.get("slug")) : "shop";
+                String desc = c.get("description") != null && StringUtils.hasText(String.valueOf(c.get("description")))
+                        ? String.valueOf(c.get("description"))
+                        : (c.get("productCount") + " curated products");
+                String cover = c.get("coverImage") != null ? String.valueOf(c.get("coverImage")) : "";
+
+                List<Map<String, Object>> cardChildren = new ArrayList<>();
+                if (StringUtils.hasText(cover)) {
+                    cardChildren.add(Map.of(
+                            "id", "col_img_" + idx,
+                            "type", "image",
+                            "label", name + " Cover",
+                            "visible", true,
+                            "locked", false,
+                            "props", Map.of("src", cover, "alt", name, "href", "/store/shop?collection=" + slug),
+                            "styles", Map.of("base", Map.of("borderRadius", "12px", "aspectRatio", "4 / 3", "objectFit", "cover", "width", "100%"))
+                    ));
+                }
+                cardChildren.add(Map.of(
+                        "id", "col_h_" + idx,
+                        "type", "heading",
+                        "label", name + " Title",
+                        "visible", true,
+                        "locked", false,
+                        "props", Map.of("text", name, "tag", "h3", "href", "/store/shop?collection=" + slug),
+                        "styles", Map.of("base", Map.of("fontSize", "20px", "fontWeight", "600", "marginTop", "12px"))
+                ));
+                cardChildren.add(Map.of(
+                        "id", "col_p_" + idx,
+                        "type", "text_editor",
+                        "label", name + " Description",
+                        "visible", true,
+                        "locked", false,
+                        "props", Map.of("text", desc),
+                        "styles", Map.of("base", Map.of("fontSize", "14px", "marginTop", "4px"))
+                ));
+                cardChildren.add(Map.of(
+                        "id", "col_btn_" + idx,
+                        "type", "button",
+                        "label", "Explore " + name,
+                        "visible", true,
+                        "locked", false,
+                        "props", Map.of("label", "Explore " + name, "href", "/store/shop?collection=" + slug, "variant", "secondary"),
+                        "styles", Map.of("base", Map.of("marginTop", "12px"))
+                ));
+
+                cards.add(Map.of(
+                        "id", "col_card_" + idx,
+                        "type", "container",
+                        "label", name + " Card",
+                        "visible", true,
+                        "locked", false,
+                        "props", Map.of(),
+                        "styles", Map.of("base", Map.of(
+                                "padding", "18px",
+                                "borderRadius", "16px",
+                                "borderWidth", "1px",
+                                "borderStyle", "solid",
+                                "borderColor", "#E5E7EB",
+                                "backgroundColor", "#FFFFFF"
+                        )),
+                        "children", cardChildren
+                ));
+                idx++;
+                if (idx >= 6) break;
+            }
+        }
+
+        String secId = "sec_collections_" + UUID.randomUUID().toString().substring(0, 6);
+        Map<String, Object> gridNode = Map.of(
+                "id", secId + "_grid",
+                "type", "grid",
+                "label", "Collections Grid",
+                "visible", true,
+                "locked", false,
+                "props", Map.of("columns", Math.min(3, Math.max(1, cards.size()))),
+                "styles", Map.of(
+                        "base", Map.of("display", "grid", "gridTemplateColumns", "repeat(3, minmax(0, 1fr))", "gap", "20px", "marginTop", "24px"),
+                        "mobile", Map.of("gridTemplateColumns", "1fr")
+                ),
+                "children", cards
+        );
+        Map<String, Object> sectionNode = Map.of(
+                "id", secId,
+                "type", "section",
+                "label", "Curated Collections Showcase",
+                "visible", true,
+                "locked", false,
+                "props", Map.of(),
+                "styles", Map.of("base", Map.of("paddingTop", "56px", "paddingBottom", "56px")),
+                "children", List.of(Map.of(
+                        "id", secId + "_inner",
+                        "type", "container",
+                        "label", "Collections Container",
+                        "visible", true,
+                        "locked", false,
+                        "props", Map.of(),
+                        "styles", Map.of("base", Map.of("maxWidth", "1280px", "marginLeft", "auto", "marginRight", "auto")),
+                        "children", List.of(
+                                Map.of(
+                                        "id", secId + "_heading",
+                                        "type", "heading",
+                                        "label", "Collections Heading",
+                                        "visible", true,
+                                        "locked", false,
+                                        "props", Map.of("text", "Shop by Collection", "tag", "h2"),
+                                        "styles", Map.of("base", Map.of("fontSize", "32px", "fontWeight", "700"))
+                                ),
+                                gridNode
+                        )
+                ))
+        );
+        Map<String, Object> op = new LinkedHashMap<>();
+        op.put("type", "insert_node");
+        op.put("parentId", null);
+        op.put("index", 1);
+        op.put("node", sectionNode);
+        try {
+            return textResponse(objectMapper.writeValueAsString(Map.of(
+                    "summary", "Design Curated Collections section (" + cards.size() + " collections)",
+                    "explanation", "Built a responsive Collections showcase populated directly with your live store collections, descriptions, and cover images.",
+                    "operations", List.of(op)
+            )), 260, 220);
+        } catch (Exception ex) {
+            return textResponse("{\"summary\":\"Collections showcase\",\"explanation\":\"\",\"operations\":[]}", 60, 30);
         }
     }
 

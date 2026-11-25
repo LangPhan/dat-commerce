@@ -331,6 +331,7 @@ export type AiPreviewSession = {
   confirmationReason?: string;
   confirmationReasons?: string[];
   animatedNodeIds?: string[];
+  usedDataSources?: string[];
   viewMode?: "after" | "before";
 };
 

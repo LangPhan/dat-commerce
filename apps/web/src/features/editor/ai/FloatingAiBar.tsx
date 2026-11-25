@@ -127,6 +127,8 @@ function quickChipsForNode(
   }
   if (!node) {
     return [
+      "Design a Collections showcase using store data",
+      "Create a promo banner with our active discount code",
       "Make the hero section look more premium",
       "Increase vertical padding across sections",
     ];
@@ -496,6 +498,7 @@ export function FloatingAiBar({
         requiresConfirmation: confirmAnalysis.required,
         confirmationReasons: confirmAnalysis.reasons,
         animatedNodeIds: confirmAnalysis.animatedNodeIds,
+        usedDataSources: res.usedDataSources?.length ? res.usedDataSources : undefined,
         viewMode: "after",
       });
       for (const nid of confirmAnalysis.animatedNodeIds) {
@@ -605,6 +608,11 @@ export function FloatingAiBar({
                   {p}
                 </Badge>
               ))}
+              {aiPreview.usedDataSources?.length ? (
+                <Badge tone="green">
+                  Store Data: {aiPreview.usedDataSources.join(" · ")}
+                </Badge>
+              ) : null}
             </div>
             <div className="ed-ai-preview-actions">
               <div

@@ -316,6 +316,7 @@ export type EditorSuggestResponse = {
   promptTokens: number;
   completionTokens: number;
   latencyMs: number;
+  usedDataSources?: string[];
 };
 
 export type FontUploadResponse = {
