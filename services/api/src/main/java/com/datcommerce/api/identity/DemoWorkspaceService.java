@@ -187,7 +187,7 @@ public class DemoWorkspaceService {
         jdbcTemplate.update("DELETE FROM collections WHERE store_id = ?", storeId);
         jdbcTemplate.update("DELETE FROM variant_option_values WHERE variant_id IN (SELECT id FROM variants WHERE store_id = ?)", storeId);
         jdbcTemplate.update("DELETE FROM variants WHERE store_id = ?", storeId);
-        jdbcTemplate.update("DELETE FROM product_attribute_values WHERE store_id = ?", storeId);
+        jdbcTemplate.update("DELETE FROM product_attribute_values WHERE product_id IN (SELECT id FROM products WHERE store_id = ?)", storeId);
         jdbcTemplate.update("DELETE FROM product_images WHERE product_id IN (SELECT id FROM products WHERE store_id = ?)", storeId);
         jdbcTemplate.update("DELETE FROM product_categories WHERE product_id IN (SELECT id FROM products WHERE store_id = ?)", storeId);
         jdbcTemplate.update("DELETE FROM products WHERE store_id = ?", storeId);
@@ -477,9 +477,9 @@ public class DemoWorkspaceService {
                 UUID newAttrId = attrMap.get((UUID) pav.get("attribute_definition_id"));
                 if (newAttrId != null) {
                     jdbcTemplate.update(
-                            "INSERT INTO product_attribute_values (id, store_id, product_id, attribute_definition_id, value_text, value_number, value_boolean, value_date, value_json) "
-                                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
-                            UUID.randomUUID(), dstStoreId, newProdId, newAttrId,
+                            "INSERT INTO product_attribute_values (id, product_id, attribute_definition_id, value_text, value_number, value_boolean, value_date, value_json) "
+                                    + "VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
+                            UUID.randomUUID(), newProdId, newAttrId,
                             pav.get("value_text"), pav.get("value_number"), pav.get("value_boolean"),
                             pav.get("value_date"), pav.get("value_json")
                     );
