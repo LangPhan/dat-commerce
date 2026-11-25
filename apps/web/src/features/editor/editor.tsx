@@ -12,6 +12,8 @@ import {
 import { extractPageDocumentV2 } from "@/features/builder/migration";
 import { createElementNode } from "@/features/builder/registry/definitions";
 import { useEditorStore } from "@/features/builder/store/editor-store";
+import { dtoToPresetDefinition } from "@/features/motion/presets";
+import { cmsAdminApi } from "@/lib/cms-ai-api";
 import { EditorCanvas } from "./EditorCanvas";
 import { EditorTopBar } from "./EditorTopBar";
 import { LeftSidebar } from "./LeftSidebar";
@@ -96,6 +98,17 @@ export function Editor() {
     queryFn: () => commerceAdapter.listCategories(),
     staleTime: 60_000,
   });
+
+  const animationPresetsQuery = useQuery({
+    queryKey: ["cms-animation-presets"],
+    queryFn: () => cmsAdminApi.listAnimationPresets(),
+    staleTime: 60_000,
+  });
+
+  const customAnimationPresets = useMemo(
+    () => (animationPresetsQuery.data || []).map(dtoToPresetDefinition),
+    [animationPresetsQuery.data]
+  );
 
   useEffect(() => {
     const detail = pageDetailQuery.data;
@@ -461,6 +474,7 @@ export function Editor() {
             fallbackThemeTokens={
               themeQuery.data?.latest?.tokens || themeQuery.data?.published?.tokens || null
             }
+            customPresets={customAnimationPresets}
             canUseAi={canUseAi}
             canWrite={canWrite}
             onNotify={setToast}
@@ -470,6 +484,7 @@ export function Editor() {
             <VisualInspector
               products={productsQuery.data || []}
               categories={categoriesQuery.data || []}
+              customPresets={customAnimationPresets}
               canWrite={canWrite}
               canPublish={canPublish}
               canUploadMedia={canUploadMedia}

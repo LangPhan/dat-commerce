@@ -7,6 +7,7 @@ import { useEditorStore } from "@/features/builder/store/editor-store";
 import { StoreFooter, StoreHeader } from "@/features/storefront/header-footer";
 import type { StoreCategoryItem, StoreProductItem } from "@/features/storefront/blocks";
 import { themeTokensToCssVars } from "@/lib/cms-schema";
+import type { AnimationPresetDefinition } from "@/features/motion/types";
 import type { ThemeTokens } from "@/types/api-cms-ai";
 import { cn } from "@/lib/format";
 import { FloatingAiBar } from "./ai/FloatingAiBar";
@@ -20,6 +21,7 @@ export function EditorCanvas({
   catalog,
   categories,
   fallbackThemeTokens,
+  customPresets = [],
   canUseAi,
   canWrite,
   onNotify,
@@ -27,6 +29,7 @@ export function EditorCanvas({
   catalog: StoreProductItem[];
   categories: StoreCategoryItem[];
   fallbackThemeTokens?: ThemeTokens | null;
+  customPresets?: AnimationPresetDefinition[];
   canUseAi: boolean;
   canWrite: boolean;
   onNotify: (msg: string) => void;
@@ -44,6 +47,9 @@ export function EditorCanvas({
   const showOutlines = useEditorStore((s) => s.showOutlines);
   const showGrid = useEditorStore((s) => s.showGrid);
   const previewMode = useEditorStore((s) => s.previewMode);
+  const motionReplayNonceByNodeId = useEditorStore((s) => s.motionReplayNonceByNodeId);
+  const motionPausedNodeIds = useEditorStore((s) => s.motionPausedNodeIds);
+  const motionScrollProgressByNodeId = useEditorStore((s) => s.motionScrollProgressByNodeId);
   const aiBarOpen = useEditorStore((s) => s.aiBarOpen);
 
   const selectNode = useEditorStore((s) => s.selectNode);
@@ -163,6 +169,11 @@ export function EditorCanvas({
               <PageRenderer
                 nodes={renderedNodes}
                 typography={activeThemeTokens?.typography}
+                globalMotion={activeThemeTokens?.motion}
+                customPresets={customPresets}
+                motionReplayNonceByNodeId={motionReplayNonceByNodeId}
+                motionPausedNodeIds={motionPausedNodeIds}
+                motionScrollProgressByNodeId={motionScrollProgressByNodeId}
                 mode={previewMode ? "live" : "edit"}
                 viewport={viewport}
                 forceViewport={previewMode ? viewport : undefined}

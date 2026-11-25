@@ -26,6 +26,7 @@ import type { OrderDto } from "@/types/api-commerce";
 import type { CustomerProfile } from "@/types/commerce";
 import { isV2Content } from "@/features/builder/migration";
 import { PageRenderer } from "@/features/builder/renderer/PageRenderer";
+import { dtoToPresetDefinition } from "@/features/motion/presets";
 import { GlobalTypographyStyleTag } from "@/features/typography/GlobalTypographyStyleTag";
 import { ProductCard, StoreBlock, type StoreProductItem } from "./blocks";
 import { CartPage, CheckoutPage, ConfirmationPage } from "./cart-checkout";
@@ -102,6 +103,18 @@ export function Storefront({ route }: { route: string[] }) {
     queryFn: () => cmsStoreApi.getTheme(),
     staleTime: 60_000,
   });
+
+  const presetsQuery = useQuery({
+    queryKey: ["store-animation-presets"],
+    queryFn: () => cmsStoreApi.listAnimationPresets(),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const storeCustomPresets = useMemo(
+    () => (presetsQuery.data || []).map(dtoToPresetDefinition),
+    [presetsQuery.data]
+  );
 
   const navQuery = useQuery({
     queryKey: ["store-nav", "main"],
@@ -236,6 +249,8 @@ export function Storefront({ route }: { route: string[] }) {
           mode="live"
           nodes={cmsPageQuery.data.content.nodes}
           typography={themeQuery.data?.tokens?.typography}
+          globalMotion={themeQuery.data?.tokens?.motion}
+          customPresets={storeCustomPresets}
           catalog={catalog}
           categories={categories}
           onAddToCart={handleQuickAddToCart}

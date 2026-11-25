@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "../src/features/builder/builder.css";
+@import "../src/features/motion/motion.css";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 

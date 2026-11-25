@@ -342,3 +342,43 @@ export function findPresetByKey(
   if (custom) return custom;
   return SYSTEM_ANIMATION_PRESETS.find((p) => p.presetKey === key || p.id === key) || null;
 }
+
+export function dtoToPresetDefinition(dto: {
+  id: string;
+  presetKey: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  config: Record<string, unknown>;
+  isSystem: boolean;
+  isFavorite?: boolean;
+  version?: number;
+}): AnimationPresetDefinition {
+  const cfg = (dto.config || {}) as AnimationPresetDefinition["config"];
+  const dur =
+    cfg.entrance?.duration ??
+    cfg.hover?.duration ??
+    cfg.continuous?.duration ??
+    cfg.text?.duration ??
+    cfg.interaction?.duration ??
+    500;
+  const ease =
+    cfg.entrance?.easing ??
+    cfg.hover?.easing ??
+    cfg.continuous?.easing ??
+    "easeOut";
+  return {
+    id: dto.id,
+    presetKey: dto.presetKey,
+    name: dto.name,
+    category: (dto.category as MotionCategory) || "custom",
+    group: dto.isSystem ? "System" : "Custom Presets",
+    description: dto.description || "",
+    defaultDuration: dur,
+    defaultEasing: ease,
+    config: cfg,
+    isSystem: dto.isSystem,
+    isFavorite: Boolean(dto.isFavorite),
+    version: dto.version,
+  };
+}

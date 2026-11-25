@@ -14,6 +14,13 @@ import {
   isVisibleForViewport,
   splitEditWrapperStyles,
 } from "../style-compiler";
+import { MotionWrapper } from "@/features/motion/MotionWrapper";
+import { hasAnyActiveMotion } from "@/features/motion/resolve";
+import type {
+  AnimationPresetDefinition,
+  GlobalMotionSettings,
+  NormalizedGlobalMotion,
+} from "@/features/motion/types";
 import { normalizeGlobalTypography } from "@/features/typography/defaults";
 import { getEffectivePresetId } from "@/features/typography/resolve";
 import type { GlobalTypographyTokens, NormalizedGlobalTypography } from "@/features/typography/types";
@@ -56,6 +63,11 @@ export function PageRenderer({
   hoveredPart = null,
   aiAffectedIds,
   typography,
+  globalMotion,
+  customPresets = [],
+  motionReplayNonceByNodeId,
+  motionPausedNodeIds,
+  motionScrollProgressByNodeId,
   catalog = [],
   categories = [],
   onSelectNode,
@@ -78,6 +90,11 @@ export function PageRenderer({
   hoveredPart?: { nodeId: string; partKey: string } | null;
   aiAffectedIds?: Set<string>;
   typography?: GlobalTypographyTokens | NormalizedGlobalTypography | null;
+  globalMotion?: GlobalMotionSettings | NormalizedGlobalMotion | null;
+  customPresets?: AnimationPresetDefinition[];
+  motionReplayNonceByNodeId?: Record<string, number>;
+  motionPausedNodeIds?: Record<string, boolean>;
+  motionScrollProgressByNodeId?: Record<string, number | null>;
   catalog?: StoreProductItem[];
   categories?: StoreCategoryItem[];
   onSelectNode?: (nodeId: string, opts?: { additive?: boolean }) => void;
@@ -136,6 +153,9 @@ export function PageRenderer({
             {
               mode: "live",
               viewport: forceViewport || "desktop",
+              globalMotion,
+              customPresets,
+              motionReplayNonceByNodeId,
               catalog,
               categories,
               onAddToCart,
@@ -148,6 +168,23 @@ export function PageRenderer({
             liveInlineStyle,
             nodeAttrs
           );
+
+          if (hasAnyActiveMotion(node.motion)) {
+            return (
+              <MotionWrapper
+                key={node.id}
+                nodeId={node.id}
+                nodeType={node.type}
+                motion={node.motion}
+                viewport={forceViewport || "desktop"}
+                mode="live"
+                globalMotion={globalMotion}
+                customPresets={customPresets}
+              >
+                {inner}
+              </MotionWrapper>
+            );
+          }
 
           return <Fragment key={node.id}>{inner}</Fragment>;
         }
@@ -178,6 +215,9 @@ export function PageRenderer({
           {
             mode: "edit",
             viewport,
+            globalMotion,
+            customPresets,
+            motionReplayNonceByNodeId,
             catalog,
             categories,
             onAddToCart,
@@ -267,7 +307,24 @@ export function PageRenderer({
                 </div>
               ) : null;
             })()}
-            {elementBody}
+            {hasAnyActiveMotion(node.motion) ? (
+              <MotionWrapper
+                nodeId={node.id}
+                nodeType={node.type}
+                motion={node.motion}
+                viewport={viewport}
+                mode="edit"
+                globalMotion={globalMotion}
+                customPresets={customPresets}
+                replayNonce={motionReplayNonceByNodeId?.[node.id] || 0}
+                paused={Boolean(motionPausedNodeIds?.[node.id])}
+                scrollProgressOverride={motionScrollProgressByNodeId?.[node.id] ?? null}
+              >
+                {elementBody}
+              </MotionWrapper>
+            ) : (
+              elementBody
+            )}
           </div>
         );
 

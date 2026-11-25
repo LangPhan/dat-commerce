@@ -25,6 +25,13 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Modal } from "@/components/ui/dialog";
+import { TextMotionContent } from "@/features/motion/TextMotionRenderer";
+import { resolveElementMotionForViewport } from "@/features/motion/resolve";
+import type {
+  AnimationPresetDefinition,
+  GlobalMotionSettings,
+  NormalizedGlobalMotion,
+} from "@/features/motion/types";
 import { ProductCard, type StoreCategoryItem, type StoreProductItem } from "@/features/storefront/blocks";
 import { cn, usd } from "@/lib/format";
 import { initialCategories, initialProducts } from "@/mocks/catalog";
@@ -64,6 +71,9 @@ export const BUILDER_ICON_MAP: Record<string, LucideIcon> = {
 export type BuilderRenderContext = {
   mode: "edit" | "live";
   viewport: ViewportMode;
+  globalMotion?: GlobalMotionSettings | NormalizedGlobalMotion | null;
+  customPresets?: AnimationPresetDefinition[];
+  motionReplayNonceByNodeId?: Record<string, number>;
   catalog: StoreProductItem[];
   categories: StoreCategoryItem[];
   onAddToCart?: (product: StoreProductItem) => void;
@@ -624,13 +634,30 @@ export function renderElementContent(
         tag === "p"
           ? tag
           : "h2";
+      const resolvedHeadingTextMotion = node.motion
+        ? resolveElementMotionForViewport(
+            node.motion,
+            ctx.viewport,
+            ctx.customPresets,
+            ctx.globalMotion
+          ).text
+        : undefined;
       const inner = (
         <HeadingTag
           className={cn("bldr-heading", extraClassName)}
           {...domAttrs}
           style={compiledStyle}
         >
-          {text}
+          {resolvedHeadingTextMotion?.enabled ? (
+            <TextMotionContent
+              text={text}
+              config={resolvedHeadingTextMotion}
+              globalMotion={ctx.globalMotion}
+              replayNonce={ctx.motionReplayNonceByNodeId?.[node.id] || 0}
+            />
+          ) : (
+            text
+          )}
         </HeadingTag>
       );
       return safeHref ? (
@@ -642,16 +669,35 @@ export function renderElementContent(
       );
     }
 
-    case "text_editor":
+    case "text_editor": {
+      const bodyText = strProp(props, "text", "");
+      const resolvedBodyTextMotion = node.motion
+        ? resolveElementMotionForViewport(
+            node.motion,
+            ctx.viewport,
+            ctx.customPresets,
+            ctx.globalMotion
+          ).text
+        : undefined;
       return (
         <div
           className={cn("bldr-text", extraClassName)}
           {...domAttrs}
           style={compiledStyle}
         >
-          {strProp(props, "text", "")}
+          {resolvedBodyTextMotion?.enabled ? (
+            <TextMotionContent
+              text={bodyText}
+              config={resolvedBodyTextMotion}
+              globalMotion={ctx.globalMotion}
+              replayNonce={ctx.motionReplayNonceByNodeId?.[node.id] || 0}
+            />
+          ) : (
+            bodyText
+          )}
         </div>
       );
+    }
 
     case "image": {
       const src = sanitizeMediaUrl(props.src);

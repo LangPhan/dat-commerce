@@ -9,12 +9,14 @@ import {
   Eye,
   EyeOff,
   FolderOpen,
+  Library,
   Lock,
   Palette,
   Plus,
   RotateCcw,
   Save,
   Sliders,
+  Sparkles,
   Trash2,
   Unlock,
 } from "lucide-react";
@@ -76,7 +78,15 @@ import { adminMediaApi } from "@/lib/commerce-api";
 import { cn } from "@/lib/format";
 import type { CategoryDto, ProductDto } from "@/types/api-commerce";
 import type { ThemeTokens } from "@/types/api-cms-ai";
+import { SYSTEM_ANIMATION_PRESETS } from "@/features/motion/presets";
+import type {
+  AnimationPresetDefinition,
+  ElementMotionConfig,
+  MotionCategory,
+} from "@/features/motion/types";
+import { AnimationLibraryModal } from "./AnimationLibraryModal";
 import { MediaPickerModal } from "./MediaPickerModal";
+import { MotionInspectorTab } from "./MotionInspectorTab";
 import {
   createCustomPaletteColor,
   getBrandPaletteOptions,
@@ -95,7 +105,7 @@ import {
   UnitControl,
 } from "./inspector-controls";
 
-type InspectorTab = "content" | "layout" | "style" | "advanced";
+type InspectorTab = "content" | "layout" | "style" | "motion" | "advanced";
 
 const GRADIENT_PRESETS: { label: string; value: string }[] = [
   { label: "None", value: "" },
@@ -758,6 +768,8 @@ function BulkMultiSelectPanel({
   onDeleteAll,
   onWrapInContainer,
   onApplyBatchStyles,
+  onApplyBatchMotion,
+  onOpenMotionLibrary,
 }: {
   selectedNodes: ElementNode[];
   viewport: ViewportMode;
@@ -767,6 +779,8 @@ function BulkMultiSelectPanel({
   onDeleteAll: () => void;
   onWrapInContainer: () => void;
   onApplyBatchStyles: (styles: StyleValues) => void;
+  onApplyBatchMotion: (motion: ElementMotionConfig, summary: string) => void;
+  onOpenMotionLibrary: () => void;
 }) {
   const [batchColor, setBatchColor] = useState("#111318");
   const [batchBg, setBatchBg] = useState("#FFFFFF");
@@ -851,6 +865,48 @@ function BulkMultiSelectPanel({
             ]}
             onChange={(v) => onApplyBatchStyles({ textAlign: v })}
           />
+        </div>
+      </div>
+
+      <div className="ed-inspector-section">
+        <div className="ed-inspector-sec-head">
+          <strong>Batch Motion</strong>
+          <Button size="sm" variant="secondary" onClick={onOpenMotionLibrary}>
+            <Library size={12} /> Library
+          </Button>
+        </div>
+        <div className="ed-control-stack">
+          <SelectControl
+            label="Apply Entrance Preset"
+            value=""
+            options={[
+              { value: "", label: "Choose preset..." },
+              ...SYSTEM_ANIMATION_PRESETS.filter((p) => p.category === "entrance")
+                .slice(0, 12)
+                .map((p) => ({ value: p.presetKey, label: p.name })),
+            ]}
+            onChange={(key) => {
+              const found = SYSTEM_ANIMATION_PRESETS.find((p) => p.presetKey === key);
+              if (found) {
+                onApplyBatchMotion(
+                  { ...found.config, enabled: true, presetRef: found.presetKey },
+                  `Apply ${found.name} motion to ${selectedNodes.length} elements`
+                );
+              }
+            }}
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              onApplyBatchMotion(
+                { enabled: true, hover: { enabled: true, preset: "moveUp", duration: 220, easing: "easeOut" } },
+                `Apply Hover Lift to ${selectedNodes.length} elements`
+              )
+            }
+          >
+            <Sparkles size={12} /> Apply Hover Lift to All
+          </Button>
         </div>
       </div>
     </div>
@@ -988,6 +1044,7 @@ type MediaPickerTarget =
 export function VisualInspector({
   products,
   categories,
+  customPresets = [],
   canWrite,
   canPublish,
   canUploadMedia = false,
@@ -1001,6 +1058,7 @@ export function VisualInspector({
 }: {
   products: ProductDto[];
   categories: CategoryDto[];
+  customPresets?: AnimationPresetDefinition[];
   canWrite: boolean;
   canPublish: boolean;
   canUploadMedia?: boolean;
@@ -1020,6 +1078,10 @@ export function VisualInspector({
   const [newAttrVal, setNewAttrVal] = useState("");
   const [editHoverState, setEditHoverState] = useState(false);
   const [mediaTarget, setMediaTarget] = useState<MediaPickerTarget | null>(null);
+  const [motionLibraryOpen, setMotionLibraryOpen] = useState(false);
+  const [motionLibraryCategory, setMotionLibraryCategory] = useState<
+    MotionCategory | "all"
+  >("all");
 
   const nodes = useEditorStore((s) => s.nodes);
   const selectedIds = useEditorStore((s) => s.selectedIds);
@@ -1041,6 +1103,9 @@ export function VisualInspector({
   const executeBatch = useEditorStore((s) => s.executeBatch);
   const duplicateSelected = useEditorStore((s) => s.duplicateSelected);
   const deleteSelected = useEditorStore((s) => s.deleteSelected);
+  const updateNodeMotion = useEditorStore((s) => s.updateNodeMotion);
+  const applyMotionToSelected = useEditorStore((s) => s.applyMotionToSelected);
+  const replayNodeMotion = useEditorStore((s) => s.replayNodeMotion);
 
   const brandPalette = getBrandPaletteOptions(themeTokens);
 
@@ -1212,6 +1277,16 @@ export function VisualInspector({
                 })),
               { summary: `Batch style ${selectedNodes.length} elements` }
             );
+          }}
+          onApplyBatchMotion={(motionPatch, summary) => {
+            applyMotionToSelected(motionPatch, summary);
+            for (const n of selectedNodes) {
+              if (!n.locked) replayNodeMotion(n.id);
+            }
+          }}
+          onOpenMotionLibrary={() => {
+            setMotionLibraryCategory("all");
+            setMotionLibraryOpen(true);
           }}
         />
       ) : primary ? (
@@ -1499,6 +1574,7 @@ export function VisualInspector({
                     ["content", "Content"],
                     ["layout", "Layout"],
                     ["style", "Style"],
+                    ["motion", "Motion"],
                     ["advanced", "Advanced"],
                   ] as const
                 ).map(([key, label]) => (
@@ -2712,6 +2788,20 @@ export function VisualInspector({
                   </div>
                 ) : null}
 
+                {tab === "motion" ? (
+                  <MotionInspectorTab
+                    node={primary}
+                    viewport={viewport}
+                    globalMotion={themeTokens?.motion}
+                    customPresets={customPresets}
+                    canWrite={canWrite && !primary.locked}
+                    onOpenLibrary={(cat) => {
+                      setMotionLibraryCategory(cat || "all");
+                      setMotionLibraryOpen(true);
+                    }}
+                  />
+                ) : null}
+
                 {tab === "advanced" ? (
                   <div className="ed-inspector-section">
                     <div className="ed-control-stack">
@@ -2889,6 +2979,39 @@ export function VisualInspector({
           applySelectedMediaUrl(mediaTarget, url);
         }}
         onNotify={onNotify}
+      />
+      <AnimationLibraryModal
+        key={motionLibraryOpen ? `lib-${motionLibraryCategory}` : "lib-closed"}
+        open={motionLibraryOpen}
+        onOpenChange={setMotionLibraryOpen}
+        customPresets={customPresets}
+        canWrite={canWrite}
+        initialCategory={motionLibraryCategory}
+        onNotify={onNotify}
+        onApplyPreset={(preset) => {
+          const patch: Partial<ElementMotionConfig> = {
+            ...preset.config,
+            enabled: true,
+            presetRef: preset.presetKey,
+          };
+          if (selectedNodes.length > 1) {
+            applyMotionToSelected(
+              patch as ElementMotionConfig,
+              `Apply "${preset.name}" to ${selectedNodes.length} elements`
+            );
+            for (const n of selectedNodes) {
+              if (!n.locked) replayNodeMotion(n.id);
+            }
+          } else if (primary && !primary.locked) {
+            updateNodeMotion(
+              primary.id,
+              patch,
+              `Apply "${preset.name}" to ${primary.label}`
+            );
+            replayNodeMotion(primary.id);
+          }
+          onNotify?.(`Applied animation preset "${preset.name}"`);
+        }}
       />
     </aside>
   );

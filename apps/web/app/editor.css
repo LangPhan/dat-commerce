@@ -173,7 +173,13 @@
 }
 
 .ed-inspector-tabs {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.ed-inspector-tabs .ed-inspector-tab {
+  font-size: 11px;
+  padding: 9px 3px;
+  letter-spacing: -0.01em;
 }
 
 .ed-sidebar-tab,
@@ -2298,4 +2304,439 @@ label.ed-media-dropzone > input[type="file"]:not([aria-hidden="true"]),
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+/* ---- MOTION INSPECTOR & ANIMATION LIBRARY ---- */
+.ed-motion-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 18px;
+}
+
+.ed-motion-transport {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+.ed-motion-transport-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ed-motion-vp-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 11px;
+}
+
+.ed-motion-vp-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ed-motion-vp-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ed-motion-preset-ref {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 9px;
+  border: 1px dashed var(--accent-border, var(--border));
+  border-radius: 8px;
+  background: var(--accent-soft, var(--surface-subtle));
+  font-size: 11px;
+}
+
+.ed-motion-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.ed-motion-group-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.ed-motion-group-trigger:hover {
+  background: var(--surface-subtle);
+}
+
+.ed-motion-group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ed-motion-group-body {
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ed-motion-a11y-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+  color: #92400e;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.ed-scroll-preview-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.ed-check-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.ed-check-row input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.ed-ctrl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ed-ctrl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ed-ctrl-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.ed-ctrl-value {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.ed-range-input {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.ed-text-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.ed-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  padding: 2px 4px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ed-link-btn:hover {
+  text-decoration: underline;
+}
+
+.ed-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ed-mini-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.ed-mini-icon-btn:hover {
+  color: var(--ink);
+  background: var(--surface-subtle);
+}
+
+.ed-mini-icon-btn.active {
+  color: #d97706;
+  border-color: rgba(217, 119, 6, 0.45);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.ed-form-err {
+  margin: 0;
+  color: #dc2626;
+  font-size: 12px;
+}
+
+/* Animation Library Modal */
+.ed-motion-lib-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ed-motion-lib-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ed-motion-lib-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ed-motion-lib-tab {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ed-motion-lib-tab:hover {
+  color: var(--ink);
+  background: var(--surface-subtle);
+}
+
+.ed-motion-lib-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.ed-motion-lib-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ed-motion-lib-search {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.ed-motion-lib-search svg {
+  position: absolute;
+  left: 9px;
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+.ed-motion-lib-search input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px 0 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.ed-motion-composer {
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ed-motion-composer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* Fixed uniform height across ALL category tabs -> 0px layout shift */
+.ed-motion-lib-fixed-stage {
+  height: 440px;
+  min-height: 440px;
+  max-height: 440px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.ed-motion-lib-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ed-motion-lib-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.ed-motion-preset-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.ed-motion-preset-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+.ed-motion-card-top {
+  position: relative;
+  padding: 12px 10px 8px;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ed-motion-preview-stage {
+  flex: 1;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.ed-motion-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.ed-motion-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ed-motion-card-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ed-motion-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.ed-motion-card-desc {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.ed-motion-card-foot {
+  padding: 0 10px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }

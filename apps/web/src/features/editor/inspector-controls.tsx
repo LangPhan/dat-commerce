@@ -1029,6 +1029,7 @@ export function SliderControl({
   max,
   step = 1,
   unit = "",
+  disabled,
   overridden,
   viewport,
   onReset,
@@ -1040,6 +1041,7 @@ export function SliderControl({
   max: number;
   step?: number;
   unit?: string;
+  disabled?: boolean;
   overridden?: boolean;
   viewport?: ViewportMode;
   onReset?: () => void;
@@ -1059,6 +1061,7 @@ export function SliderControl({
         max={max}
         step={step}
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(`${e.target.value}${unit}`)}
       />
     </ControlField>
@@ -1069,6 +1072,7 @@ export function SelectControl({
   label,
   value,
   options,
+  disabled,
   overridden,
   viewport,
   onReset,
@@ -1077,6 +1081,7 @@ export function SelectControl({
   label: string;
   value: string;
   options: { value: string; label: string }[];
+  disabled?: boolean;
   overridden?: boolean;
   viewport?: ViewportMode;
   onReset?: () => void;
@@ -1093,6 +1098,7 @@ export function SelectControl({
       <Select
         items={options}
         value={safeVal}
+        disabled={disabled}
         onValueChange={(next) => {
           if (next !== null) onChange(next);
         }}
