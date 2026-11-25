@@ -424,4 +424,62 @@ class EditorAiServiceTest {
         assertEquals(1, response.operations().size());
         assertTrue(response.usedDataSources().contains("collections"));
     }
+
+    @Test
+    void asksClarificationWhenImageAttachedWithoutExplicitInspirationModeAndBlocksMaliciousUrl() {
+        // Minimal valid 1x1 PNG header + bytes
+        byte[] fakePng = new byte[]{
+                (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+                0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52
+        };
+        String pngDataUrl = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(fakePng);
+
+        EditorAiService.EditorSuggestResponse clarify = service.suggest(
+                actor,
+                new EditorAiService.EditorSuggestRequest(
+                        UUID.randomUUID(),
+                        "home",
+                        "desktop",
+                        "page",
+                        List.of(),
+                        "Tạo vibe thiết kế giống hình tôi gửi",
+                        "gpt-6-luna",
+                        List.of(),
+                        List.of(),
+                        Map.of(),
+                        List.of(),
+                        null,
+                        Map.of(),
+                        List.of(new EditorAiService.ReferenceImageInput("ref.png", "image/png", pngDataUrl)),
+                        null,
+                        "ask"
+                )
+        );
+        assertTrue(clarify.needsClarification());
+        assertEquals(3, clarify.clarificationOptions().size());
+        assertEquals("vibe_keep_tokens", clarify.clarificationOptions().get(0).id());
+
+        // Malicious SSRF URL must be rejected before calling gateway
+        assertThrows(com.datcommerce.api.common.exception.ApiException.class, () -> service.suggest(
+                actor,
+                new EditorAiService.EditorSuggestRequest(
+                        UUID.randomUUID(),
+                        "home",
+                        "desktop",
+                        "page",
+                        List.of(),
+                        "Copy layout from this link",
+                        "gpt-6-luna",
+                        List.of(),
+                        List.of(),
+                        Map.of(),
+                        List.of(),
+                        null,
+                        Map.of(),
+                        null,
+                        List.of("http://169.254.169.254/latest/meta-data/"),
+                        "vibe_keep_tokens"
+                )
+        ));
+    }
 }

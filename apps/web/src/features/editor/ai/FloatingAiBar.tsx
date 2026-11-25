@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  ImagePlus,
   LoaderCircle,
   MessageSquare,
   RotateCcw,
@@ -67,7 +68,20 @@ import { normalizeGlobalTypography } from "@/features/typography/defaults";
 import { useAiModels } from "@/hooks/use-ai-models";
 import { aiAdminApi, cmsAdminApi } from "@/lib/cms-ai-api";
 import type { AIModelId } from "@/types/ai";
-import type { EditorChatHistoryItem } from "@/types/api-cms-ai";
+import type {
+  AiClarificationOption,
+  AiInspirationMode,
+  EditorChatHistoryItem,
+  ReferenceImageInput,
+} from "@/types/api-cms-ai";
+import {
+  InspirationClarificationCard,
+  MAX_REF_IMAGES,
+  ReferenceAttachmentBar,
+  ReferenceUrlPopover,
+  readImageFileAsReference,
+  type AttachedReferenceUrl,
+} from "./ReferenceInspirationControls";
 
 const SCOPE_OPTIONS: { value: AiScopeMode; label: string }[] = [
   { value: "element", label: "Element" },
@@ -182,6 +196,15 @@ export function FloatingAiBar({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [threadCollapsed, setThreadCollapsed] = useState(false);
   const [confirmedRisk, setConfirmedRisk] = useState(false);
+  const [referenceImages, setReferenceImages] = useState<ReferenceImageInput[]>([]);
+  const [referenceUrls, setReferenceUrls] = useState<AttachedReferenceUrl[]>([]);
+  const [inspirationMode, setInspirationMode] = useState<AiInspirationMode>("ask");
+  const [clarification, setClarification] = useState<{
+    prompt: string;
+    question: string;
+    options: AiClarificationOption[];
+  } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const pageId = useEditorStore((s) => s.pageId);
   const pageSlug = useEditorStore((s) => s.pageSlug);
@@ -291,6 +314,9 @@ export function FloatingAiBar({
       reqSelectedIds: string[];
       reqSelectedPart: string | null;
       historyPayload: EditorChatHistoryItem[];
+      reqImages: ReferenceImageInput[];
+      reqUrls: string[];
+      reqInspirationMode: AiInspirationMode;
     }) => {
       const path = vars.targetNode ? findNodePath(nodes, vars.targetNode.id) : [];
       const rootSection = path[0] || null;
@@ -344,10 +370,27 @@ export function FloatingAiBar({
         editableParts: Object.keys(editableParts).length
           ? editableParts
           : undefined,
+        referenceImages: vars.reqImages.length ? vars.reqImages : undefined,
+        referenceUrls: vars.reqUrls.length ? vars.reqUrls : undefined,
+        inspirationMode:
+          vars.reqImages.length || vars.reqUrls.length
+            ? vars.reqInspirationMode
+            : undefined,
       });
     },
     onSuccess: (res, vars) => {
       setErrorMsg(null);
+      if (res.needsClarification && res.clarificationOptions?.length) {
+        setClarification({
+          prompt: vars.userPrompt,
+          question:
+            res.clarificationQuestion ||
+            "How would you like me to apply this design reference?",
+          options: res.clarificationOptions,
+        });
+        return;
+      }
+      setClarification(null);
       const partLabel = vars.targetNode && vars.reqSelectedPart
         ? getElementPart(vars.targetNode.type, vars.reqSelectedPart)?.label
         : undefined;
@@ -526,10 +569,37 @@ export function FloatingAiBar({
     },
   });
 
-  const submitPrompt = (text = prompt) => {
+  const handleAddImageFiles = async (files: FileList | File[]) => {
+    const arr = Array.from(files);
+    if (!arr.length) return;
+    const remaining = MAX_REF_IMAGES - referenceImages.length;
+    if (remaining <= 0) {
+      setErrorMsg(`Up to ${MAX_REF_IMAGES} reference images can be attached.`);
+      return;
+    }
+    const next: ReferenceImageInput[] = [];
+    for (const file of arr.slice(0, remaining)) {
+      try {
+        next.push(await readImageFileAsReference(file));
+      } catch (err) {
+        setErrorMsg(err instanceof Error ? err.message : "Invalid image file");
+      }
+    }
+    if (next.length) {
+      setErrorMsg(null);
+      setReferenceImages((prev) => [...prev, ...next].slice(0, MAX_REF_IMAGES));
+    }
+  };
+
+  const submitPrompt = (text = prompt, modeOverride?: AiInspirationMode) => {
     const trimmed = text.trim();
     if (!trimmed || !canUseAi || !canWrite || suggestMutation.isPending) return;
     setAiDraftPrompt(trimmed);
+    const chosenMode = modeOverride ?? inspirationMode;
+    if (modeOverride) {
+      setInspirationMode(modeOverride);
+      setClarification(null);
+    }
 
     const historyPayload: EditorChatHistoryItem[] = [];
     for (const turn of turns.slice(-6)) {
@@ -553,6 +623,9 @@ export function FloatingAiBar({
       reqSelectedIds: selectedIds,
       reqSelectedPart: activePartKey,
       historyPayload,
+      reqImages: referenceImages,
+      reqUrls: referenceUrls.map((u) => u.normalizedUrl),
+      reqInspirationMode: chosenMode,
     });
   };
 
@@ -768,6 +841,16 @@ export function FloatingAiBar({
         </div>
       ) : null}
 
+      {clarification ? (
+        <InspirationClarificationCard
+          question={clarification.question}
+          options={clarification.options}
+          busy={suggestMutation.isPending}
+          onSelect={(mode) => submitPrompt(clarification.prompt, mode)}
+          onDismiss={() => setClarification(null)}
+        />
+      ) : null}
+
       {turns.length > 0 ? (
         <div className="ed-ai-thread-card">
           <div className="ed-ai-thread-head">
@@ -932,13 +1015,72 @@ export function FloatingAiBar({
           </div>
         </div>
 
+        <ReferenceAttachmentBar
+          images={referenceImages}
+          urls={referenceUrls}
+          inspirationMode={inspirationMode}
+          onChangeMode={setInspirationMode}
+          onRemoveImage={(idx) =>
+            setReferenceImages((prev) => prev.filter((_, i) => i !== idx))
+          }
+          onRemoveUrl={(idx) =>
+            setReferenceUrls((prev) => prev.filter((_, i) => i !== idx))
+          }
+        />
+
         <form
           className="ed-ai-input-row"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files?.length) {
+              void handleAddImageFiles(e.dataTransfer.files);
+            }
+          }}
           onSubmit={(e) => {
             e.preventDefault();
             submitPrompt();
           }}
         >
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            hidden
+            onChange={(e) => {
+              if (e.target.files?.length) {
+                void handleAddImageFiles(e.target.files);
+              }
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            className="ed-ai-attach-btn"
+            aria-label="Upload reference image"
+            title="Upload or paste reference design image (PNG/JPG/WebP, max 4 MB)"
+            disabled={
+              !canWrite ||
+              suggestMutation.isPending ||
+              referenceImages.length >= MAX_REF_IMAGES
+            }
+            onClick={() => imageInputRef.current?.click()}
+          >
+            <ImagePlus size={14} />
+          </button>
+          <ReferenceUrlPopover
+            attachedCount={referenceUrls.length}
+            disabled={!canWrite || suggestMutation.isPending}
+            onAttach={(item) => {
+              setErrorMsg(null);
+              setReferenceUrls((prev) =>
+                prev.some((x) => x.normalizedUrl === item.normalizedUrl)
+                  ? prev
+                  : [...prev, item]
+              );
+            }}
+          />
           <input
             ref={inputRef}
             type="text"
@@ -946,13 +1088,22 @@ export function FloatingAiBar({
             placeholder={
               canWrite
                 ? primaryNode
-                  ? `Ask AI to style or modify "${primaryNode.label}"...`
-                  : "Ask AI to improve this page..."
+                  ? `Ask AI to style "${primaryNode.label}", paste image, or add link...`
+                  : "Ask AI to design with store data, image, or link..."
                 : "Content write permission required"
             }
             disabled={!canWrite || suggestMutation.isPending}
             value={prompt}
             onChange={(e) => setAiDraftPrompt(e.target.value)}
+            onPaste={(e) => {
+              const imgFiles = Array.from(e.clipboardData?.files || []).filter(
+                (f) => f.type.startsWith("image/")
+              );
+              if (imgFiles.length) {
+                e.preventDefault();
+                void handleAddImageFiles(imgFiles);
+              }
+            }}
           />
           <Button
             variant="primary"

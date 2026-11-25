@@ -287,6 +287,49 @@ export type EditorChatHistoryItem = {
   targetLabel?: string;
 };
 
+export type AiInspirationMode =
+  | "ask"
+  | "vibe_keep_tokens"
+  | "clone_faithful"
+  | "visual_style_only";
+
+export type ReferenceImageInput = {
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+};
+
+export type UrlSafetyReport = {
+  url: string;
+  normalizedUrl: string;
+  verdict: "SAFE" | "CAUTION" | "BLOCKED" | string;
+  riskScore: number;
+  reasons: string[];
+};
+
+export type WebsiteDesignDna = {
+  url: string;
+  title: string;
+  description: string;
+  ogImage?: string;
+  paletteColors: string[];
+  fontFamilies: string[];
+  sectionOutline: Array<Record<string, unknown>>;
+  layoutHints: string[];
+};
+
+export type UrlInspectionResult = {
+  safety: UrlSafetyReport;
+  designDna: WebsiteDesignDna | null;
+};
+
+export type AiClarificationOption = {
+  id: AiInspirationMode;
+  label: string;
+  description: string;
+  recommended: boolean;
+};
+
 export type EditorSuggestRequest = {
   pageId?: string;
   pageSlug?: string;
@@ -301,6 +344,9 @@ export type EditorSuggestRequest = {
   history?: EditorChatHistoryItem[];
   selectedPart?: string;
   editableParts?: Record<string, string[]>;
+  referenceImages?: ReferenceImageInput[];
+  referenceUrls?: string[];
+  inspirationMode?: AiInspirationMode;
 };
 
 export type EditorSuggestResponse = {
@@ -317,6 +363,10 @@ export type EditorSuggestResponse = {
   completionTokens: number;
   latencyMs: number;
   usedDataSources?: string[];
+  needsClarification?: boolean;
+  clarificationQuestion?: string | null;
+  clarificationOptions?: AiClarificationOption[];
+  referenceUrlReports?: UrlSafetyReport[];
 };
 
 export type FontUploadResponse = {

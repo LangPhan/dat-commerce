@@ -15,6 +15,7 @@ import type {
   AiModelSettingsDto,
   EditorSuggestRequest,
   EditorSuggestResponse,
+  UrlInspectionResult,
   UpdateAiModelSettingsRequest,
   AiChatTurnResultDto,
   AiChangePlanDto,
@@ -357,5 +358,10 @@ export const aiAdminApi = {
     apiFetch<EditorSuggestResponse>("/api/v1/admin/ai/editor/suggest", {
       method: "POST",
       body,
+    }),
+  inspectReferenceUrl: (url: string) =>
+    apiFetch<UrlInspectionResult>("/api/v1/admin/ai/editor/inspect-reference-url", {
+      method: "POST",
+      body: { url },
     }),
 };

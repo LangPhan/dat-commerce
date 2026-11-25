@@ -289,7 +289,24 @@ public class NineRouterAiGateway implements AiModelGateway {
                 entry.put("tool_call_id", m.toolCallId());
                 entry.put("content", m.content() != null ? m.content() : "");
             } else {
-                entry.put("content", m.content() != null ? m.content() : "");
+                if (m.images() != null && !m.images().isEmpty()) {
+                    List<Map<String, Object>> parts = new ArrayList<>();
+                    parts.add(Map.of("type", "text", "text", m.content() != null ? m.content() : ""));
+                    for (ImageInput img : m.images()) {
+                        if (img == null || !StringUtils.hasText(img.base64Data()) || !StringUtils.hasText(img.mimeType())) {
+                            continue;
+                        }
+                        String dataUrl = "data:" + img.mimeType().trim() + ";base64," + img.base64Data().trim();
+                        String detail = StringUtils.hasText(img.detail()) ? img.detail().trim() : "high";
+                        parts.add(Map.of(
+                                "type", "image_url",
+                                "image_url", Map.of("url", dataUrl, "detail", detail)
+                        ));
+                    }
+                    entry.put("content", parts);
+                } else {
+                    entry.put("content", m.content() != null ? m.content() : "");
+                }
                 if (m.toolCalls() != null && !m.toolCalls().isEmpty()) {
                     List<Map<String, Object>> tcOut = new ArrayList<>();
                     for (GatewayToolCall tc : m.toolCalls()) {
