@@ -135,6 +135,9 @@ export function resolveElementMotionForViewport(
     if (scroll && scroll.mode === "parallax") {
       scroll = { ...scroll, enabled: false };
     }
+    if (continuous && continuous.enabled !== false) {
+      continuous = { ...continuous, enabled: false };
+    }
     if (entrance?.duration && entrance.duration > 350) {
       entrance = { ...entrance, duration: Math.round(entrance.duration * 0.7) };
     }

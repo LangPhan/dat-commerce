@@ -2394,3 +2394,69 @@
 .typo-active-specimen-text {
   overflow-wrap: anywhere;
 }
+
+/* ---- GLOBAL MOTION STUDIO ---- */
+.motion-subtab-stage {
+  height: 550px;
+  min-height: 550px;
+  max-height: 550px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.motion-global-preview-stage {
+  height: 120px;
+  border-radius: 9px;
+  border: 1px dashed var(--border);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.motion-global-preview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 18px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--subtle);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  font-size: 12.5px;
+}
+
+.motion-token-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.motion-token-track {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.motion-token-rail {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 2px;
+  overflow: hidden;
+}
+
+.motion-token-dot {
+  width: 34%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #5b46e8);
+}

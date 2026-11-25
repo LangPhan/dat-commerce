@@ -78,6 +78,7 @@ import { adminMediaApi } from "@/lib/commerce-api";
 import { cn } from "@/lib/format";
 import type { CategoryDto, ProductDto } from "@/types/api-commerce";
 import type { ThemeTokens } from "@/types/api-cms-ai";
+import { normalizeGlobalMotion } from "@/features/motion/defaults";
 import { SYSTEM_ANIMATION_PRESETS } from "@/features/motion/presets";
 import type {
   AnimationPresetDefinition,
@@ -731,6 +732,194 @@ function GlobalThemePanel({
             />
           </div>
         </div>
+      </div>
+
+      <div className="ed-inspector-section">
+        <div className="ed-inspector-sec-head">
+          <strong>Global Motion</strong>
+          <Link href="/admin/theme?section=motion" className="ed-mini-link">
+            Full Studio
+          </Link>
+        </div>
+        {(() => {
+          const gm = normalizeGlobalMotion(tokens.motion);
+          const patchMotion = (
+            partial: Partial<typeof gm>,
+            summary: string
+          ) =>
+            onChangeTokens(
+              { ...tokens, motion: { ...gm, ...partial } },
+              { summary }
+            );
+          return (
+            <div className="ed-control-stack">
+              <label className="ed-check-row">
+                <input
+                  type="checkbox"
+                  disabled={!canWrite}
+                  checked={gm.enabled}
+                  onChange={(e) =>
+                    patchMotion(
+                      { enabled: e.target.checked },
+                      e.target.checked
+                        ? "Enable global animations"
+                        : "Disable global animations"
+                    )
+                  }
+                />
+                <span>Enable Storefront Animations</span>
+              </label>
+
+              <PropertyPopoverRow
+                label="Defaults & Timing"
+                summary={`${gm.defaultDuration}ms · ${gm.defaultEasing}`}
+                disabled={!canWrite}
+              >
+                <div className="ed-popover-stack">
+                  <SliderControl
+                    label="Default Duration"
+                    value={gm.defaultDuration}
+                    min={100}
+                    max={2000}
+                    step={20}
+                    unit="ms"
+                    onChange={(v) =>
+                      patchMotion(
+                        { defaultDuration: parseInt(v, 10) || 550 },
+                        `Set global motion duration (${v})`
+                      )
+                    }
+                  />
+                  <SliderControl
+                    label="Fast Token"
+                    value={gm.timingTokens.fast}
+                    min={60}
+                    max={500}
+                    step={10}
+                    unit="ms"
+                    onChange={(v) =>
+                      patchMotion(
+                        {
+                          timingTokens: {
+                            ...gm.timingTokens,
+                            fast: parseInt(v, 10) || 180,
+                          },
+                        },
+                        `Set fast motion token (${v})`
+                      )
+                    }
+                  />
+                  <SliderControl
+                    label="Normal Token"
+                    value={gm.timingTokens.normal}
+                    min={150}
+                    max={1200}
+                    step={20}
+                    unit="ms"
+                    onChange={(v) =>
+                      patchMotion(
+                        {
+                          timingTokens: {
+                            ...gm.timingTokens,
+                            normal: parseInt(v, 10) || 450,
+                          },
+                        },
+                        `Set normal motion token (${v})`
+                      )
+                    }
+                  />
+                  <SliderControl
+                    label="Slow Token"
+                    value={gm.timingTokens.slow}
+                    min={300}
+                    max={2500}
+                    step={50}
+                    unit="ms"
+                    onChange={(v) =>
+                      patchMotion(
+                        {
+                          timingTokens: {
+                            ...gm.timingTokens,
+                            slow: parseInt(v, 10) || 850,
+                          },
+                        },
+                        `Set slow motion token (${v})`
+                      )
+                    }
+                  />
+                </div>
+              </PropertyPopoverRow>
+
+              <PropertyPopoverRow
+                label="Mobile & Accessibility"
+                summary={`${gm.mobileBehavior} · ${gm.reducedMotionPolicy}`}
+                disabled={!canWrite}
+              >
+                <div className="ed-popover-stack">
+                  <label className="ed-check-row">
+                    <input
+                      type="checkbox"
+                      checked={gm.scrollEffectsEnabled}
+                      onChange={(e) =>
+                        patchMotion(
+                          { scrollEffectsEnabled: e.target.checked },
+                          "Toggle global scroll effects"
+                        )
+                      }
+                    />
+                    <span>Scroll Effects Enabled</span>
+                  </label>
+                  <label className="ed-check-row">
+                    <input
+                      type="checkbox"
+                      checked={gm.hoverEffectsEnabled}
+                      onChange={(e) =>
+                        patchMotion(
+                          { hoverEffectsEnabled: e.target.checked },
+                          "Toggle global hover effects"
+                        )
+                      }
+                    />
+                    <span>Hover Effects Enabled</span>
+                  </label>
+                  <SelectControl
+                    label="Mobile Behavior"
+                    value={gm.mobileBehavior}
+                    options={[
+                      { value: "full", label: "Full" },
+                      { value: "reduced", label: "Reduced" },
+                      { value: "disabled", label: "Disabled" },
+                    ]}
+                    onChange={(v) =>
+                      patchMotion(
+                        { mobileBehavior: v as typeof gm.mobileBehavior },
+                        `Set mobile motion behavior (${v})`
+                      )
+                    }
+                  />
+                  <SelectControl
+                    label="Reduced Motion"
+                    value={gm.reducedMotionPolicy}
+                    options={[
+                      { value: "respect-system", label: "Respect System" },
+                      { value: "essential-only", label: "Essential Only" },
+                      { value: "always-reduced", label: "Always Reduced" },
+                    ]}
+                    onChange={(v) =>
+                      patchMotion(
+                        {
+                          reducedMotionPolicy:
+                            v as typeof gm.reducedMotionPolicy,
+                        },
+                        `Set reduced motion policy (${v})`
+                      )
+                    }
+                  />
+                </div>
+              </PropertyPopoverRow>
+            </div>
+          );
+        })()}
       </div>
 
       <div className="ed-inspector-section">

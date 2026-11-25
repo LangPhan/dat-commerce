@@ -33,7 +33,10 @@ import {
   createCustomPaletteColor,
   getBrandPaletteOptions,
 } from "@/features/editor/brand-palette";
+import { AnimationLibraryModal } from "@/features/editor/AnimationLibraryModal";
 import { ColorControl } from "@/features/editor/inspector-controls";
+import { GlobalMotionSettingsPanel } from "@/features/motion/GlobalMotionSettingsPanel";
+import { dtoToPresetDefinition } from "@/features/motion/presets";
 import { FontFamiliesPanel } from "@/features/typography/components/FontFamiliesPanel";
 import {
   TypographyAiBar,
@@ -66,6 +69,7 @@ type ThemeSectionId =
   | "typography"
   | "layout"
   | "spacing"
+  | "motion"
   | "buttons"
   | "components";
 
@@ -106,6 +110,7 @@ const NAV_ITEMS: Array<{
   { id: "typography", label: "Global Typography", icon: Type },
   { id: "layout", label: "Global Layout", icon: Columns },
   { id: "spacing", label: "Global Spacing", icon: Layers },
+  { id: "motion", label: "Global Motion", icon: Sparkles },
   { id: "buttons", label: "Global Buttons", icon: MousePointerClick },
   { id: "components", label: "Global Components", icon: Box },
 ];
@@ -140,6 +145,7 @@ function readInitialSection(): ThemeSectionId {
     raw === "typography" ||
     raw === "layout" ||
     raw === "spacing" ||
+    raw === "motion" ||
     raw === "buttons" ||
     raw === "components"
   ) {
@@ -170,6 +176,18 @@ function ThemeWorkspace({
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [resetAllOpen, setResetAllOpen] = useState(false);
+  const [motionLibraryOpen, setMotionLibraryOpen] = useState(false);
+
+  const animationPresetsQuery = useQuery({
+    queryKey: ["cms-animation-presets"],
+    queryFn: () => cmsAdminApi.listAnimationPresets(),
+    staleTime: 60_000,
+  });
+
+  const customAnimationPresets = useMemo(
+    () => (animationPresetsQuery.data || []).map(dtoToPresetDefinition),
+    [animationPresetsQuery.data]
+  );
 
   const [tokens, setTokens] = useState<ThemeTokens>(baseServerTokens);
   const [, setSyncedServerId] = useState<string | null>(
@@ -809,6 +827,18 @@ function ThemeWorkspace({
             </div>
           ) : null}
 
+          {section === "motion" ? (
+            <GlobalMotionSettingsPanel
+              motion={effectiveTokens.motion}
+              customPresets={customAnimationPresets}
+              canWrite={canWrite && !aiPreview}
+              onChange={(nextMotion, summary) =>
+                commitTokensChange({ ...tokens, motion: nextMotion }, summary)
+              }
+              onOpenLibrary={() => setMotionLibraryOpen(true)}
+            />
+          ) : null}
+
           {section === "buttons" ? (
             <div className="theme-panel-stack">
               <div className="theme-section-head">
@@ -952,6 +982,30 @@ function ThemeWorkspace({
           ) : null}
         </section>
       </div>
+      <AnimationLibraryModal
+        open={motionLibraryOpen}
+        onOpenChange={setMotionLibraryOpen}
+        customPresets={customAnimationPresets}
+        canWrite={canWrite}
+        onNotify={notify}
+        onApplyPreset={(preset) => {
+          if (preset.config.entrance?.preset && preset.config.entrance.preset !== "none") {
+            const cur = tokens.motion || {};
+            commitTokensChange(
+              {
+                ...tokens,
+                motion: {
+                  ...cur,
+                  defaultEntrancePreset: preset.config.entrance.preset,
+                  defaultDuration: preset.config.entrance.duration ?? cur.defaultDuration,
+                },
+              },
+              `Set default entrance preset to "${preset.name}"`
+            );
+          }
+          notify(`Preset "${preset.name}" is ready for elements`);
+        }}
+      />
     </div>
   );
 }
