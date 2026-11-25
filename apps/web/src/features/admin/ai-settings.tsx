@@ -19,9 +19,23 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { useAuth } from "@/features/auth/auth-context";
 import { aiAdminApi } from "@/lib/cms-ai-api";
 import { cn } from "@/lib/format";
-import type { AiModelSettingsDto, AvailableModelDto } from "@/types/api-cms-ai";
+import type {
+  AdminCustomerUsageRowDto,
+  AiModelSettingsDto,
+  AvailableModelDto,
+  UpdateAiModelSettingsRequest,
+} from "@/types/api-cms-ai";
 
 type CapabilityFilter = "all" | "selected" | "tools" | "reasoning" | "vision";
 
@@ -423,6 +437,311 @@ export function AiModelSettingsPanel({
   );
 }
 
+const DAILY_LIMIT_PRESETS = [
+  { value: 10000, label: "10K" },
+  { value: 20000, label: "20K (Default)" },
+  { value: 50000, label: "50K" },
+  { value: 100000, label: "100K" },
+];
+
+export function CustomerAiQuotaSettingsSection({
+  notify,
+}: {
+  notify?: (msg: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canResetQuota = hasPermission("store:write");
+
+  const settingsQuery = useQuery({
+    queryKey: ["admin-ai-settings"],
+    queryFn: () => aiAdminApi.getSettings(),
+  });
+
+  const usageQuery = useQuery({
+    queryKey: ["admin-ai-customer-usage"],
+    queryFn: () => aiAdminApi.getCustomerUsage(),
+  });
+
+  const serverData = settingsQuery.data;
+  const serverEnabled = serverData?.customerAiEnabled ?? true;
+  const serverLimit = serverData?.dailyTokenLimitPerUser ?? 20000;
+  const serverCustModel =
+    serverData?.customerAiModelId || serverData?.defaultModelId || "gpt-6-luna";
+
+  const [draftEnabled, setDraftEnabled] = useState<boolean | null>(null);
+  const [draftLimit, setDraftLimit] = useState<number | null>(null);
+  const [draftModel, setDraftModel] = useState<string | null>(null);
+  const [errMsg, setErrMsg] = useState("");
+
+  const effectiveEnabled = draftEnabled ?? serverEnabled;
+  const effectiveLimit = draftLimit ?? serverLimit;
+  const effectiveModel = draftModel ?? serverCustModel;
+
+  const isDirty =
+    effectiveEnabled !== serverEnabled ||
+    effectiveLimit !== serverLimit ||
+    effectiveModel !== serverCustModel;
+
+  const saveQuotaMutation = useMutation({
+    mutationFn: (payload: UpdateAiModelSettingsRequest) =>
+      aiAdminApi.updateSettings(payload),
+    onSuccess: (updated) => {
+      setErrMsg("");
+      setDraftEnabled(null);
+      setDraftLimit(null);
+      setDraftModel(null);
+      queryClient.setQueryData(["admin-ai-settings"], updated);
+      void queryClient.invalidateQueries({ queryKey: ["admin-ai-settings"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-ai-customer-usage"] });
+      notify?.(
+        `Saved Storefront AI policy (${updated.dailyTokenLimitPerUser?.toLocaleString() || 20000} tokens/day)`
+      );
+    },
+    onError: (err) => {
+      setErrMsg(err instanceof Error ? err.message : "Failed to save quota settings");
+    },
+  });
+
+  const resetUserMutation = useMutation({
+    mutationFn: (userId: string) => aiAdminApi.resetCustomerUsage(userId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin-ai-customer-usage"] });
+      notify?.("Reset user daily AI token quota");
+    },
+    onError: (err) => {
+      setErrMsg(err instanceof Error ? err.message : "Failed to reset user quota");
+    },
+  });
+
+  const modelChoices = useMemo(() => {
+    const enabled = serverData?.enabledModelIds ?? [];
+    const avail = serverData?.availableModels ?? [];
+    const map = new Map(avail.map((m) => [m.id, m.label]));
+    const ids = enabled.length ? enabled : [serverCustModel];
+    return ids.map((id) => ({ value: id, label: map.get(id) || id }));
+  }, [serverData, serverCustModel]);
+
+  const usageColumns: DataTableColumn<AdminCustomerUsageRowDto>[] = [
+    {
+      id: "user",
+      header: "Account",
+      cell: (r) => (
+        <div>
+          <strong>{r.fullName}</strong>
+          <div className="muted" style={{ fontSize: 11.5 }}>
+            {r.email}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "type",
+      header: "Type",
+      cell: (r) => (
+        <Badge tone={r.accountType === "STAFF" ? "accent" : "neutral"}>
+          {r.accountType}
+        </Badge>
+      ),
+    },
+    {
+      id: "requests",
+      header: "Requests",
+      cell: (r) => r.requestCount,
+    },
+    {
+      id: "usage",
+      header: "Tokens Used Today",
+      cell: (r) => {
+        const pct = Math.min(100, Math.round((r.totalTokens / Math.max(1, r.dailyLimit)) * 100));
+        return (
+          <div className="ai-quota-cell">
+            <div className="ai-quota-cell-head">
+              <span>
+                {r.totalTokens.toLocaleString()} / {r.dailyLimit.toLocaleString()}
+              </span>
+              <span className="muted">{pct}%</span>
+            </div>
+            <div className="ai-quota-bar">
+              <div
+                className={cn(
+                  "ai-quota-bar-fill",
+                  pct >= 100 ? "is-full" : pct >= 80 ? "is-warn" : ""
+                )}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        );
+      },
+    },
+    ...(canResetQuota
+      ? [
+          {
+            id: "actions",
+            header: "Action",
+            align: "right" as const,
+            cell: (r: AdminCustomerUsageRowDto) => (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={resetUserMutation.isPending}
+                onClick={() => resetUserMutation.mutate(r.userId)}
+              >
+                <RotateCcw size={12} /> Reset today
+              </Button>
+            ),
+          },
+        ]
+      : []),
+  ];
+
+  if (settingsQuery.isLoading) {
+    return <Skeleton rows={3} />;
+  }
+
+  return (
+    <div className="ai-settings-customer-wrap" data-testid="customer-ai-quota-settings">
+      <section className="card ai-settings-card">
+        <div className="ai-settings-card-head">
+          <div>
+            <h2>Storefront Shopping AI &amp; Daily Token Quota</h2>
+            <p className="muted">
+              Require customer login and cap tokens per account per UTC day for product Q&amp;A, shopping recommendations, cart additions, and checkout prefill.
+            </p>
+          </div>
+          <Badge tone={effectiveEnabled ? "green" : "amber"}>
+            {effectiveEnabled ? "Enabled" : "Disabled"}
+          </Badge>
+        </div>
+
+        <div className="ai-customer-policy-grid">
+          <label className="ed-check-row">
+            <input
+              type="checkbox"
+              checked={effectiveEnabled}
+              onChange={(e) => setDraftEnabled(e.target.checked)}
+            />
+            <span>Enable Storefront Shopping AI for signed-in users</span>
+          </label>
+
+          <div className="ui-field">
+            <label className="ui-field-label" htmlFor="daily-token-limit-input">
+              Daily Token Limit per Account (1,000 – 500,000)
+            </label>
+            <div className="ai-limit-row">
+              <input
+                id="daily-token-limit-input"
+                type="number"
+                min={1000}
+                max={500000}
+                step={1000}
+                value={effectiveLimit}
+                onChange={(e) =>
+                  setDraftLimit(Math.max(0, parseInt(e.target.value || "0", 10)))
+                }
+              />
+              <div className="ai-limit-presets">
+                {DAILY_LIMIT_PRESETS.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    className={cn(
+                      "ai-filter-chip",
+                      effectiveLimit === p.value && "active"
+                    )}
+                    onClick={() => setDraftLimit(p.value)}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="ui-field">
+            <span className="ui-field-label">Customer Shopping AI Model</span>
+            <Select
+              items={modelChoices}
+              value={
+                modelChoices.some((m) => m.value === effectiveModel)
+                  ? effectiveModel
+                  : modelChoices[0]?.value || ""
+              }
+              onValueChange={(next) => {
+                if (next) setDraftModel(next);
+              }}
+            >
+              <SelectTrigger aria-label="Customer AI model" size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {modelChoices.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {errMsg ? (
+          <p className="danger" role="alert" style={{ margin: 0, fontSize: 12.5 }}>
+            {errMsg}
+          </p>
+        ) : null}
+
+        <div className="ai-settings-footer">
+          <Button
+            size="sm"
+            disabled={!isDirty || saveQuotaMutation.isPending}
+            onClick={() => {
+              setDraftEnabled(null);
+              setDraftLimit(null);
+              setDraftModel(null);
+              setErrMsg("");
+            }}
+          >
+            <RotateCcw size={13} /> Reset
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={
+              !isDirty ||
+              saveQuotaMutation.isPending ||
+              effectiveLimit < 1000 ||
+              effectiveLimit > 500000 ||
+              !(serverData?.enabledModelIds?.length)
+            }
+            onClick={() =>
+              saveQuotaMutation.mutate({
+                enabledModelIds: serverData?.enabledModelIds || [effectiveModel],
+                customerAiEnabled: effectiveEnabled,
+                dailyTokenLimitPerUser: effectiveLimit,
+                customerAiModelId: effectiveModel,
+              })
+            }
+          >
+            <Save size={13} />
+            {saveQuotaMutation.isPending ? "Saving..." : "Save Customer AI Policy"}
+          </Button>
+        </div>
+      </section>
+
+      <DataTable
+        title="Today's AI Token Usage by Account"
+        columns={usageColumns}
+        data={usageQuery.data || []}
+        getRowKey={(r) => r.userId}
+        pageSize={8}
+        emptyState={<p className="muted">No customer AI token consumption recorded today yet.</p>}
+      />
+    </div>
+  );
+}
+
 export function AiSettingsView({ notify }: { notify: (msg: string) => void }) {
   return (
     <div className="admin-page">
@@ -430,13 +749,14 @@ export function AiSettingsView({ notify }: { notify: (msg: string) => void }) {
         <div>
           <h1>AI Model Settings</h1>
           <p>
-            Choose which 9Router models appear on the Visual Editor Floating AI
-            Bar and set their priority order (#1 is used by default).
+            Configure 9Router model priorities for Admin &amp; Editor workflows and manage Storefront Shopping AI daily token limits per account.
           </p>
         </div>
       </div>
 
       <AiModelSettingsPanel notify={notify} />
+
+      <CustomerAiQuotaSettingsSection notify={notify} />
     </div>
   );
 }

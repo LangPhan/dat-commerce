@@ -274,10 +274,29 @@ export type AiModelSettingsDto = {
   defaultModelId: string;
   gatewayReachable: boolean;
   gatewayError?: string | null;
+  customerAiEnabled?: boolean;
+  dailyTokenLimitPerUser?: number;
+  customerAiModelId?: string;
 };
 
 export type UpdateAiModelSettingsRequest = {
   enabledModelIds: string[];
+  customerAiEnabled?: boolean;
+  dailyTokenLimitPerUser?: number;
+  customerAiModelId?: string;
+};
+
+export type AdminCustomerUsageRowDto = {
+  userId: string;
+  fullName: string;
+  email: string;
+  accountType: "CUSTOMER" | "STAFF" | string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  dailyLimit: number;
+  requestCount: number;
+  updatedAt: string;
 };
 
 

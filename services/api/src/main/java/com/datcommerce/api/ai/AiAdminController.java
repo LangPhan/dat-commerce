@@ -4,6 +4,7 @@ import com.datcommerce.api.common.security.AuthenticatedUser;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -27,15 +28,27 @@ public class AiAdminController {
     private final AiOrchestratorService orchestratorService;
     private final AiChangePlanService changePlanService;
     private final AiSettingsService settingsService;
+    private final AiTokenQuotaService quotaService;
 
     public AiAdminController(
             AiOrchestratorService orchestratorService,
             AiChangePlanService changePlanService,
             AiSettingsService settingsService
     ) {
+        this(orchestratorService, changePlanService, settingsService, null);
+    }
+
+    @Autowired
+    public AiAdminController(
+            AiOrchestratorService orchestratorService,
+            AiChangePlanService changePlanService,
+            AiSettingsService settingsService,
+            AiTokenQuotaService quotaService
+    ) {
         this.orchestratorService = orchestratorService;
         this.changePlanService = changePlanService;
         this.settingsService = settingsService;
+        this.quotaService = quotaService;
     }
 
     @GetMapping("/settings")
@@ -163,5 +176,25 @@ public class AiAdminController {
     @PreAuthorize("hasAuthority('ai:use')")
     public AiDtos.AiActivityDto getActivity(@AuthenticationPrincipal AuthenticatedUser user) {
         return orchestratorService.getActivity(user.storeId());
+    }
+
+    @GetMapping("/customer-usage")
+    @PreAuthorize("hasAuthority('ai:use')")
+    public List<AiDtos.AdminCustomerUsageRowDto> getCustomerUsage(
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        return quotaService != null ? quotaService.listTodayUsage(user.storeId()) : List.of();
+    }
+
+    @PostMapping("/customer-usage/{targetUserId}/reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAuthority('store:write')")
+    public void resetCustomerUsage(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID targetUserId
+    ) {
+        if (quotaService != null) {
+            quotaService.resetUserTodayUsage(user, targetUserId);
+        }
     }
 }

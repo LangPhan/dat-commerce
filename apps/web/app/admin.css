@@ -3110,3 +3110,77 @@
   border-radius: 7px 7px 0 0;
   margin-bottom: 2px;
 }
+
+/* ---- STOREFRONT AI DAILY QUOTA IN ADMIN AI SETTINGS ---- */
+.ai-settings-customer-wrap {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ai-customer-policy-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ai-limit-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ai-limit-row input[type="number"] {
+  width: 150px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.ai-limit-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-quota-cell {
+  min-width: 170px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-quota-cell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-quota-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--subtle);
+  overflow: hidden;
+}
+
+.ai-quota-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.ai-quota-bar-fill.is-warn {
+  background: #d97706;
+}
+
+.ai-quota-bar-fill.is-full {
+  background: #dc2626;
+}

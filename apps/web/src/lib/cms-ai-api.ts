@@ -11,6 +11,7 @@ import type {
   GlobalMotionResponse,
   PageAnimationsResponse,
   UpdateAnimationPresetRequest,
+  AdminCustomerUsageRowDto,
   AiActivityDto,
   AiModelSettingsDto,
   EditorSuggestRequest,
@@ -363,5 +364,11 @@ export const aiAdminApi = {
     apiFetch<UrlInspectionResult>("/api/v1/admin/ai/editor/inspect-reference-url", {
       method: "POST",
       body: { url },
+    }),
+  getCustomerUsage: () =>
+    apiFetch<AdminCustomerUsageRowDto[]>("/api/v1/admin/ai/customer-usage"),
+  resetCustomerUsage: (userId: string) =>
+    apiFetch<void>(`/api/v1/admin/ai/customer-usage/${userId}/reset`, {
+      method: "POST",
     }),
 };

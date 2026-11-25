@@ -2,6 +2,8 @@ package com.datcommerce.api.ai;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
@@ -25,19 +27,63 @@ public final class AiDtos {
     ) {
     }
 
+    public record CustomerAiQuotaDto(
+            boolean enabled,
+            long dailyLimit,
+            long usedTokens,
+            long remainingTokens,
+            int requestCount,
+            Instant resetsAt,
+            String modelId
+    ) {
+    }
+
+    public record AdminCustomerUsageRowDto(
+            UUID userId,
+            String fullName,
+            String email,
+            String accountType,
+            long promptTokens,
+            long completionTokens,
+            long totalTokens,
+            long dailyLimit,
+            int requestCount,
+            Instant updatedAt
+    ) {
+    }
+
     public record AiModelSettingsDto(
             List<String> enabledModelIds,
             List<String> availableModelIds,
             List<AvailableModelDto> availableModels,
             String defaultModelId,
             boolean gatewayReachable,
-            String gatewayError
+            String gatewayError,
+            boolean customerAiEnabled,
+            int dailyTokenLimitPerUser,
+            String customerAiModelId
     ) {
+        public AiModelSettingsDto(
+                List<String> enabledModelIds,
+                List<String> availableModelIds,
+                List<AvailableModelDto> availableModels,
+                String defaultModelId,
+                boolean gatewayReachable,
+                String gatewayError
+        ) {
+            this(enabledModelIds, availableModelIds, availableModels, defaultModelId, gatewayReachable, gatewayError, true, 20000, defaultModelId);
+        }
     }
 
     public record UpdateAiModelSettingsRequest(
-            @NotEmpty @Size(max = 30) List<@NotBlank @Size(max = 160) String> enabledModelIds
+            @NotEmpty @Size(max = 30) List<@NotBlank @Size(max = 160) String> enabledModelIds,
+            Boolean customerAiEnabled,
+            @Min(1000) @Max(500000) Integer dailyTokenLimitPerUser,
+            @Size(max = 160) String customerAiModelId
     ) {
+        public UpdateAiModelSettingsRequest(List<String> enabledModelIds) {
+            this(enabledModelIds, null, null, null);
+        }
     }
 
     public record CreateConversationRequest(

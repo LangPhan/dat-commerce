@@ -111,4 +111,25 @@ class AiSettingsServiceTest {
         assertTrue(!dto.gatewayReachable());
         assertEquals("gpt-6-luna", dto.defaultModelId());
     }
+
+    @Test
+    void persistsCustomerAiQuotaSettingsWithinBounds() {
+        AiDtos.AiModelSettingsDto updated = service.updateSettings(
+                actor,
+                new AiDtos.UpdateAiModelSettingsRequest(
+                        List.of("gpt-6-luna", "claude-code"),
+                        false,
+                        35000,
+                        "claude-code"
+                )
+        );
+        assertTrue(!updated.customerAiEnabled());
+        assertEquals(35000, updated.dailyTokenLimitPerUser());
+        assertEquals("claude-code", updated.customerAiModelId());
+
+        AiSettingsService.CustomerAiConfig cfg = service.getCustomerAiConfig(storeId);
+        assertTrue(!cfg.enabled());
+        assertEquals(35000, cfg.dailyTokenLimitPerUser());
+        assertEquals("claude-code", cfg.modelId());
+    }
 }

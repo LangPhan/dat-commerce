@@ -30,6 +30,12 @@ public class AiSettingsService {
     private static final Pattern SAFE_MODEL_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9._:/-]{1,160}$");
     private static final String SETTINGS_AI_KEY = "ai";
     private static final String ENABLED_MODEL_IDS_KEY = "enabledModelIds";
+    private static final String CUSTOMER_AI_ENABLED_KEY = "customerAiEnabled";
+    private static final String DAILY_TOKEN_LIMIT_KEY = "dailyTokenLimitPerUser";
+    private static final String CUSTOMER_AI_MODEL_ID_KEY = "customerAiModelId";
+    public static final int DEFAULT_CUSTOMER_DAILY_TOKEN_LIMIT = 20_000;
+    public static final int MIN_CUSTOMER_DAILY_TOKEN_LIMIT = 1_000;
+    public static final int MAX_CUSTOMER_DAILY_TOKEN_LIMIT = 500_000;
 
     private final StoreRepository storeRepository;
     private final MockAiModelGateway mockGateway;
@@ -59,7 +65,19 @@ public class AiSettingsService {
         GatewayCatalog catalog = loadGatewayCatalog();
         List<String> persisted = readPersistedEnabledIds(store);
         List<String> enabled = resolveEffectiveEnabledIds(persisted, catalog.models());
-        return buildDto(enabled, catalog);
+        CustomerAiConfig custCfg = readCustomerAiConfig(store, enabled);
+        return buildDto(enabled, catalog, custCfg);
+    }
+
+    @Transactional(readOnly = true)
+    public CustomerAiConfig getCustomerAiConfig(UUID storeId) {
+        StoreEntity store = storeRepository.findById(storeId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Store not found"));
+        List<String> persisted = readPersistedEnabledIds(store);
+        List<String> enabled = persisted.isEmpty()
+                ? List.of(appProperties.getAi().getDefaultModel())
+                : persisted;
+        return readCustomerAiConfig(store, enabled);
     }
 
     @Transactional
@@ -128,12 +146,46 @@ public class AiSettingsService {
                 }
             });
         }
+        CustomerAiConfig prevCustCfg = readCustomerAiConfig(store, beforeList);
+        boolean nextCustEnabled = request.customerAiEnabled() != null
+                ? request.customerAiEnabled()
+                : prevCustCfg.enabled();
+        int nextDailyLimit = request.dailyTokenLimitPerUser() != null
+                ? request.dailyTokenLimitPerUser()
+                : prevCustCfg.dailyTokenLimitPerUser();
+        if (nextDailyLimit < MIN_CUSTOMER_DAILY_TOKEN_LIMIT || nextDailyLimit > MAX_CUSTOMER_DAILY_TOKEN_LIMIT) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "dailyTokenLimitPerUser must be between " + MIN_CUSTOMER_DAILY_TOKEN_LIMIT
+                            + " and " + MAX_CUSTOMER_DAILY_TOKEN_LIMIT
+            );
+        }
+        String nextCustModel = prevCustCfg.modelId();
+        if (request.customerAiModelId() != null) {
+            String trimmedModel = request.customerAiModelId().trim();
+            if (trimmedModel.isEmpty()) {
+                nextCustModel = nextList.get(0);
+            } else {
+                if (!SAFE_MODEL_ID_PATTERN.matcher(trimmedModel).matches()) {
+                    throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid customerAiModelId format: " + trimmedModel);
+                }
+                nextCustModel = trimmedModel;
+            }
+        } else if (!StringUtils.hasText(nextCustModel)) {
+            nextCustModel = nextList.get(0);
+        }
+
         aiNode.put(ENABLED_MODEL_IDS_KEY, nextList);
+        aiNode.put(CUSTOMER_AI_ENABLED_KEY, nextCustEnabled);
+        aiNode.put(DAILY_TOKEN_LIMIT_KEY, nextDailyLimit);
+        aiNode.put(CUSTOMER_AI_MODEL_ID_KEY, nextCustModel);
         nextSettings.put(SETTINGS_AI_KEY, aiNode);
 
         store.setSettingsJson(nextSettings);
         store.setUpdatedAt(Instant.now());
         storeRepository.save(store);
+
+        CustomerAiConfig nextCustCfg = new CustomerAiConfig(nextCustEnabled, nextDailyLimit, nextCustModel);
 
         auditLogService.record(
                 actor.storeId(),
@@ -142,16 +194,29 @@ public class AiSettingsService {
                 "AI_SETTINGS_UPDATED",
                 "STORE",
                 store.getId().toString(),
-                Map.of("enabledModelIds", beforeList),
-                Map.of("enabledModelIds", nextList),
+                Map.of(
+                        "enabledModelIds", beforeList,
+                        "customerAiEnabled", prevCustCfg.enabled(),
+                        "dailyTokenLimitPerUser", prevCustCfg.dailyTokenLimitPerUser()
+                ),
+                Map.of(
+                        "enabledModelIds", nextList,
+                        "customerAiEnabled", nextCustEnabled,
+                        "dailyTokenLimitPerUser", nextDailyLimit,
+                        "customerAiModelId", nextCustModel
+                ),
                 Map.of("defaultModelId", nextList.get(0)),
                 null
         );
 
-        return buildDto(nextList, catalog);
+        return buildDto(nextList, catalog, nextCustCfg);
     }
 
-    private AiDtos.AiModelSettingsDto buildDto(List<String> enabledIds, GatewayCatalog catalog) {
+    private AiDtos.AiModelSettingsDto buildDto(
+            List<String> enabledIds,
+            GatewayCatalog catalog,
+            CustomerAiConfig custCfg
+    ) {
         Map<String, AiDtos.AvailableModelDto> byId = new LinkedHashMap<>();
         for (AiModelGateway.AvailableModelInfo info : catalog.models()) {
             byId.put(info.id(), new AiDtos.AvailableModelDto(
@@ -186,13 +251,19 @@ public class AiSettingsService {
                 ? appProperties.getAi().getDefaultModel()
                 : enabledIds.get(0);
 
+        String custModel = StringUtils.hasText(custCfg.modelId())
+                ? custCfg.modelId()
+                : defaultModelId;
         return new AiDtos.AiModelSettingsDto(
                 enabledIds,
                 availableModelIds,
                 availableModels,
                 defaultModelId,
                 catalog.reachable(),
-                catalog.error()
+                catalog.error(),
+                custCfg.enabled(),
+                custCfg.dailyTokenLimitPerUser(),
+                custModel
         );
     }
 
@@ -301,6 +372,41 @@ public class AiSettingsService {
                 yield prefix + (words.isEmpty() ? id : String.join(" ", words));
             }
         };
+    }
+
+    private CustomerAiConfig readCustomerAiConfig(StoreEntity store, List<String> fallbackEnabled) {
+        String defaultModel = (fallbackEnabled != null && !fallbackEnabled.isEmpty())
+                ? fallbackEnabled.get(0)
+                : appProperties.getAi().getDefaultModel();
+        Map<String, Object> root = store.getSettingsJson();
+        if (root == null || !(root.get(SETTINGS_AI_KEY) instanceof Map<?, ?> aiMap)) {
+            return new CustomerAiConfig(true, DEFAULT_CUSTOMER_DAILY_TOKEN_LIMIT, defaultModel);
+        }
+        boolean enabled = aiMap.get(CUSTOMER_AI_ENABLED_KEY) == null
+                || Boolean.TRUE.equals(aiMap.get(CUSTOMER_AI_ENABLED_KEY));
+        int limit = DEFAULT_CUSTOMER_DAILY_TOKEN_LIMIT;
+        Object rawLimit = aiMap.get(DAILY_TOKEN_LIMIT_KEY);
+        if (rawLimit instanceof Number n) {
+            limit = Math.max(MIN_CUSTOMER_DAILY_TOKEN_LIMIT, Math.min(MAX_CUSTOMER_DAILY_TOKEN_LIMIT, n.intValue()));
+        } else if (rawLimit instanceof String str) {
+            try {
+                int parsed = Integer.parseInt(str.trim());
+                limit = Math.max(MIN_CUSTOMER_DAILY_TOKEN_LIMIT, Math.min(MAX_CUSTOMER_DAILY_TOKEN_LIMIT, parsed));
+            } catch (NumberFormatException ignored) {
+                limit = DEFAULT_CUSTOMER_DAILY_TOKEN_LIMIT;
+            }
+        }
+        String custModel = aiMap.get(CUSTOMER_AI_MODEL_ID_KEY) instanceof String m && StringUtils.hasText(m)
+                ? m.trim()
+                : defaultModel;
+        return new CustomerAiConfig(enabled, limit, custModel);
+    }
+
+    public record CustomerAiConfig(
+            boolean enabled,
+            int dailyTokenLimitPerUser,
+            String modelId
+    ) {
     }
 
     private record GatewayCatalog(
