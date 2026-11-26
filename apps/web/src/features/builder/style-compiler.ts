@@ -19,9 +19,15 @@ const NUMERIC_UNITLESS_PROPS = new Set<StylePropertyKey>([
   "flexShrink",
 ]);
 
-function assignStyleMap(target: Record<string, string | number>, map?: StyleValues) {
+function assignStyleMap(
+  target: Record<string, string | number>,
+  map?: StyleValues,
+  alreadySanitized = false
+) {
   if (!map) return;
-  const clean = sanitizeStyleValues(map as Record<string, unknown>);
+  const clean = alreadySanitized
+    ? map
+    : sanitizeStyleValues(map as Record<string, unknown>);
   for (const [key, val] of Object.entries(clean)) {
     if (!val) continue;
     const propKey = key as StylePropertyKey;
@@ -43,28 +49,35 @@ export function resolveStylesForViewport(
   hasViewportOverride: boolean;
 } {
   const base = sanitizeStyleValues((styles?.base || {}) as Record<string, unknown>);
-  const tablet = sanitizeStyleValues((styles?.tablet || {}) as Record<string, unknown>);
-  const mobile = sanitizeStyleValues((styles?.mobile || {}) as Record<string, unknown>);
-
   const resolved: StyleValues = { ...base };
   const overriddenKeys = new Set<StylePropertyKey>();
 
   if (viewport === "tablet" || viewport === "mobile") {
-    for (const [k, v] of Object.entries(tablet)) {
-      if (v !== undefined) {
-        resolved[k as StylePropertyKey] = v;
-        if (viewport === "tablet") {
-          overriddenKeys.add(k as StylePropertyKey);
+    const tablet = styles?.tablet
+      ? sanitizeStyleValues(styles.tablet as Record<string, unknown>)
+      : null;
+    if (tablet) {
+      for (const [k, v] of Object.entries(tablet)) {
+        if (v !== undefined) {
+          resolved[k as StylePropertyKey] = v;
+          if (viewport === "tablet") {
+            overriddenKeys.add(k as StylePropertyKey);
+          }
         }
       }
     }
   }
 
   if (viewport === "mobile") {
-    for (const [k, v] of Object.entries(mobile)) {
-      if (v !== undefined) {
-        resolved[k as StylePropertyKey] = v;
-        overriddenKeys.add(k as StylePropertyKey);
+    const mobile = styles?.mobile
+      ? sanitizeStyleValues(styles.mobile as Record<string, unknown>)
+      : null;
+    if (mobile) {
+      for (const [k, v] of Object.entries(mobile)) {
+        if (v !== undefined) {
+          resolved[k as StylePropertyKey] = v;
+          overriddenKeys.add(k as StylePropertyKey);
+        }
       }
     }
   }
@@ -82,7 +95,7 @@ export function compileNodeInlineStyle(
 ): CSSProperties {
   const { resolved } = resolveStylesForViewport(styles, viewport);
   const cssObj: Record<string, string | number> = {};
-  assignStyleMap(cssObj, resolved);
+  assignStyleMap(cssObj, resolved, true);
   return cssObj as CSSProperties;
 }
 
@@ -178,19 +191,35 @@ export function isVisibleForViewport(
   return true;
 }
 
+const CAMEL_UPPER_RE = /[A-Z]/g;
+const UNSAFE_SELECTOR_ATTR_RE = /[^A-Za-z0-9_-]/g;
+const KEBAB_CACHE = new Map<string, string>();
+
 function toKebabCase(camel: string): string {
-  return camel.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+  const cached = KEBAB_CACHE.get(camel);
+  if (cached !== undefined) return cached;
+  const kebab = camel.replace(CAMEL_UPPER_RE, (m) => `-${m.toLowerCase()}`);
+  KEBAB_CACHE.set(camel, kebab);
+  return kebab;
 }
 
-function serializeDeclarations(map: StyleValues): string {
-  const clean = sanitizeStyleValues(map as Record<string, unknown>);
-  return Object.entries(clean)
-    .map(([k, v]) => `${toKebabCase(k)}: ${v};`)
-    .join(" ");
+function serializeDeclarations(map: StyleValues, alreadySanitized = false): string {
+  const clean = alreadySanitized
+    ? map
+    : sanitizeStyleValues(map as Record<string, unknown>);
+  const entries = Object.entries(clean);
+  if (!entries.length) return "";
+  let out = "";
+  for (let i = 0; i < entries.length; i += 1) {
+    const [k, v] = entries[i];
+    if (i > 0) out += " ";
+    out += `${toKebabCase(k)}: ${v};`;
+  }
+  return out;
 }
 
 function escapeSelectorAttr(id: string): string {
-  return id.replace(/[^A-Za-z0-9_-]/g, "");
+  return id.replace(UNSAFE_SELECTOR_ATTR_RE, "");
 }
 
 /**
@@ -324,7 +353,7 @@ export function compileEditPartCss(
           if (!safePart || !partResp) continue;
           const partSelector = `${nodeSelector} [data-builder-part="${safePart}"][data-builder-part="${safePart}"]`;
           const { resolved } = resolveStylesForViewport(partResp, viewport);
-          const decl = serializeDeclarations(resolved);
+          const decl = serializeDeclarations(resolved, true);
           if (decl) {
             rules.push(`${partSelector} { ${decl} }`);
           }
@@ -342,6 +371,19 @@ export function compileEditPartCss(
 
   visit(nodes);
 
+  const highlightCss = compileEditHighlightCss(highlight);
+  if (highlightCss) {
+    rules.push(highlightCss);
+  }
+
+  return rules.join("\n");
+}
+
+export function compileEditHighlightCss(highlight?: {
+  selectedPart?: { nodeId: string; partKey: string } | null;
+  hoveredPart?: { nodeId: string; partKey: string } | null;
+}): string {
+  const rules: string[] = [];
   const hovered = highlight?.hoveredPart;
   const selected = highlight?.selectedPart;
   if (
@@ -367,6 +409,5 @@ export function compileEditPartCss(
       );
     }
   }
-
   return rules.join("\n");
 }

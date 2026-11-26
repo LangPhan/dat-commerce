@@ -67,16 +67,15 @@ function isSafePreloadUrl(raw: string): boolean {
   return lower.startsWith("https://") || lower.startsWith("http://");
 }
 
+const CSS_BG_URL_REGEX = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
+
 function collectBackgroundUrls(bgValue: string | undefined, out: string[]) {
   if (!bgValue) return;
-  const regex = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
-  let match: RegExpExecArray | null = regex.exec(bgValue);
-  while (match !== null) {
+  for (const match of bgValue.matchAll(CSS_BG_URL_REGEX)) {
     const candidate = (match[2] || "").trim();
     if (isSafePreloadUrl(candidate) && !out.includes(candidate)) {
       out.push(candidate);
     }
-    match = regex.exec(bgValue);
   }
 }
 

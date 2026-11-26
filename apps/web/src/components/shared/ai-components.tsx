@@ -142,8 +142,8 @@ export function ToolExecutionTimeline({
               isPending && "step-pending"
             )}
           >
-            <span className="step-icon">
-              <Icon size={13} className={isRunning ? "spin" : undefined} />
+            <span className={cn("step-icon", isRunning && "spin")}>
+              <Icon size={13} />
             </span>
             <div className="step-body">
               <div className="step-head">

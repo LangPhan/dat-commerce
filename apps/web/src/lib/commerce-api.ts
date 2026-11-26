@@ -36,11 +36,14 @@ import type {
 } from "@/types/api-commerce";
 
 const CART_SESSION_KEY = "dc_cart_session_token";
+let cachedCartSession: string | null | undefined = undefined;
 
 function getStoredCartSession(): string | null {
   if (typeof window === "undefined") return null;
+  if (cachedCartSession !== undefined) return cachedCartSession;
   try {
-    return window.sessionStorage.getItem(CART_SESSION_KEY);
+    cachedCartSession = window.sessionStorage.getItem(CART_SESSION_KEY);
+    return cachedCartSession;
   } catch {
     return null;
   }
@@ -48,6 +51,7 @@ function getStoredCartSession(): string | null {
 
 function setStoredCartSession(token: string | null | undefined) {
   if (typeof window === "undefined" || !token) return;
+  cachedCartSession = token;
   try {
     window.sessionStorage.setItem(CART_SESSION_KEY, token);
   } catch {
@@ -56,6 +60,7 @@ function setStoredCartSession(token: string | null | undefined) {
 }
 
 export function clearStoredCartSession() {
+  cachedCartSession = null;
   if (typeof window === "undefined") return;
   try {
     window.sessionStorage.removeItem(CART_SESSION_KEY);

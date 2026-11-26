@@ -1335,6 +1335,11 @@
   background: var(--surface);
 }
 
+.ai-model-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
+}
+
 .ai-priority-row.is-default {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   background: color-mix(in srgb, var(--accent) 5%, var(--surface));

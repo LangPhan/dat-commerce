@@ -23,15 +23,19 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
+import {
   Message,
   MessageContent,
   MessageResponse,
+} from "@/components/ai-elements/message";
+import {
   PromptInput,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputToolbar,
-  Suggestions,
-} from "@/components/ai-elements";
+} from "@/components/ai-elements/prompt-input";
+import { Suggestions } from "@/components/ai-elements/suggestion";
 import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import {
@@ -108,13 +112,13 @@ export function StorefrontAiAssistant({
   });
 
   const activeQuota = quotaOverride || quotaQuery.data || null;
-  const quotaPct = useMemo(() => {
-    if (!activeQuota || activeQuota.dailyLimit <= 0) return 0;
-    return Math.min(
-      100,
-      Math.round((activeQuota.usedTokens / activeQuota.dailyLimit) * 100)
-    );
-  }, [activeQuota]);
+  const quotaPct =
+    !activeQuota || activeQuota.dailyLimit <= 0
+      ? 0
+      : Math.min(
+          100,
+          Math.round((activeQuota.usedTokens / activeQuota.dailyLimit) * 100)
+        );
 
   const isQuotaBlocked = Boolean(
     activeQuota && (!activeQuota.enabled || activeQuota.remainingTokens <= 0)
@@ -616,11 +620,9 @@ export function StorefrontAiAssistant({
                               opacity: 0.75,
                             }}
                           >
-                            <LoaderCircle
-                              size={14}
-                              className="spin"
-                              aria-hidden="true"
-                            />
+                            <span className="spin inline-flex" aria-hidden="true">
+                              <LoaderCircle size={14} />
+                            </span>
                             <span>Thinking...</span>
                           </div>
                         </MessageContent>

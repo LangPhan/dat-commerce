@@ -1,3 +1,6 @@
+const SSE_LINE_SPLIT_RE = /\r?\n/;
+const SSE_BLOCK_SPLIT_RE = /\r?\n\r?\n/;
+
 import {
   ApiError,
   apiFetch,
@@ -277,7 +280,7 @@ export const aiAdminApi = {
       if (!rawBlock.trim()) return;
       let eventName = "message";
       const dataLines: string[] = [];
-      for (const line of rawBlock.split(/\r?\n/)) {
+      for (const line of rawBlock.split(SSE_LINE_SPLIT_RE)) {
         if (line.startsWith("event:")) {
           eventName = line.slice("event:".length).trim();
         } else if (line.startsWith("data:")) {
@@ -327,7 +330,7 @@ export const aiAdminApi = {
       const { value, done } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split(/\r?\n\r?\n/);
+      const parts = buffer.split(SSE_BLOCK_SPLIT_RE);
       buffer = parts.pop() || "";
       for (const part of parts) {
         dispatchBlock(part);

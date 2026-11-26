@@ -24,6 +24,14 @@ import type {
 
 const DANGEROUS_PATTERN =
   /(<\s*(script|iframe|object|embed|style)\b|\bon[a-z]{2,}\s*=|(javascript|vbscript):|data\s*:\s*text\/html)/i;
+const PALETTE_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+
+const ALLOWED_TONES = new Set(["forest", "ink", "light"]);
+const ALLOWED_LAYOUTS = new Set(["overlay", "split", "centered"]);
+const ALLOWED_SPACINGS = new Set(["compact", "comfortable", "spacious"]);
+
+const EMPTY_CSS_VARS: CSSProperties = {};
+const themeCssVarsCache = new WeakMap<ThemeTokens, CSSProperties>();
 
 const KIND_TO_SLUG: Record<BlockKind, BlockTypeSlug> = {
   Hero: "hero",
@@ -88,7 +96,7 @@ export const apiBlockSchema = z.object({
 });
 
 export const brandPaletteColorSchema = z.object({
-  id: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/),
+  id: z.string().regex(PALETTE_ID_RE),
   name: z.string().trim().min(1).max(32),
   hex: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
 });
@@ -131,41 +139,38 @@ export const themeTokensSchema = z.object({
 
 export function apiBlocksToEditorBlocks(content?: PageContentPayload | null): Block[] {
   const list = content?.blocks || [];
-  return list
-    .filter((b) => SLUG_TO_KIND[b.type])
-    .map((b) => {
-      const props = b.props || {};
-      const colsRaw = Number(props.columns);
-      const columns: 2 | 3 | 4 = colsRaw === 2 || colsRaw === 3 ? colsRaw : 4;
-      return {
-        id: b.id,
-        type: SLUG_TO_KIND[b.type],
-        label: b.label,
-        visible: b.visible !== false,
-        kicker: props.kicker ? String(props.kicker) : "",
-        heading: props.heading ? String(props.heading) : "",
-        copy: props.copy ? String(props.copy) : "",
-        action: props.action ? String(props.action) : "",
-        actionUrl: props.actionUrl ? String(props.actionUrl) : "/store/shop",
-        image: props.image ? String(props.image) : "/media/terrain-fallback.jpg",
-        tone: (["forest", "ink", "light"].includes(String(props.tone))
-          ? String(props.tone)
-          : "light") as BlockTone,
-        layout: (["overlay", "split", "centered"].includes(String(props.layout))
-          ? String(props.layout)
-          : "overlay") as BlockLayout,
-        scale: (String(props.scale) === "large" ? "large" : "regular") as BlockScale,
-        spacing: (["compact", "comfortable", "spacious"].includes(
-          String(props.spacing)
-        )
-          ? String(props.spacing)
-          : "comfortable") as BlockSpacing,
-        columns,
-        items: Array.isArray(props.items)
-          ? (props.items as BlockItem[])
-          : undefined,
-      };
+  const result: Block[] = [];
+  for (const b of list) {
+    const kind = SLUG_TO_KIND[b.type];
+    if (!kind) continue;
+    const props = b.props || {};
+    const colsRaw = Number(props.columns);
+    const columns: 2 | 3 | 4 = colsRaw === 2 || colsRaw === 3 ? colsRaw : 4;
+    const rawTone = String(props.tone);
+    const rawLayout = String(props.layout);
+    const rawSpacing = String(props.spacing);
+    result.push({
+      id: b.id,
+      type: kind,
+      label: b.label,
+      visible: b.visible !== false,
+      kicker: props.kicker ? String(props.kicker) : "",
+      heading: props.heading ? String(props.heading) : "",
+      copy: props.copy ? String(props.copy) : "",
+      action: props.action ? String(props.action) : "",
+      actionUrl: props.actionUrl ? String(props.actionUrl) : "/store/shop",
+      image: props.image ? String(props.image) : "/media/terrain-fallback.jpg",
+      tone: (ALLOWED_TONES.has(rawTone) ? rawTone : "light") as BlockTone,
+      layout: (ALLOWED_LAYOUTS.has(rawLayout) ? rawLayout : "overlay") as BlockLayout,
+      scale: (String(props.scale) === "large" ? "large" : "regular") as BlockScale,
+      spacing: (ALLOWED_SPACINGS.has(rawSpacing) ? rawSpacing : "comfortable") as BlockSpacing,
+      columns,
+      items: Array.isArray(props.items)
+        ? (props.items as BlockItem[])
+        : undefined,
     });
+  }
+  return result;
 }
 
 export function editorBlocksToApiBlocks(blocks: Block[]): { version: 1; blocks: ApiPageBlock[] } {
@@ -194,8 +199,13 @@ export function editorBlocksToApiBlocks(blocks: Block[]): { version: 1; blocks: 
 }
 
 export function themeTokensToCssVars(tokens?: ThemeTokens | null): CSSProperties {
-  if (!tokens) return {};
-  return {
+  if (!tokens) return EMPTY_CSS_VARS;
+  const cached = themeCssVarsCache.get(tokens);
+  if (cached) return cached;
+
+  const typography = normalizeGlobalTypography(tokens.typography);
+  const motion = normalizeGlobalMotion(tokens.motion);
+  const vars: Record<string, string> = {
     "--accent": tokens.colors.primary,
     "--accent-hover": `color-mix(in srgb, ${tokens.colors.primary} 84%, #000000)`,
     "--accent-soft": `color-mix(in srgb, ${tokens.colors.primary} 12%, #ffffff)`,
@@ -212,55 +222,57 @@ export function themeTokensToCssVars(tokens?: ThemeTokens | null): CSSProperties
     "--store-secondary": tokens.colors.secondary || "#1F2937",
     "--store-accent": tokens.colors.accent || "#18794E",
     "--store-border": tokens.colors.border || "#E5E7EB",
-    "--font-primary": (() => {
-      const t = normalizeGlobalTypography(tokens.typography);
-      return formatCssFontStack(t.fonts.primary.family, t.fonts.primary.fallback);
-    })(),
-    "--font-secondary": (() => {
-      const t = normalizeGlobalTypography(tokens.typography);
-      return formatCssFontStack(t.fonts.secondary.family, t.fonts.secondary.fallback);
-    })(),
-    "--font-heading": (() => {
-      const t = normalizeGlobalTypography(tokens.typography);
-      return formatCssFontStack(t.fonts.heading.family, t.fonts.heading.fallback);
-    })(),
-    "--font-body": (() => {
-      const t = normalizeGlobalTypography(tokens.typography);
-      return formatCssFontStack(t.fonts.body.family, t.fonts.body.fallback);
-    })(),
-    "--font-monospace": (() => {
-      const t = normalizeGlobalTypography(tokens.typography);
-      return formatCssFontStack(t.fonts.monospace.family, t.fonts.monospace.fallback);
-    })(),
+    "--font-primary": formatCssFontStack(
+      typography.fonts.primary.family,
+      typography.fonts.primary.fallback
+    ),
+    "--font-secondary": formatCssFontStack(
+      typography.fonts.secondary.family,
+      typography.fonts.secondary.fallback
+    ),
+    "--font-heading": formatCssFontStack(
+      typography.fonts.heading.family,
+      typography.fonts.heading.fallback
+    ),
+    "--font-body": formatCssFontStack(
+      typography.fonts.body.family,
+      typography.fonts.body.fallback
+    ),
+    "--font-monospace": formatCssFontStack(
+      typography.fonts.monospace.family,
+      typography.fonts.monospace.fallback
+    ),
     "--store-font-heading": tokens.typography?.headingFont || "Georgia",
     "--store-font-body": tokens.typography?.bodyFont || "Inter",
     "--store-radius-card": tokens.radius?.card || "10px",
     "--store-radius-button": tokens.radius?.button || "8px",
-    ...(() => {
-      const m = normalizeGlobalMotion(tokens.motion);
-      return {
-        "--motion-fast": `${m.timingTokens.fast}ms`,
-        "--motion-normal": `${m.timingTokens.normal}ms`,
-        "--motion-slow": `${m.timingTokens.slow}ms`,
-        "--motion-duration": `${m.defaultDuration}ms`,
-        "--motion-hover-duration": `${m.defaultHoverDuration}ms`,
-        "--motion-ease-linear": m.easingTokens.linear,
-        "--motion-ease": m.easingTokens.ease,
-        "--motion-ease-in": m.easingTokens.easeIn,
-        "--motion-ease-out": m.easingTokens.easeOut,
-        "--motion-ease-in-out": m.easingTokens.easeInOut,
-        "--motion-ease-custom": m.easingTokens.custom,
-      };
-    })(),
+    "--motion-fast": `${motion.timingTokens.fast}ms`,
+    "--motion-normal": `${motion.timingTokens.normal}ms`,
+    "--motion-slow": `${motion.timingTokens.slow}ms`,
+    "--motion-duration": `${motion.defaultDuration}ms`,
+    "--motion-hover-duration": `${motion.defaultHoverDuration}ms`,
+    "--motion-ease-linear": motion.easingTokens.linear,
+    "--motion-ease": motion.easingTokens.ease,
+    "--motion-ease-in": motion.easingTokens.easeIn,
+    "--motion-ease-out": motion.easingTokens.easeOut,
+    "--motion-ease-in-out": motion.easingTokens.easeInOut,
+    "--motion-ease-custom": motion.easingTokens.custom,
     "--store-max-width": tokens.container?.maxWidth || "1280px",
     "--store-section-y": tokens.spacing?.sectionY || "64px",
     "--store-block-gap": tokens.spacing?.blockGap || "24px",
     "--store-shadow-card": tokens.shadows?.card || "0 1px 3px rgba(15, 23, 42, 0.08)",
     "--store-shadow-elevated": tokens.shadows?.elevated || "0 12px 32px rgba(15, 23, 42, 0.14)",
-    ...Object.fromEntries(
-      (tokens.customPalette || [])
-        .filter((item) => /^[A-Za-z0-9_-]{1,40}$/.test(item.id))
-        .map((item) => [`--store-palette-${item.id}`, item.hex])
-    ),
-  } as CSSProperties;
+  };
+
+  if (tokens.customPalette) {
+    for (const item of tokens.customPalette) {
+      if (PALETTE_ID_RE.test(item.id)) {
+        vars[`--store-palette-${item.id}`] = item.hex;
+      }
+    }
+  }
+
+  const result = vars as CSSProperties;
+  themeCssVarsCache.set(tokens, result);
+  return result;
 }

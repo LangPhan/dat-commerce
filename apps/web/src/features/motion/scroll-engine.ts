@@ -118,8 +118,9 @@ export function applyScrollProgressToElement(
   progress01: number
 ): void {
   const vars = computeScrollVariables(cfg, progress01);
-  for (const [k, v] of Object.entries(vars)) {
-    el.style.setProperty(k, v);
+  const style = el.style;
+  for (const key in vars) {
+    style.setProperty(key, vars[key]);
   }
 }
 
@@ -129,6 +130,7 @@ type Subscriber = {
   scroller: Window | HTMLElement;
 };
 
+const OVERFLOW_SCROLL_RE = /(auto|scroll)/;
 const subscribers = new Set<Subscriber>();
 const boundScrollers = new Map<Window | HTMLElement, number>();
 let rafId: number | null = null;
@@ -137,7 +139,7 @@ function findScrollContainer(el: HTMLElement): Window | HTMLElement {
   let cur: HTMLElement | null = el.parentElement;
   while (cur) {
     const style = window.getComputedStyle(cur);
-    if (/(auto|scroll)/.test(style.overflowY) && cur.scrollHeight > cur.clientHeight + 4) {
+    if (OVERFLOW_SCROLL_RE.test(style.overflowY) && cur.scrollHeight > cur.clientHeight + 4) {
       return cur;
     }
     cur = cur.parentElement;
@@ -147,23 +149,41 @@ function findScrollContainer(el: HTMLElement): Window | HTMLElement {
 
 function flushScrollSubscribers(): void {
   rafId = null;
+  if (subscribers.size === 0) return;
+
   const vh = window.innerHeight || 900;
+  const containerRects = new Map<HTMLElement, { top: number; height: number }>();
+  const pendingWrites: Array<{ sub: Subscriber; progress: number }> = [];
+
+  // Phase 1: Batch all DOM layout reads before any style writes to prevent layout thrashing
   for (const sub of subscribers) {
     const rect = sub.el.getBoundingClientRect();
     const offset = sub.cfg.offset ?? 0;
     let containerTop = 0;
     let containerHeight = vh;
     if (sub.scroller !== window) {
-      const cRect = (sub.scroller as HTMLElement).getBoundingClientRect();
-      containerTop = cRect.top;
-      containerHeight = cRect.height || vh;
+      const scrollerEl = sub.scroller as HTMLElement;
+      let cached = containerRects.get(scrollerEl);
+      if (!cached) {
+        const cRect = scrollerEl.getBoundingClientRect();
+        cached = { top: cRect.top, height: cRect.height || vh };
+        containerRects.set(scrollerEl, cached);
+      }
+      containerTop = cached.top;
+      containerHeight = cached.height;
     }
     const totalTravel = containerHeight + rect.height;
     const raw =
       totalTravel > 0
         ? (containerTop + containerHeight - (rect.top + offset)) / totalTravel
         : 0.5;
-    applyScrollProgressToElement(sub.el, sub.cfg, clamp01(raw));
+    pendingWrites.push({ sub, progress: clamp01(raw) });
+  }
+
+  // Phase 2: Batch all DOM style writes
+  for (let i = 0; i < pendingWrites.length; i++) {
+    const item = pendingWrites[i];
+    applyScrollProgressToElement(item.sub.el, item.sub.cfg, item.progress);
   }
 }
 

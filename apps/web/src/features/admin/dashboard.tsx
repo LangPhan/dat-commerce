@@ -8,7 +8,7 @@ import {
   Package,
   TrendingUp,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
@@ -21,7 +21,157 @@ import {
   adminOrderApi,
 } from "@/lib/commerce-api";
 import { usd, usdExact } from "@/lib/format";
-import type { OrderDto } from "@/types/api-commerce";
+import type { AnalyticsSummaryDto, OrderDto } from "@/types/api-commerce";
+
+const REV_CHART_W = 540;
+const REV_CHART_H = 160;
+const REV_PAD_X = 28;
+const REV_PAD_Y = 16;
+const REV_USABLE_W = REV_CHART_W - REV_PAD_X * 2;
+const REV_USABLE_H = REV_CHART_H - REV_PAD_Y * 2;
+
+const REV_CHART_DEFS = (
+  <defs>
+    <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
+      <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.01" />
+    </linearGradient>
+  </defs>
+);
+
+const REV_CHART_GRID_LINES = [0.25, 0.5, 0.75, 1].map((ratio) => {
+  const y = REV_PAD_Y + REV_USABLE_H * (1 - ratio);
+  return (
+    <line
+      key={ratio}
+      x1={REV_PAD_X}
+      x2={REV_CHART_W - REV_PAD_X}
+      y1={y}
+      y2={y}
+      stroke="var(--line)"
+      strokeWidth="1"
+    />
+  );
+});
+
+function RevenueChart({
+  revenueSeries,
+}: {
+  revenueSeries: AnalyticsSummaryDto["revenueSeries"];
+}) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
+  const { points, polyline, areaPath } = useMemo(() => {
+    const series = revenueSeries.length
+      ? revenueSeries
+      : [{ label: "Today", amount: 0, orders: 0 }];
+    let maxAmount = 1;
+    for (let i = 0; i < series.length; i += 1) {
+      const amt = Number(series[i].amount);
+      if (amt > maxAmount) maxAmount = amt;
+    }
+
+    const pts = new Array<{
+      label: string;
+      amount: number;
+      orders: number;
+      x: number;
+      y: number;
+    }>(series.length);
+    const polyParts = new Array<string>(series.length);
+
+    for (let i = 0; i < series.length; i += 1) {
+      const pt = series[i];
+      const x =
+        series.length === 1
+          ? REV_CHART_W / 2
+          : REV_PAD_X + (i / (series.length - 1)) * REV_USABLE_W;
+      const y =
+        REV_PAD_Y + REV_USABLE_H - (Number(pt.amount) / maxAmount) * REV_USABLE_H;
+      pts[i] = { ...pt, x, y };
+      polyParts[i] = `${x},${y}`;
+    }
+
+    const lineStr = polyParts.join(" ");
+    const areaStr =
+      pts.length > 1
+        ? `M ${pts[0].x},${REV_CHART_H - REV_PAD_Y} L ${polyParts.join(" L ")} L ${pts[pts.length - 1].x},${REV_CHART_H - REV_PAD_Y} Z`
+        : "";
+    return { points: pts, polyline: lineStr, areaPath: areaStr };
+  }, [revenueSeries]);
+
+  const activePoint =
+    hoveredIdx !== null ? points[hoveredIdx] : points[points.length - 1];
+
+  return (
+    <section className="panel">
+      <div className="chart-head">
+        <div>
+          <h2>Revenue trajectory</h2>
+          <p className="muted">Daily order revenue in USD</p>
+        </div>
+        {activePoint ? (
+          <Badge tone="accent">
+            {activePoint.label}: {usd(Number(activePoint.amount))} ·{" "}
+            {activePoint.orders} orders
+          </Badge>
+        ) : null}
+      </div>
+
+      <div className="svg-chart-wrap">
+        <svg
+          viewBox={`0 0 ${REV_CHART_W} ${REV_CHART_H + 22}`}
+          role="img"
+          aria-label="Revenue chart"
+          style={{ height: 180 }}
+        >
+          {REV_CHART_DEFS}
+          {REV_CHART_GRID_LINES}
+          {areaPath ? <path d={areaPath} fill="url(#revGrad)" /> : null}
+          <polyline
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            points={polyline}
+          />
+          {points.map((pt, idx) => (
+            <g key={pt.label}>
+              <circle
+                cx={pt.x}
+                cy={pt.y}
+                r={hoveredIdx === idx ? 5.5 : 3.8}
+                fill="var(--surface)"
+                stroke="var(--accent)"
+                strokeWidth="2.5"
+              />
+              <rect
+                x={pt.x - 22}
+                y={0}
+                width={44}
+                height={REV_CHART_H + 20}
+                fill="transparent"
+                style={{ cursor: "pointer" }}
+                onMouseEnter={() => setHoveredIdx(idx)}
+                onMouseLeave={() => setHoveredIdx(null)}
+              />
+              <text
+                x={pt.x}
+                y={REV_CHART_H + 12}
+                textAnchor="middle"
+                fontSize="10.5"
+                fill="var(--muted)"
+              >
+                {pt.label}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+    </section>
+  );
+}
 
 export function Dashboard({ notify }: { notify: (msg: string) => void }) {
   const queryClient = useQueryClient();
@@ -29,15 +179,13 @@ export function Dashboard({ notify }: { notify: (msg: string) => void }) {
   const canAdjustInventory = hasPermission("inventory:write");
   const canReadOrders = hasPermission("order:read");
 
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-
   const summaryQuery = useQuery({
     queryKey: ["admin-analytics"],
     queryFn: () => adminAnalyticsApi.summary(),
   });
 
   const ordersQuery = useQuery({
-    queryKey: ["admin-orders", "dashboard"],
+    queryKey: ["admin-orders", ""],
     queryFn: () => adminOrderApi.list(),
     enabled: canReadOrders,
   });
@@ -77,38 +225,7 @@ export function Dashboard({ notify }: { notify: (msg: string) => void }) {
   }
 
   const summary = summaryQuery.data;
-  const series = summary.revenueSeries.length
-    ? summary.revenueSeries
-    : [{ label: "Today", amount: 0, orders: 0 }];
   const allOrders = ordersQuery.data || [];
-
-  const maxAmount = Math.max(...series.map((s) => Number(s.amount)), 1);
-  const chartW = 540;
-  const chartH = 160;
-  const padX = 28;
-  const padY = 16;
-  const usableW = chartW - padX * 2;
-  const usableH = chartH - padY * 2;
-
-  const points = series.map((pt, i) => {
-    const x =
-      series.length === 1
-        ? chartW / 2
-        : padX + (i / (series.length - 1)) * usableW;
-    const y = padY + usableH - (Number(pt.amount) / maxAmount) * usableH;
-    return { ...pt, x, y };
-  });
-
-  const polyline = points.map((p) => `${p.x},${p.y}`).join(" ");
-  const areaPath =
-    points.length > 1
-      ? `M ${points[0].x},${chartH - padY} L ${points
-          .map((p) => `${p.x},${p.y}`)
-          .join(" L ")} L ${points[points.length - 1].x},${chartH - padY} Z`
-      : "";
-
-  const activePoint =
-    hoveredIdx !== null ? points[hoveredIdx] : points[points.length - 1];
 
   const recentOrderColumns: DataTableColumn<OrderDto>[] = [
     {
@@ -178,90 +295,7 @@ export function Dashboard({ notify }: { notify: (msg: string) => void }) {
       </div>
 
       <div className="dash-charts">
-        <section className="panel">
-          <div className="chart-head">
-            <div>
-              <h2>Revenue trajectory</h2>
-              <p className="muted">Daily order revenue in USD</p>
-            </div>
-            {activePoint ? (
-              <Badge tone="accent">
-                {activePoint.label}: {usd(Number(activePoint.amount))} ·{" "}
-                {activePoint.orders} orders
-              </Badge>
-            ) : null}
-          </div>
-
-          <div className="svg-chart-wrap">
-            <svg
-              viewBox={`0 0 ${chartW} ${chartH + 22}`}
-              role="img"
-              aria-label="Revenue chart"
-              style={{ height: 180 }}
-            >
-              <defs>
-                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
-                  <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.01" />
-                </linearGradient>
-              </defs>
-              {[0.25, 0.5, 0.75, 1].map((ratio) => {
-                const y = padY + usableH * (1 - ratio);
-                return (
-                  <line
-                    key={ratio}
-                    x1={padX}
-                    x2={chartW - padX}
-                    y1={y}
-                    y2={y}
-                    stroke="var(--line)"
-                    strokeWidth="1"
-                  />
-                );
-              })}
-              {areaPath ? <path d={areaPath} fill="url(#revGrad)" /> : null}
-              <polyline
-                fill="none"
-                stroke="var(--accent)"
-                strokeWidth="2.5"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                points={polyline}
-              />
-              {points.map((pt, idx) => (
-                <g key={pt.label}>
-                  <circle
-                    cx={pt.x}
-                    cy={pt.y}
-                    r={hoveredIdx === idx ? 5.5 : 3.8}
-                    fill="var(--surface)"
-                    stroke="var(--accent)"
-                    strokeWidth="2.5"
-                  />
-                  <rect
-                    x={pt.x - 22}
-                    y={0}
-                    width={44}
-                    height={chartH + 20}
-                    fill="transparent"
-                    style={{ cursor: "pointer" }}
-                    onMouseEnter={() => setHoveredIdx(idx)}
-                    onMouseLeave={() => setHoveredIdx(null)}
-                  />
-                  <text
-                    x={pt.x}
-                    y={chartH + 12}
-                    textAnchor="middle"
-                    fontSize="10.5"
-                    fill="var(--muted)"
-                  >
-                    {pt.label}
-                  </text>
-                </g>
-              ))}
-            </svg>
-          </div>
-        </section>
+        <RevenueChart revenueSeries={summary.revenueSeries} />
 
         <section className="panel sales-category">
           <div className="chart-head">

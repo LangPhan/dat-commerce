@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Tag } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty } from "@/components/ui/data-display";
@@ -81,12 +81,19 @@ export function Promotions({
   const categoriesQuery = useQuery({
     queryKey: ["admin-categories"],
     queryFn: () => adminCatalogApi.listCategories(),
+    enabled: Boolean(draft),
   });
 
   const productsQuery = useQuery({
-    queryKey: ["admin-products", "promo-picker"],
+    queryKey: ["admin-products", "", "", ""],
     queryFn: () => adminCatalogApi.listProducts(),
+    enabled: Boolean(draft),
   });
+
+  const draftTargetIdSet = useMemo(
+    () => new Set(draft?.targetIds || []),
+    [draft?.targetIds]
+  );
 
   const createMutation = useMutation({
     mutationFn: (form: PromoDraft) =>
@@ -429,7 +436,7 @@ export function Promotions({
                 }}
               >
                 {(draft.scopeType === "CATEGORY" ? categories : products).map((entry) => {
-                  const checked = draft.targetIds.includes(entry.id);
+                  const checked = draftTargetIdSet.has(entry.id);
                   return (
                     <label className="check-label" key={entry.id}>
                       <input

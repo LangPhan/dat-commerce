@@ -1,6 +1,8 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
+import dynamic from "next/dynamic";
+import { useMemo } from "react";
 import { PageRenderer } from "@/features/builder/renderer/PageRenderer";
 import { GlobalTypographyStyleTag } from "@/features/typography/GlobalTypographyStyleTag";
 import { useEditorStore } from "@/features/builder/store/editor-store";
@@ -10,7 +12,18 @@ import { themeTokensToCssVars } from "@/lib/cms-schema";
 import type { AnimationPresetDefinition } from "@/features/motion/types";
 import type { ThemeTokens } from "@/types/api-cms-ai";
 import { cn } from "@/lib/format";
-import { FloatingAiBar } from "./ai/FloatingAiBar";
+const FloatingAiBar = dynamic(
+  () => import("./ai/FloatingAiBar").then((m) => m.FloatingAiBar),
+  { ssr: false }
+);
+
+const GRID_GUIDES_OVERLAY = (
+  <div className="ed-grid-guides" aria-hidden="true">
+    {Array.from({ length: 12 }).map((_, i) => (
+      <div key={i} className="ed-grid-col" />
+    ))}
+  </div>
+);
 import {
   CanvasDropSlot,
   CanvasNodeDndShell,
@@ -78,10 +91,18 @@ export function EditorCanvas({
     : viewingBeforeApplied && lastAppliedAiCompare
       ? lastAppliedAiCompare.beforeThemeTokens || baseThemeTokens
       : baseThemeTokens;
-  const aiAffectedIds =
-    aiPreview && !viewingBeforePreview
-      ? new Set(aiPreview.diffs.map((d) => d.nodeId))
-      : undefined;
+  const aiAffectedIds = useMemo(
+    () =>
+      aiPreview && !viewingBeforePreview
+        ? new Set(aiPreview.diffs.map((d) => d.nodeId))
+        : undefined,
+    [aiPreview, viewingBeforePreview]
+  );
+
+  const themeCssVars = useMemo(
+    () => themeTokensToCssVars(activeThemeTokens),
+    [activeThemeTokens]
+  );
 
   const { setNodeRef: setEmptyRootDropRef, isOver: isRootEmptyOver } =
     useDroppable({
@@ -126,17 +147,11 @@ export function EditorCanvas({
             zoom: zoom === 1 ? undefined : zoom,
           }}
         >
-          {showGrid && !previewMode ? (
-            <div className="ed-grid-guides" aria-hidden="true">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="ed-grid-col" />
-              ))}
-            </div>
-          ) : null}
+          {showGrid && !previewMode ? GRID_GUIDES_OVERLAY : null}
 
           <div
             className="store public-store ed-store-surface"
-            style={themeTokensToCssVars(activeThemeTokens)}
+            style={themeCssVars}
           >
             <GlobalTypographyStyleTag
               typography={activeThemeTokens?.typography}
@@ -227,7 +242,7 @@ export function EditorCanvas({
         </div>
       </div>
 
-      {!previewMode ? (
+      {!previewMode && canUseAi ? (
         <FloatingAiBar
           canUseAi={canUseAi}
           canWrite={canWrite}

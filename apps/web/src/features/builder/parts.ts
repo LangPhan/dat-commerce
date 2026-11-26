@@ -104,6 +104,16 @@ export const ELEMENT_PARTS_BY_TYPE: Partial<
   ],
 };
 
+const ELEMENT_PARTS_INDEX: Partial<
+  Record<ElementType, Map<string, ElementPartDefinition>>
+> = {};
+for (const [typeKey, defs] of Object.entries(ELEMENT_PARTS_BY_TYPE)) {
+  if (!defs) continue;
+  ELEMENT_PARTS_INDEX[typeKey as ElementType] = new Map(
+    defs.map((p) => [p.key, p])
+  );
+}
+
 export function getElementParts(type: ElementType): ElementPartDefinition[] {
   return ELEMENT_PARTS_BY_TYPE[type] || [];
 }
@@ -113,7 +123,7 @@ export function getElementPart(
   key: string | null | undefined
 ): ElementPartDefinition | null {
   if (!key) return null;
-  return getElementParts(type).find((p) => p.key === key) || null;
+  return ELEMENT_PARTS_INDEX[type]?.get(key) ?? null;
 }
 
 export function isValidPartKey(key: string): boolean {

@@ -1,63 +1,32 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
 
-const STORAGE_EVENT = "forma:storage";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  readStoredValue,
+  subscribeStoredKey,
+  writeStoredValue,
+} from "./theme";
 
 export function useStored<T>(key: string, initial: T) {
+  const initialRef = useRef(initial);
   const [value, setValueState] = useState<T>(initial);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("forma:" + key);
-      if (saved !== null) {
-        setValueState(JSON.parse(saved) as T);
-      }
-    } catch {
-      /* Keep initial fallback when browser storage is unavailable. */
-    }
+    setValueState(readStoredValue<T>(key, initialRef.current));
     setReady(true);
-  }, [key]);
-
-  useEffect(() => {
-    const onCustom = (event: Event) => {
-      const custom = event as CustomEvent<{ key: string; value: T }>;
-      if (custom.detail?.key === key) {
-        setValueState(custom.detail.value);
-      }
-    };
-    const onNative = (event: StorageEvent) => {
-      if (event.key === "forma:" + key && event.newValue) {
-        try {
-          setValueState(JSON.parse(event.newValue) as T);
-        } catch {
-          /* Ignore malformed storage payload. */
-        }
-      }
-    };
-    window.addEventListener(STORAGE_EVENT, onCustom);
-    window.addEventListener("storage", onNative);
-    return () => {
-      window.removeEventListener(STORAGE_EVENT, onCustom);
-      window.removeEventListener("storage", onNative);
-    };
+    return subscribeStoredKey(key)(() => {
+      setValueState(readStoredValue<T>(key, initialRef.current));
+    });
   }, [key]);
 
   const setValue = useCallback(
     (next: T | ((prev: T) => T)) => {
-      setValueState((prev) => {
-        const resolved =
-          typeof next === "function" ? (next as (prev: T) => T)(prev) : next;
-        try {
-          localStorage.setItem("forma:" + key, JSON.stringify(resolved));
-          window.dispatchEvent(
-            new CustomEvent(STORAGE_EVENT, { detail: { key, value: resolved } })
-          );
-        } catch {
-          /* Best-effort persistence. */
-        }
-        return resolved;
-      });
+      const current = readStoredValue<T>(key, initialRef.current);
+      const resolved =
+        typeof next === "function" ? (next as (prev: T) => T)(current) : next;
+      writeStoredValue(key, resolved);
+      setValueState(resolved);
     },
     [key]
   );

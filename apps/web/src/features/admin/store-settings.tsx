@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -53,11 +53,22 @@ export function StoreSettingsView({
     queryFn: () => apiFetch<StoreInfo>("/api/v1/admin/store"),
   });
 
+  const formValues = useMemo<StoreFormValues | undefined>(() => {
+    if (!storeQuery.data) return undefined;
+    return {
+      name: storeQuery.data.name,
+      defaultCurrency: storeQuery.data.defaultCurrency,
+      locale: storeQuery.data.locale,
+      timezone: storeQuery.data.timezone,
+      contactEmail: storeQuery.data.contactEmail || "",
+      publicDomain: storeQuery.data.publicDomain || "",
+    };
+  }, [storeQuery.data]);
+
   const {
     control,
     register,
     handleSubmit,
-    reset,
     formState: { errors },
   } = useForm<StoreFormValues>({
     resolver: zodResolver(storeSchema),
@@ -69,20 +80,8 @@ export function StoreSettingsView({
       contactEmail: "",
       publicDomain: "",
     },
+    values: formValues,
   });
-
-  useEffect(() => {
-    if (storeQuery.data) {
-      reset({
-        name: storeQuery.data.name,
-        defaultCurrency: storeQuery.data.defaultCurrency,
-        locale: storeQuery.data.locale,
-        timezone: storeQuery.data.timezone,
-        contactEmail: storeQuery.data.contactEmail || "",
-        publicDomain: storeQuery.data.publicDomain || "",
-      });
-    }
-  }, [storeQuery.data, reset]);
 
   const mutation = useMutation({
     mutationFn: (values: StoreFormValues) =>

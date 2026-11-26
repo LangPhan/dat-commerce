@@ -20,6 +20,7 @@ import {
   Trash2,
   Unlock,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -85,9 +86,18 @@ import type {
   ElementMotionConfig,
   MotionCategory,
 } from "@/features/motion/types";
-import { AnimationLibraryModal } from "./AnimationLibraryModal";
-import { MediaPickerModal } from "./MediaPickerModal";
-import { MotionInspectorTab } from "./MotionInspectorTab";
+const AnimationLibraryModal = dynamic(
+  () => import("./AnimationLibraryModal").then((m) => m.AnimationLibraryModal),
+  { ssr: false }
+);
+const MediaPickerModal = dynamic(
+  () => import("./MediaPickerModal").then((m) => m.MediaPickerModal),
+  { ssr: false }
+);
+const MotionInspectorTab = dynamic(
+  () => import("./MotionInspectorTab").then((m) => m.MotionInspectorTab),
+  { ssr: false }
+);
 import {
   createCustomPaletteColor,
   getBrandPaletteOptions,
@@ -3150,58 +3160,59 @@ export function VisualInspector({
         })()
       ) : null}
 
-      <MediaPickerModal
-        open={Boolean(mediaTarget)}
-        currentUrl={
-          mediaTarget
-            ? mediaTarget.kind === "prop"
+      {mediaTarget ? (
+        <MediaPickerModal
+          open
+          currentUrl={
+            mediaTarget.kind === "prop"
               ? mediaTarget.currentUrl
               : parseBackgroundImage(mediaTarget.currentBg).imageUrl
-            : ""
-        }
-        canUploadMedia={canUploadMedia}
-        onOpenChange={(open) => {
-          if (!open) setMediaTarget(null);
-        }}
-        onSelect={(url) => {
-          if (!mediaTarget) return;
-          applySelectedMediaUrl(mediaTarget, url);
-        }}
-        onNotify={onNotify}
-      />
-      <AnimationLibraryModal
-        key={motionLibraryOpen ? `lib-${motionLibraryCategory}` : "lib-closed"}
-        open={motionLibraryOpen}
-        onOpenChange={setMotionLibraryOpen}
-        customPresets={customPresets}
-        canWrite={canWrite}
-        initialCategory={motionLibraryCategory}
-        onNotify={onNotify}
-        onApplyPreset={(preset) => {
-          const patch: Partial<ElementMotionConfig> = {
-            ...preset.config,
-            enabled: true,
-            presetRef: preset.presetKey,
-          };
-          if (selectedNodes.length > 1) {
-            applyMotionToSelected(
-              patch as ElementMotionConfig,
-              `Apply "${preset.name}" to ${selectedNodes.length} elements`
-            );
-            for (const n of selectedNodes) {
-              if (!n.locked) replayNodeMotion(n.id);
-            }
-          } else if (primary && !primary.locked) {
-            updateNodeMotion(
-              primary.id,
-              patch,
-              `Apply "${preset.name}" to ${primary.label}`
-            );
-            replayNodeMotion(primary.id);
           }
-          onNotify?.(`Applied animation preset "${preset.name}"`);
-        }}
-      />
+          canUploadMedia={canUploadMedia}
+          onOpenChange={(open) => {
+            if (!open) setMediaTarget(null);
+          }}
+          onSelect={(url) => {
+            applySelectedMediaUrl(mediaTarget, url);
+          }}
+          onNotify={onNotify}
+        />
+      ) : null}
+      {motionLibraryOpen ? (
+        <AnimationLibraryModal
+          key={`lib-${motionLibraryCategory}`}
+          open
+          onOpenChange={setMotionLibraryOpen}
+          customPresets={customPresets}
+          canWrite={canWrite}
+          initialCategory={motionLibraryCategory}
+          onNotify={onNotify}
+          onApplyPreset={(preset) => {
+            const patch: Partial<ElementMotionConfig> = {
+              ...preset.config,
+              enabled: true,
+              presetRef: preset.presetKey,
+            };
+            if (selectedNodes.length > 1) {
+              applyMotionToSelected(
+                patch as ElementMotionConfig,
+                `Apply "${preset.name}" to ${selectedNodes.length} elements`
+              );
+              for (const n of selectedNodes) {
+                if (!n.locked) replayNodeMotion(n.id);
+              }
+            } else if (primary && !primary.locked) {
+              updateNodeMotion(
+                primary.id,
+                patch,
+                `Apply "${preset.name}" to ${primary.label}`
+              );
+              replayNodeMotion(primary.id);
+            }
+            onNotify?.(`Applied animation preset "${preset.name}"`);
+          }}
+        />
+      ) : null}
     </aside>
   );
 }

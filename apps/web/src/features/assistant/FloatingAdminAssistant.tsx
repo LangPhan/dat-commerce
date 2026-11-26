@@ -28,7 +28,6 @@ import { aiAdminApi } from "@/lib/cms-ai-api";
 import { cn } from "@/lib/format";
 import { AssistantChatPanel } from "./AssistantChatPanel";
 import { useAdminAssistantStore } from "./assistant-ui-store";
-import { Button } from "@base-ui/react";
 
 export function FloatingAdminAssistant({
   view,
@@ -175,16 +174,15 @@ export function FloatingAdminAssistant({
                 {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </IconButton>
 
-              <Button className="icon-btn flex justify-center items-center rounded-sm">
-                <Link
-                  href="/admin/assistant"
-                  aria-label="Open full AI Assistant workspace"
-                  title="Open full AI Assistant page"
-                  onClick={() => setOpen(false)}
-                >
-                  <ExternalLink size={14} />
-                </Link>
-              </Button>
+              <Link
+                href="/admin/assistant"
+                aria-label="Open full AI Assistant workspace"
+                title="Open full AI Assistant page"
+                className="icon-btn flex justify-center items-center rounded-sm"
+                onClick={() => setOpen(false)}
+              >
+                <ExternalLink size={14} />
+              </Link>
 
               <IconButton
                 label="Close floating AI Assistant"

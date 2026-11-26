@@ -6,6 +6,15 @@ const config: NextConfig = {
   output: process.env.DOCKER_BUILD === "true" ? "standalone" : undefined,
   devIndicators: false,
   agentRules: false,
+  experimental: {
+    optimizePackageImports: [
+      "lucide-react",
+      "@base-ui/react",
+      "@dnd-kit/core",
+      "@dnd-kit/sortable",
+      "@tanstack/react-table",
+    ],
+  },
   async rewrites() {
     return [
       {

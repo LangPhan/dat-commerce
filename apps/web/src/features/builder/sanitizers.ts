@@ -84,6 +84,9 @@ const EVENT_ATTR_SINGLE = /\s+on[a-z]{2,}\s*=\s*'[^']*'/gi;
 const EVENT_ATTR_BARE = /\s+on[a-z]{2,}\s*=\s*[^\s>]+/gi;
 const UNSAFE_HREF_SRC =
   /(href|src)\s*=\s*(["'])\s*(?:javascript:|vbscript:|data\s*:\s*text\/html)[^"']*\2/gi;
+const CSS_CLASS_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const SAFE_HTML_ATTR_RE = /^(aria-[a-z0-9-]+|data-[a-z0-9-]+|role|id|title|tabindex)$/;
+const UNSAFE_ATTR_PROTO_RE = /(javascript:|vbscript:)/i;
 
 export function sanitizeUrl(raw: unknown, fallback = "#"): string {
   if (typeof raw !== "string") return fallback;
@@ -145,7 +148,7 @@ export function sanitizeCssClasses(raw: string[] | undefined): string[] {
   const seen = new Set<string>();
   for (const cls of raw) {
     const trimmed = typeof cls === "string" ? cls.trim() : "";
-    if (/^[A-Za-z0-9_-]{1,64}$/.test(trimmed) && !seen.has(trimmed)) {
+    if (CSS_CLASS_RE.test(trimmed) && !seen.has(trimmed)) {
       seen.add(trimmed);
       valid.push(trimmed);
     }
@@ -160,11 +163,11 @@ export function sanitizeHtmlAttributes(
   const clean: Record<string, string> = {};
   for (const [k, v] of Object.entries(raw)) {
     const attr = k.trim().toLowerCase();
-    if (!/^(aria-[a-z0-9-]+|data-[a-z0-9-]+|role|id|title|tabindex)$/.test(attr)) {
+    if (!SAFE_HTML_ATTR_RE.test(attr)) {
       continue;
     }
     const strVal = String(v ?? "").slice(0, 200);
-    if (/(javascript:|vbscript:)/i.test(strVal)) continue;
+    if (UNSAFE_ATTR_PROTO_RE.test(strVal)) continue;
     clean[attr] = strVal;
   }
   return clean;
@@ -181,5 +184,5 @@ export function sanitizeHtmlSubset(raw: string): string {
 }
 
 export function isValidCssClass(cls: string): boolean {
-  return /^[A-Za-z0-9_-]{1,64}$/.test(cls);
+  return CSS_CLASS_RE.test(cls);
 }

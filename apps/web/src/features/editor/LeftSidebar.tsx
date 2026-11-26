@@ -49,7 +49,7 @@ import {
   Unlock,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { isContainerType } from "@/features/builder/operations";
 import {
@@ -108,7 +108,7 @@ const CATEGORY_ORDER: { key: ElementCategory; label: string }[] = [
 
 type LeftTab = "elements" | "layers" | "history";
 
-function LayerTreeRow({
+const LayerTreeRow = memo(function LayerTreeRow({
   node,
   parentId,
   index,
@@ -119,9 +119,10 @@ function LayerTreeRow({
   index: number;
   depth: number;
 }) {
-  const selectedIds = useEditorStore((s) => s.selectedIds);
-  const hoveredId = useEditorStore((s) => s.hoveredId);
-  const expandedLayerIds = useEditorStore((s) => s.expandedLayerIds);
+  const isSelected = useEditorStore((s) => s.selectedIds.includes(node.id));
+  const isHovered = useEditorStore((s) => s.hoveredId === node.id);
+  const expanded = useEditorStore((s) => s.expandedLayerIds[node.id] ?? true);
+  const isOnlyRoot = useEditorStore((s) => depth === 0 && s.nodes.length <= 1);
   const selectNode = useEditorStore((s) => s.selectNode);
   const setHoveredId = useEditorStore((s) => s.setHoveredId);
   const toggleLayerExpanded = useEditorStore((s) => s.toggleLayerExpanded);
@@ -129,16 +130,12 @@ function LayerTreeRow({
   const toggleNodeLock = useEditorStore((s) => s.toggleNodeLock);
   const renameNode = useEditorStore((s) => s.renameNode);
   const executeOperation = useEditorStore((s) => s.executeOperation);
-  const nodes = useEditorStore((s) => s.nodes);
 
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(node.label);
 
-  const isSelected = selectedIds.includes(node.id);
-  const isHovered = hoveredId === node.id;
   const isContainer = isContainerType(node.type);
   const hasChildren = Boolean(node.children && node.children.length > 0);
-  const expanded = expandedLayerIds[node.id] ?? true;
 
   const def = ELEMENT_DEFINITIONS[node.type];
   const IconComp = ICON_MAP[def?.iconName || "Box"] || Box;
@@ -192,7 +189,7 @@ function LayerTreeRow({
         style={{ paddingLeft: `${8 + depth * 14}px` }}
         onMouseEnter={() => setHoveredId(node.id)}
         onMouseLeave={() => {
-          if (hoveredId === node.id) setHoveredId(null);
+          if (useEditorStore.getState().hoveredId === node.id) setHoveredId(null);
         }}
         onClick={(e) => {
           selectNode(node.id, {
@@ -311,7 +308,7 @@ function LayerTreeRow({
             type="button"
             title="Delete"
             aria-label={`Delete ${node.label}`}
-            disabled={node.locked || (nodes.length <= 1 && depth === 0)}
+            disabled={node.locked || isOnlyRoot}
             onClick={() =>
               executeOperation(
                 { type: "delete_node", nodeId: node.id },
@@ -339,7 +336,7 @@ function LayerTreeRow({
       ) : null}
     </div>
   );
-}
+});
 
 export function LeftSidebar() {
   const [tab, setTab] = useState<LeftTab>("elements");

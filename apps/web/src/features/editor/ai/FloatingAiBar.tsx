@@ -15,6 +15,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModelSelector } from "@/components/shared/ai-components";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +35,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AiModelSettingsPanel } from "@/features/admin/ai-settings";
+const AiModelSettingsPanel = dynamic(
+  () =>
+    import("@/features/admin/ai-settings").then(
+      (m) => m.AiModelSettingsPanel
+    ),
+  { ssr: false }
+);
 import { useOptionalAuth } from "@/features/auth/auth-context";
 import {
   collectEditablePartsMap,
@@ -191,8 +198,11 @@ export function FloatingAiBar({
   const auth = useOptionalAuth();
   const canManageAiSettings = auth ? auth.hasPermission("ai:settings:write") : false;
   const { models, defaultModelId } = useAiModels();
-  const [selectedModel, setSelectedModel] = useState<AIModelId>(defaultModelId);
-  const manualModelRef = useRef(false);
+  const [manualModel, setManualModel] = useState<AIModelId | null>(null);
+  const selectedModel: AIModelId =
+    manualModel && models.some((m) => m.id === manualModel)
+      ? manualModel
+      : defaultModelId;
 
   const queryClient = useQueryClient();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -250,12 +260,6 @@ export function FloatingAiBar({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!manualModelRef.current || !models.some((m) => m.id === selectedModel)) {
-      setSelectedModel(defaultModelId);
-    }
-  }, [defaultModelId, models, selectedModel]);
 
   useEffect(() => {
     if (
@@ -580,11 +584,15 @@ export function FloatingAiBar({
       setErrorMsg(`Up to ${MAX_REF_IMAGES} reference images can be attached.`);
       return;
     }
+    const settled = await Promise.allSettled(
+      arr.slice(0, remaining).map((file) => readImageFileAsReference(file))
+    );
     const next: ReferenceImageInput[] = [];
-    for (const file of arr.slice(0, remaining)) {
-      try {
-        next.push(await readImageFileAsReference(file));
-      } catch (err) {
+    for (const outcome of settled) {
+      if (outcome.status === "fulfilled") {
+        next.push(outcome.value);
+      } else {
+        const err = outcome.reason;
         setErrorMsg(err instanceof Error ? err.message : "Invalid image file");
       }
     }
@@ -741,18 +749,16 @@ export function FloatingAiBar({
                     replayNodeMotion(nid);
                   }
                   if (presetOps.length) {
-                    for (const pOp of presetOps) {
-                      try {
-                        await cmsAdminApi.createAnimationPreset({
+                    await Promise.allSettled(
+                      presetOps.map((pOp) =>
+                        cmsAdminApi.createAnimationPreset({
                           name: pOp.name,
                           category: (pOp.category as MotionCategory) || "entrance",
                           description: pOp.description || "",
                           config: pOp.config as ElementMotionConfig,
-                        });
-                      } catch {
-                        // Keep applied canvas changes even if preset creation fails
-                      }
-                    }
+                        })
+                      )
+                    );
                     void queryClient.invalidateQueries({ queryKey: ["cms-animation-presets"] });
                     void queryClient.invalidateQueries({ queryKey: ["store-animation-presets"] });
                   }
@@ -995,8 +1001,7 @@ export function FloatingAiBar({
               compact
               disabled={suggestMutation.isPending}
               onChange={(next) => {
-                manualModelRef.current = true;
-                setSelectedModel(next);
+                setManualModel(next);
               }}
             />
 
@@ -1118,7 +1123,10 @@ export function FloatingAiBar({
           >
             {suggestMutation.isPending ? (
               <>
-                <LoaderCircle size={13} className="spin" /> Thinking...
+                <span className="spin inline-flex" aria-hidden="true">
+                  <LoaderCircle size={13} />
+                </span>{" "}
+                Thinking...
               </>
             ) : (
               <>
@@ -1158,14 +1166,15 @@ export function FloatingAiBar({
             </DialogDescription>
           </DialogHeader>
           <DialogBody>
-            <AiModelSettingsPanel
-              compact
-              notify={onNotify}
-              onSaved={(updated) => {
-                manualModelRef.current = false;
-                setSelectedModel(updated.defaultModelId);
-              }}
-            />
+            {settingsOpen ? (
+              <AiModelSettingsPanel
+                compact
+                notify={onNotify}
+                onSaved={() => {
+                  setManualModel(null);
+                }}
+              />
+            ) : null}
           </DialogBody>
         </DialogContent>
       </Dialog>

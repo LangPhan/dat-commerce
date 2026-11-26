@@ -5,7 +5,12 @@ import { ArrowRight, Play, Star } from "lucide-react";
 import { useState } from "react";
 import { Modal } from "@/components/ui/dialog";
 import { cn, usd } from "@/lib/format";
-import { initialCategories, initialProducts } from "@/mocks/catalog";
+const EMPTY_PRODUCTS: StoreProductItem[] = [];
+const EMPTY_CATEGORIES: StoreCategoryItem[] = [];
+
+function getSalesCount(item: StoreProductItem): number {
+  return isApiProduct(item) ? item.reviewCount || 0 : item.salesCount || 0;
+}
 import type { CategoryDto, ProductDto } from "@/types/api-commerce";
 import type { Category, Product } from "@/types/commerce";
 import type { Block } from "@/types/editor";
@@ -128,8 +133,8 @@ function NewsletterForm({ block }: { block: Block }) {
 
 export function StoreBlock({
   block,
-  catalog = initialProducts,
-  categories = initialCategories,
+  catalog = EMPTY_PRODUCTS,
+  categories = EMPTY_CATEGORIES,
 }: {
   block: Block;
   catalog?: StoreProductItem[];
@@ -213,13 +218,11 @@ export function StoreBlock({
   }
 
   if (type === "Best Sellers" || type === "Product Grid") {
+    const count = columns === 3 ? 3 : columns === 2 ? 2 : 4;
     const list =
       type === "Best Sellers"
-        ? [...catalog].sort(
-            (a, b) => normalizeProduct(b).salesCount - normalizeProduct(a).salesCount
-          )
-        : [...catalog].reverse();
-    const count = columns === 3 ? 3 : columns === 2 ? 2 : 4;
+        ? catalog.toSorted((a, b) => getSalesCount(b) - getSalesCount(a)).slice(0, count)
+        : catalog.slice(-count).reverse();
 
     return (
       <section className={cn("store-section", toneClass, spacingClass)}>
@@ -245,7 +248,7 @@ export function StoreBlock({
           </Link>
         </div>
         <div className={cn("store-products", colsClass)}>
-          {list.slice(0, count).map((product) => (
+          {list.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>
@@ -280,55 +283,64 @@ export function StoreBlock({
             <ArrowRight size={14} />
           </Link>
         </div>
-        <div className={cn("store-products", colsClass)}>
-          {topCats.map((category) => {
-            if (isApiCategory(category)) {
-              const match = catalog.find(
-                (p) => normalizeProduct(p).categoryKey === category.slug
-              );
-              const imgUrl =
-                category.imageUrl || (match ? normalizeProduct(match).image : image);
-              return (
-                <Link
-                  className="category-card"
-                  key={category.id}
-                  href={`/store/shop?category=${encodeURIComponent(category.slug)}`}
-                >
-                  <img src={imgUrl} alt={category.name} />
-                  <strong>{category.name}</strong>
-                  <ArrowRight size={15} />
-                  <small>
-                    {category.productCount}{" "}
-                    {category.productCount === 1 ? "product" : "products"}
-                  </small>
-                </Link>
-              );
+        {(() => {
+          const bySlug = new Map<string, string>();
+          const byLabel = new Map<string, { image: string; count: number }>();
+          for (const p of catalog) {
+            const np = normalizeProduct(p);
+            if (np.categoryKey && !bySlug.has(np.categoryKey)) {
+              bySlug.set(np.categoryKey, np.image);
             }
-            const match = catalog.find(
-              (p) => normalizeProduct(p).categoryLabel === category.name
-            );
-            const count = catalog.filter(
-              (p) => normalizeProduct(p).categoryLabel === category.name
-            ).length;
-            return (
-              <Link
-                className="category-card"
-                key={category.id}
-                href={`/store/shop?category=${encodeURIComponent(category.name)}`}
-              >
-                <img
-                  src={category.image || (match ? normalizeProduct(match).image : image)}
-                  alt={category.name}
-                />
-                <strong>{category.name}</strong>
-                <ArrowRight size={15} />
-                <small>
-                  {count} {count === 1 ? "product" : "products"}
-                </small>
-              </Link>
-            );
-          })}
-        </div>
+            if (np.categoryLabel) {
+              const existing = byLabel.get(np.categoryLabel);
+              if (existing) {
+                existing.count += 1;
+              } else {
+                byLabel.set(np.categoryLabel, { image: np.image, count: 1 });
+              }
+            }
+          }
+          return (
+            <div className={cn("store-products", colsClass)}>
+              {topCats.map((category) => {
+                if (isApiCategory(category)) {
+                  const imgUrl = category.imageUrl || bySlug.get(category.slug) || image;
+                  return (
+                    <Link
+                      className="category-card"
+                      key={category.id}
+                      href={`/store/shop?category=${encodeURIComponent(category.slug)}`}
+                    >
+                      <img src={imgUrl} alt={category.name} />
+                      <strong>{category.name}</strong>
+                      <ArrowRight size={15} />
+                      <small>
+                        {category.productCount}{" "}
+                        {category.productCount === 1 ? "product" : "products"}
+                      </small>
+                    </Link>
+                  );
+                }
+                const stats = byLabel.get(category.name);
+                const count = stats?.count ?? 0;
+                return (
+                  <Link
+                    className="category-card"
+                    key={category.id}
+                    href={`/store/shop?category=${encodeURIComponent(category.name)}`}
+                  >
+                    <img src={category.image || stats?.image || image} alt={category.name} />
+                    <strong>{category.name}</strong>
+                    <ArrowRight size={15} />
+                    <small>
+                      {count} {count === 1 ? "product" : "products"}
+                    </small>
+                  </Link>
+                );
+              })}
+            </div>
+          );
+        })()}
       </section>
     );
   }

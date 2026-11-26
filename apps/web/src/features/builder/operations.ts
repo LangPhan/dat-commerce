@@ -521,7 +521,7 @@ export function applyOperation(
     case "duplicate_node": {
       const parentInfo = findParent(nodes, op.nodeId);
       if (!parentInfo) return nodes;
-      const target = findNode(nodes, op.nodeId);
+      const target = parentInfo.siblings[parentInfo.index];
       if (!target) return nodes;
       const copy = cloneSubtreeWithFreshIds(target, op.newNodeId);
       copy.label = `${target.label} Copy`.slice(0, 120);
@@ -623,26 +623,42 @@ export function applyOperation(
 
     case "apply_animation_to_selection": {
       const clean = sanitizeElementMotion(op.animation);
-      if (!clean) return nodes;
-      let working = nodes;
-      for (const id of op.nodeIds) {
-        working = mapTree(working, id, (node) => ({
-          ...node,
-          motion: {
-            ...(node.motion || { schemaVersion: 1, enabled: true }),
-            ...clean,
-            schemaVersion: 1,
-            ...(clean.entrance ? { entrance: { ...(node.motion?.entrance || {}), ...clean.entrance } } : {}),
-            ...(clean.scroll ? { scroll: { ...(node.motion?.scroll || {}), ...clean.scroll } } : {}),
-            ...(clean.hover ? { hover: { ...(node.motion?.hover || {}), ...clean.hover } } : {}),
-            ...(clean.interaction ? { interaction: { ...(node.motion?.interaction || {}), ...clean.interaction } } : {}),
-            ...(clean.continuous ? { continuous: { ...(node.motion?.continuous || {}), ...clean.continuous } } : {}),
-            ...(clean.text ? { text: { ...(node.motion?.text || {}), ...clean.text } } : {}),
-            ...(clean.stagger ? { stagger: { ...(node.motion?.stagger || {}), ...clean.stagger } } : {}),
-          },
-        }));
-      }
-      return working;
+      if (!clean || !op.nodeIds.length) return nodes;
+      const targetIds = new Set(op.nodeIds);
+      const applyToTree = (list: ElementNode[]): ElementNode[] => {
+        let changed = false;
+        const out = list.map((node) => {
+          let nextNode = node;
+          if (targetIds.has(node.id)) {
+            changed = true;
+            nextNode = {
+              ...node,
+              motion: {
+                ...(node.motion || { schemaVersion: 1, enabled: true }),
+                ...clean,
+                schemaVersion: 1,
+                ...(clean.entrance ? { entrance: { ...(node.motion?.entrance || {}), ...clean.entrance } } : {}),
+                ...(clean.scroll ? { scroll: { ...(node.motion?.scroll || {}), ...clean.scroll } } : {}),
+                ...(clean.hover ? { hover: { ...(node.motion?.hover || {}), ...clean.hover } } : {}),
+                ...(clean.interaction ? { interaction: { ...(node.motion?.interaction || {}), ...clean.interaction } } : {}),
+                ...(clean.continuous ? { continuous: { ...(node.motion?.continuous || {}), ...clean.continuous } } : {}),
+                ...(clean.text ? { text: { ...(node.motion?.text || {}), ...clean.text } } : {}),
+                ...(clean.stagger ? { stagger: { ...(node.motion?.stagger || {}), ...clean.stagger } } : {}),
+              },
+            };
+          }
+          if (nextNode.children?.length) {
+            const nextChildren = applyToTree(nextNode.children);
+            if (nextChildren !== nextNode.children) {
+              changed = true;
+              nextNode = { ...nextNode, children: nextChildren };
+            }
+          }
+          return nextNode;
+        });
+        return changed ? out : list;
+      };
+      return applyToTree(nodes);
     }
 
     case "update_responsive_animation": {
@@ -683,14 +699,35 @@ export function applyOperation(
       const firstParent = findParent(nodes, op.nodeIds[0]);
       if (!firstParent) return nodes;
       const idSet = new Set(op.nodeIds);
-      const extracted: ElementNode[] = [];
-      let working = nodes;
-      for (const id of op.nodeIds) {
-        const res = removeNodeFromTree(working, id);
-        if (res.removed) {
-          extracted.push(res.removed);
-          working = res.nextNodes;
+      const extractedMap = new Map<string, ElementNode>();
+      const removeMatching = (list: ElementNode[]): ElementNode[] => {
+        let changed = false;
+        const out: ElementNode[] = [];
+        for (const node of list) {
+          if (idSet.has(node.id)) {
+            extractedMap.set(node.id, node);
+            changed = true;
+            continue;
+          }
+          if (node.children?.length) {
+            const nextChildren = removeMatching(node.children);
+            if (nextChildren !== node.children) {
+              changed = true;
+              out.push({ ...node, children: nextChildren });
+            } else {
+              out.push(node);
+            }
+          } else {
+            out.push(node);
+          }
         }
+        return changed ? out : list;
+      };
+      const working = removeMatching(nodes);
+      const extracted: ElementNode[] = [];
+      for (const id of op.nodeIds) {
+        const found = extractedMap.get(id);
+        if (found) extracted.push(found);
       }
       if (!extracted.length) return nodes;
       const wrapperNode: ElementNode = {
@@ -703,7 +740,6 @@ export function applyOperation(
         : working;
       const insertAt = Math.min(firstParent.index, remainingSiblings.length);
       const wrapped = insertNodeIntoTree(working, parentId, wrapperNode, insertAt);
-      void idSet;
       return getMaxDepth(wrapped) <= MAX_TREE_DEPTH ? wrapped : nodes;
     }
   }
@@ -954,6 +990,7 @@ export function computeNodeDiffs(
       });
       continue;
     }
+    if (before === after) continue;
 
     if (before.visible !== after.visible) {
       diffs.push({
@@ -965,44 +1002,22 @@ export function computeNodeDiffs(
       });
     }
 
-    for (const bp of ["base", "tablet", "mobile", "hover"] as const) {
-      const bMap = before.styles?.[bp] || {};
-      const aMap = after.styles?.[bp] || {};
-      const keys = new Set([...Object.keys(bMap), ...Object.keys(aMap)]);
-      for (const k of keys) {
-        const bv = bMap[k as StylePropertyKey] ?? "auto";
-        const av = aMap[k as StylePropertyKey] ?? "auto";
-        if (bv !== av) {
-          diffs.push({
-            nodeId: after.id,
-            nodeLabel: after.label,
-            field: bp === "base" ? k : `${bp}.${k}`,
-            before: bv,
-            after: av,
-          });
-        }
-      }
-    }
-
-    const partKeys = new Set([
-      ...Object.keys(before.partStyles || {}),
-      ...Object.keys(after.partStyles || {}),
-    ]);
-    for (const part of partKeys) {
-      const bPart = before.partStyles?.[part];
-      const aPart = after.partStyles?.[part];
+    if (before.styles !== after.styles) {
       for (const bp of ["base", "tablet", "mobile", "hover"] as const) {
-        const bMap = bPart?.[bp] || {};
-        const aMap = aPart?.[bp] || {};
-        const keys = new Set([...Object.keys(bMap), ...Object.keys(aMap)]);
+        const bMap = before.styles?.[bp];
+        const aMap = after.styles?.[bp];
+        if (bMap === aMap) continue;
+        const bObj = bMap || {};
+        const aObj = aMap || {};
+        const keys = new Set([...Object.keys(bObj), ...Object.keys(aObj)]);
         for (const k of keys) {
-          const bv = bMap[k as StylePropertyKey] ?? "auto";
-          const av = aMap[k as StylePropertyKey] ?? "auto";
+          const bv = bObj[k as StylePropertyKey] ?? "auto";
+          const av = aObj[k as StylePropertyKey] ?? "auto";
           if (bv !== av) {
             diffs.push({
               nodeId: after.id,
               nodeLabel: after.label,
-              field: bp === "base" ? `part:${part}.${k}` : `part:${part}.${bp}.${k}`,
+              field: bp === "base" ? k : `${bp}.${k}`,
               before: bv,
               after: av,
             });
@@ -1011,7 +1026,43 @@ export function computeNodeDiffs(
       }
     }
 
-    if (JSON.stringify(before.motion || null) !== JSON.stringify(after.motion || null)) {
+    if (before.partStyles !== after.partStyles) {
+      const partKeys = new Set([
+        ...Object.keys(before.partStyles || {}),
+        ...Object.keys(after.partStyles || {}),
+      ]);
+      for (const part of partKeys) {
+        const bPart = before.partStyles?.[part];
+        const aPart = after.partStyles?.[part];
+        if (bPart === aPart) continue;
+        for (const bp of ["base", "tablet", "mobile", "hover"] as const) {
+          const bMap = bPart?.[bp];
+          const aMap = aPart?.[bp];
+          if (bMap === aMap) continue;
+          const bObj = bMap || {};
+          const aObj = aMap || {};
+          const keys = new Set([...Object.keys(bObj), ...Object.keys(aObj)]);
+          for (const k of keys) {
+            const bv = bObj[k as StylePropertyKey] ?? "auto";
+            const av = aObj[k as StylePropertyKey] ?? "auto";
+            if (bv !== av) {
+              diffs.push({
+                nodeId: after.id,
+                nodeLabel: after.label,
+                field: bp === "base" ? `part:${part}.${k}` : `part:${part}.${bp}.${k}`,
+                before: bv,
+                after: av,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (
+      before.motion !== after.motion &&
+      JSON.stringify(before.motion || null) !== JSON.stringify(after.motion || null)
+    ) {
       const summarizeMotion = (m?: ElementMotionConfig) => {
         if (!m || m.enabled === false) return "None";
         const tags: string[] = [];
@@ -1050,21 +1101,26 @@ export function computeNodeDiffs(
       });
     }
 
-    const propKeys = new Set([
-      ...Object.keys(before.props || {}),
-      ...Object.keys(after.props || {}),
-    ]);
-    for (const k of propKeys) {
-      const bv = JSON.stringify(before.props?.[k]);
-      const av = JSON.stringify(after.props?.[k]);
-      if (bv !== av) {
-        diffs.push({
-          nodeId: after.id,
-          nodeLabel: after.label,
-          field: `props.${k}`,
-          before: bv ?? "unset",
-          after: av ?? "unset",
-        });
+    if (before.props !== after.props) {
+      const propKeys = new Set([
+        ...Object.keys(before.props || {}),
+        ...Object.keys(after.props || {}),
+      ]);
+      for (const k of propKeys) {
+        const bRaw = before.props?.[k];
+        const aRaw = after.props?.[k];
+        if (bRaw === aRaw) continue;
+        const bv = JSON.stringify(bRaw);
+        const av = JSON.stringify(aRaw);
+        if (bv !== av) {
+          diffs.push({
+            nodeId: after.id,
+            nodeLabel: after.label,
+            field: `props.${k}`,
+            before: bv ?? "unset",
+            after: av ?? "unset",
+          });
+        }
       }
     }
   }

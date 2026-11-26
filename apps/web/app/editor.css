@@ -384,6 +384,8 @@ label.ed-search-box > input:not([type="checkbox"]):not([aria-hidden="true"]),
   font-size: 12px;
   cursor: pointer;
   user-select: none;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 30px;
 }
 
 .ed-layer-row:hover,
@@ -490,6 +492,8 @@ label.ed-search-box > input:not([type="checkbox"]):not([aria-hidden="true"]),
   border: 1px solid var(--border);
   background: var(--surface);
   cursor: pointer;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
 }
 
 .ed-history-item.active {
@@ -2666,6 +2670,8 @@ label.ed-media-dropzone > input[type="file"]:not([aria-hidden="true"]),
   background: var(--surface);
   overflow: hidden;
   transition: border-color 140ms ease, box-shadow 140ms ease;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
 }
 
 .ed-motion-preset-card:hover {

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty } from "@/components/ui/data-display";
@@ -141,7 +141,7 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
               .map((val, idx) => ({ value: val, label: val, sortOrder: idx }))
           : undefined;
 
-      const updated = await adminCatalogApi.updateAttribute(form.id, {
+      const updatePromise = adminCatalogApi.updateAttribute(form.id, {
         name: form.name.trim(),
         required: form.required,
         filterable: form.filterable,
@@ -152,11 +152,15 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
       });
 
       if (form.bindProductTypeId) {
-        await adminCatalogApi.bindTypeAttribute(form.bindProductTypeId, {
-          attributeDefinitionId: updated.id,
-        });
+        const [updated] = await Promise.all([
+          updatePromise,
+          adminCatalogApi.bindTypeAttribute(form.bindProductTypeId, {
+            attributeDefinitionId: form.id,
+          }),
+        ]);
+        return updated;
       }
-      return updated;
+      return updatePromise;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-attributes"] });
@@ -188,32 +192,38 @@ export function Attributes({ notify }: { notify: (message: string) => void }) {
 
   const attrs: AttributeDefinitionDto[] = attrsQuery.data || [];
   const productTypes: ProductTypeDto[] = typesQuery.data || [];
+  const deferredQuery = useDeferredValue(query);
 
-  const typeNamesByAttrId = new Map<string, string[]>();
-  for (const pt of productTypes) {
-    for (const bound of pt.attributes) {
-      const curr = typeNamesByAttrId.get(bound.attributeDefinitionId) || [];
-      curr.push(pt.name);
-      typeNamesByAttrId.set(bound.attributeDefinitionId, curr);
-    }
-  }
-
-  const visible = attrs.filter((item) => {
-    if (typeFilter) {
-      const boundTo = typeNamesByAttrId.get(item.id) || [];
-      if (!boundTo.includes(typeFilter)) return false;
-    }
-    if (query.trim()) {
-      const q = query.trim().toLowerCase();
-      if (
-        !item.name.toLowerCase().includes(q) &&
-        !item.code.toLowerCase().includes(q)
-      ) {
-        return false;
+  const typeNamesByAttrId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const pt of productTypes) {
+      for (const bound of pt.attributes) {
+        const curr = map.get(bound.attributeDefinitionId);
+        if (curr) curr.push(pt.name);
+        else map.set(bound.attributeDefinitionId, [pt.name]);
       }
     }
-    return true;
-  });
+    return map;
+  }, [productTypes]);
+
+  const visible = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    return attrs.filter((item) => {
+      if (typeFilter) {
+        const boundTo = typeNamesByAttrId.get(item.id);
+        if (!boundTo || !boundTo.includes(typeFilter)) return false;
+      }
+      if (q) {
+        if (
+          !item.name.toLowerCase().includes(q) &&
+          !item.code.toLowerCase().includes(q)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [attrs, deferredQuery, typeFilter, typeNamesByAttrId]);
 
   function openNew() {
     setError("");

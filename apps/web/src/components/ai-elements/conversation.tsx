@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -62,8 +63,13 @@ export function Conversation({
     }
   }, [stickToBottomKey, scrollToBottom]);
 
+  const contextValue = useMemo(
+    () => ({ isAtBottom, scrollToBottom }),
+    [isAtBottom, scrollToBottom]
+  );
+
   return (
-    <ConversationContext.Provider value={{ isAtBottom, scrollToBottom }}>
+    <ConversationContext.Provider value={contextValue}>
       <div className={cn("ai-el-conversation", className)} {...props}>
         <div
           ref={scrollerRef}

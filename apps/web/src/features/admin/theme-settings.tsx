@@ -14,6 +14,7 @@ import {
   Type,
   Undo2,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useMemo, useRef, useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,17 +34,53 @@ import {
   createCustomPaletteColor,
   getBrandPaletteOptions,
 } from "@/features/editor/brand-palette";
-import { AnimationLibraryModal } from "@/features/editor/AnimationLibraryModal";
 import { ColorControl } from "@/features/editor/inspector-controls";
-import { GlobalMotionSettingsPanel } from "@/features/motion/GlobalMotionSettingsPanel";
 import { dtoToPresetDefinition } from "@/features/motion/presets";
-import { FontFamiliesPanel } from "@/features/typography/components/FontFamiliesPanel";
-import {
-  TypographyAiBar,
-  type TypographyAiPreviewState,
-} from "@/features/typography/components/TypographyAiBar";
-import { TypographyPresetsPanel } from "@/features/typography/components/TypographyPresetsPanel";
-import { TypographyPreviewPanel } from "@/features/typography/components/TypographyPreviewPanel";
+import type { AnimationPresetDefinition } from "@/features/motion/types";
+import type { TypographyAiPreviewState } from "@/features/typography/components/TypographyAiBar";
+
+const AnimationLibraryModal = dynamic(
+  () =>
+    import("@/features/editor/AnimationLibraryModal").then(
+      (m) => m.AnimationLibraryModal
+    ),
+  { ssr: false }
+);
+const GlobalMotionSettingsPanel = dynamic(
+  () =>
+    import("@/features/motion/GlobalMotionSettingsPanel").then(
+      (m) => m.GlobalMotionSettingsPanel
+    ),
+  { ssr: false, loading: () => <Skeleton rows={3} /> }
+);
+const FontFamiliesPanel = dynamic(
+  () =>
+    import("@/features/typography/components/FontFamiliesPanel").then(
+      (m) => m.FontFamiliesPanel
+    ),
+  { ssr: false, loading: () => <Skeleton rows={3} /> }
+);
+const TypographyAiBar = dynamic(
+  () =>
+    import("@/features/typography/components/TypographyAiBar").then(
+      (m) => m.TypographyAiBar
+    ),
+  { ssr: false }
+);
+const TypographyPresetsPanel = dynamic(
+  () =>
+    import("@/features/typography/components/TypographyPresetsPanel").then(
+      (m) => m.TypographyPresetsPanel
+    ),
+  { ssr: false, loading: () => <Skeleton rows={3} /> }
+);
+const TypographyPreviewPanel = dynamic(
+  () =>
+    import("@/features/typography/components/TypographyPreviewPanel").then(
+      (m) => m.TypographyPreviewPanel
+    ),
+  { ssr: false, loading: () => <Skeleton rows={3} /> }
+);
 import {
   normalizeGlobalTypography,
   resetAllTypography,
@@ -156,11 +193,13 @@ function readInitialSection(): ThemeSectionId {
 
 function ThemeWorkspace({
   data,
+  customAnimationPresets,
   canWrite,
   canPublish,
   notify,
 }: {
   data: AdminThemeResponse;
+  customAnimationPresets: AnimationPresetDefinition[];
   canWrite: boolean;
   canPublish: boolean;
   notify: (msg: string) => void;
@@ -177,17 +216,6 @@ function ThemeWorkspace({
   const [error, setError] = useState("");
   const [resetAllOpen, setResetAllOpen] = useState(false);
   const [motionLibraryOpen, setMotionLibraryOpen] = useState(false);
-
-  const animationPresetsQuery = useQuery({
-    queryKey: ["cms-animation-presets"],
-    queryFn: () => cmsAdminApi.listAnimationPresets(),
-    staleTime: 60_000,
-  });
-
-  const customAnimationPresets = useMemo(
-    () => (animationPresetsQuery.data || []).map(dtoToPresetDefinition),
-    [animationPresetsQuery.data]
-  );
 
   const [tokens, setTokens] = useState<ThemeTokens>(baseServerTokens);
   const [, setSyncedServerId] = useState<string | null>(
@@ -982,30 +1010,32 @@ function ThemeWorkspace({
           ) : null}
         </section>
       </div>
-      <AnimationLibraryModal
-        open={motionLibraryOpen}
-        onOpenChange={setMotionLibraryOpen}
-        customPresets={customAnimationPresets}
-        canWrite={canWrite}
-        onNotify={notify}
-        onApplyPreset={(preset) => {
-          if (preset.config.entrance?.preset && preset.config.entrance.preset !== "none") {
-            const cur = tokens.motion || {};
-            commitTokensChange(
-              {
-                ...tokens,
-                motion: {
-                  ...cur,
-                  defaultEntrancePreset: preset.config.entrance.preset,
-                  defaultDuration: preset.config.entrance.duration ?? cur.defaultDuration,
+      {motionLibraryOpen ? (
+        <AnimationLibraryModal
+          open={motionLibraryOpen}
+          onOpenChange={setMotionLibraryOpen}
+          customPresets={customAnimationPresets}
+          canWrite={canWrite}
+          onNotify={notify}
+          onApplyPreset={(preset) => {
+            if (preset.config.entrance?.preset && preset.config.entrance.preset !== "none") {
+              const cur = tokens.motion || {};
+              commitTokensChange(
+                {
+                  ...tokens,
+                  motion: {
+                    ...cur,
+                    defaultEntrancePreset: preset.config.entrance.preset,
+                    defaultDuration: preset.config.entrance.duration ?? cur.defaultDuration,
+                  },
                 },
-              },
-              `Set default entrance preset to "${preset.name}"`
-            );
-          }
-          notify(`Preset "${preset.name}" is ready for elements`);
-        }}
-      />
+                `Set default entrance preset to "${preset.name}"`
+              );
+            }
+            notify(`Preset "${preset.name}" is ready for elements`);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1023,6 +1053,17 @@ export function ThemeSettingsView({
     queryKey: ["admin-theme"],
     queryFn: () => cmsAdminApi.getTheme(),
   });
+
+  const animationPresetsQuery = useQuery({
+    queryKey: ["cms-animation-presets"],
+    queryFn: () => cmsAdminApi.listAnimationPresets(),
+    staleTime: 60_000,
+  });
+
+  const customAnimationPresets = useMemo(
+    () => (animationPresetsQuery.data || []).map(dtoToPresetDefinition),
+    [animationPresetsQuery.data]
+  );
 
   if (themeQuery.isLoading) return <Skeleton rows={4} />;
   if (themeQuery.isError || !themeQuery.data) {
@@ -1042,6 +1083,7 @@ export function ThemeSettingsView({
   return (
     <ThemeWorkspace
       data={themeQuery.data}
+      customAnimationPresets={customAnimationPresets}
       canWrite={canWrite}
       canPublish={canPublish}
       notify={notify}

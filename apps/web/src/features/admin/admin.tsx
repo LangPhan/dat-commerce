@@ -1,26 +1,83 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ActivityTable } from "@/features/assistant/activity";
-import { Workspace } from "@/features/assistant/workspace";
+import { Skeleton } from "@/components/ui/data-display";
 import { AuthGuard } from "@/features/auth/auth-guard";
 import { parseAdminRoute, useAdminNotify } from "./admin-context";
-import { AiSettingsView } from "./ai-settings";
-import { Attributes } from "./attributes";
-import { AuditLogsView } from "./audit-logs";
-import { CategoryManager } from "./categories";
-import { Editor } from "@/features/editor/editor";
-import { Dashboard } from "./dashboard";
-import { Orders } from "./orders";
-import { ProductTypesManager } from "./product-types";
-import { Catalog } from "./products";
-import { Promotions } from "./promotions";
 import { navigation } from "./shell";
-import { StoreSettingsView } from "./store-settings";
-import { ThemeSettingsView } from "./theme-settings";
-import { UsersManagement } from "./users-management";
-import { UtilityPage } from "./utility";
+
+const loadingFallback = () => <Skeleton rows={5} />;
+
+const Dashboard = dynamic(
+  () => import("./dashboard").then((m) => m.Dashboard),
+  { loading: loadingFallback }
+);
+const Catalog = dynamic(
+  () => import("./products").then((m) => m.Catalog),
+  { loading: loadingFallback }
+);
+const CategoryManager = dynamic(
+  () => import("./categories").then((m) => m.CategoryManager),
+  { loading: loadingFallback }
+);
+const ProductTypesManager = dynamic(
+  () => import("./product-types").then((m) => m.ProductTypesManager),
+  { loading: loadingFallback }
+);
+const Attributes = dynamic(
+  () => import("./attributes").then((m) => m.Attributes),
+  { loading: loadingFallback }
+);
+const Orders = dynamic(
+  () => import("./orders").then((m) => m.Orders),
+  { loading: loadingFallback }
+);
+const Promotions = dynamic(
+  () => import("./promotions").then((m) => m.Promotions),
+  { loading: loadingFallback }
+);
+const Editor = dynamic(
+  () => import("@/features/editor/editor").then((m) => m.Editor),
+  { ssr: false, loading: loadingFallback }
+);
+const ThemeSettingsView = dynamic(
+  () => import("./theme-settings").then((m) => m.ThemeSettingsView),
+  { ssr: false, loading: loadingFallback }
+);
+const Workspace = dynamic(
+  () => import("@/features/assistant/workspace").then((m) => m.Workspace),
+  { ssr: false, loading: loadingFallback }
+);
+const AiSettingsView = dynamic(
+  () => import("./ai-settings").then((m) => m.AiSettingsView),
+  { loading: loadingFallback }
+);
+const ActivityTable = dynamic(
+  () => import("@/features/assistant/activity").then((m) => m.ActivityTable),
+  { loading: loadingFallback }
+);
+const AuditLogsView = dynamic(
+  () => import("./audit-logs").then((m) => m.AuditLogsView),
+  { loading: loadingFallback }
+);
+const UsersManagement = dynamic(
+  () => import("./users-management").then((m) => m.UsersManagement),
+  { loading: loadingFallback }
+);
+const StoreSettingsView = dynamic(
+  () => import("./store-settings").then((m) => m.StoreSettingsView),
+  { loading: loadingFallback }
+);
+const UtilityPage = dynamic(
+  () => import("./utility").then((m) => m.UtilityPage),
+  { loading: loadingFallback }
+);
+
+const NAV_ITEM_BY_PATH = new Map(
+  navigation.flatMap((group) => group.items.map((item) => [item.path, item] as const))
+);
 
 export function Admin() {
   const pathname = usePathname();
@@ -28,8 +85,7 @@ export function Admin() {
   const [view = "", id] = route;
   const setToast = useAdminNotify();
 
-  const allItems = navigation.flatMap((group) => group.items);
-  const activeItem = allItems.find((item) => item.path === view);
+  const activeItem = NAV_ITEM_BY_PATH.get(view);
 
   if (view === "") {
     return (

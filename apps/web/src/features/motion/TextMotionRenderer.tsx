@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducedMotion } from "motion/react";
+import { useReducedMotion } from "./use-reduced-motion";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { cn } from "@/lib/format";
 import { normalizeGlobalMotion, resolveEasingCss } from "./defaults";

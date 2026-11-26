@@ -81,6 +81,13 @@ export function AiModelSettingsPanel({
 
   const currentIds = draftIds ?? serverEnabled;
   const enabledSet = useMemo(() => new Set(currentIds), [currentIds]);
+  const rankByModelId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (let i = 0; i < currentIds.length; i += 1) {
+      map.set(currentIds[i], i + 1);
+    }
+    return map;
+  }, [currentIds]);
 
   const modelMap = useMemo(() => {
     const map = new Map<string, AvailableModelDto>();
@@ -116,31 +123,36 @@ export function AiModelSettingsPanel({
   });
 
   const movePriority = (index: number, delta: -1 | 1) => {
-    const nextIndex = index + delta;
-    if (nextIndex < 0 || nextIndex >= currentIds.length) return;
-    const next = [...currentIds];
-    const [moved] = next.splice(index, 1);
-    next.splice(nextIndex, 0, moved);
-    setDraftIds(next);
+    setDraftIds((prev) => {
+      const base = prev ?? serverEnabled;
+      const nextIndex = index + delta;
+      if (nextIndex < 0 || nextIndex >= base.length) return prev;
+      const next = [...base];
+      const [moved] = next.splice(index, 1);
+      next.splice(nextIndex, 0, moved);
+      return next;
+    });
     setErrorMsg(null);
   };
 
   const toggleModel = (modelId: string) => {
-    if (enabledSet.has(modelId)) {
-      if (currentIds.length <= 1) {
-        setErrorMsg("At least one model must stay enabled for the AI bar.");
-        return;
+    setDraftIds((prev) => {
+      const base = prev ?? serverEnabled;
+      if (base.includes(modelId)) {
+        if (base.length <= 1) {
+          setErrorMsg("At least one model must stay enabled for the AI bar.");
+          return prev;
+        }
+        setErrorMsg(null);
+        return base.filter((id) => id !== modelId);
       }
-      setDraftIds(currentIds.filter((id) => id !== modelId));
-      setErrorMsg(null);
-    } else {
-      if (currentIds.length >= 30) {
+      if (base.length >= 30) {
         setErrorMsg("At most 30 models can be enabled at once.");
-        return;
+        return prev;
       }
-      setDraftIds([...currentIds, modelId]);
       setErrorMsg(null);
-    }
+      return [...base, modelId];
+    });
   };
 
   const filteredModels = useMemo(() => {
@@ -330,10 +342,12 @@ export function AiModelSettingsPanel({
               }}
               disabled={settingsQuery.isFetching}
             >
-              <RefreshCw
-                size={13}
-                className={settingsQuery.isFetching ? "spin" : undefined}
-              />
+              <span
+                className={cn("inline-flex", settingsQuery.isFetching && "spin")}
+                aria-hidden="true"
+              >
+                <RefreshCw size={13} />
+              </span>
               Refresh
             </Button>
           </div>
@@ -377,8 +391,8 @@ export function AiModelSettingsPanel({
               </p>
             ) : (
               filteredModels.map((model) => {
-                const selected = enabledSet.has(model.id);
-                const rank = selected ? currentIds.indexOf(model.id) + 1 : null;
+                const rank = rankByModelId.get(model.id) ?? null;
+                const selected = rank !== null;
                 const ctxText = formatContextWindow(model.contextLength);
                 return (
                   <div

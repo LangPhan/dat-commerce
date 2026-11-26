@@ -7,6 +7,8 @@ import { cn } from "@/lib/format";
 
 export type MessageRole = "user" | "assistant" | "system";
 
+const STREAMDOWN_CONTROLS = { table: true, code: true } as const;
+
 export function Message({
   from,
   className,
@@ -61,7 +63,7 @@ export const MessageResponse = memo(function MessageResponse({
 }) {
   return (
     <div className={cn("ai-el-prose", className)}>
-      <Streamdown isAnimating={isAnimating} controls={{ table: true, code: true }}>
+      <Streamdown isAnimating={isAnimating} controls={STREAMDOWN_CONTROLS}>
         {children}
       </Streamdown>
     </div>

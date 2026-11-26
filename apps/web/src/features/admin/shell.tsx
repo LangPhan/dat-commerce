@@ -1,4 +1,5 @@
 "use client";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -31,13 +32,27 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Button, IconButton } from "@/components/ui/button";
-import { CommandPalette, type CommandItem } from "@/components/ui/command-palette";
+import type { CommandItem } from "@/components/ui/command-palette";
 import { Breadcrumbs } from "@/components/ui/data-display";
-import { Toast } from "@/components/ui/toast";
-import { FloatingAdminAssistant } from "@/features/assistant/FloatingAdminAssistant";
 import { useAuth } from "@/features/auth/auth-context";
+
+const CommandPalette = dynamic(
+  () => import("@/components/ui/command-palette").then((m) => m.CommandPalette),
+  { ssr: false }
+);
+
+const FloatingAdminAssistant = dynamic(
+  () =>
+    import("@/features/assistant/FloatingAdminAssistant").then(
+      (m) => m.FloatingAdminAssistant
+    ),
+  { ssr: false }
+);
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type NavItem = {
   title: string;
@@ -127,6 +142,72 @@ function initialsFor(name?: string) {
     .join("");
 }
 
+function AdminCommandPaletteModal({
+  visibleNavigation,
+  canWriteCatalog,
+  theme,
+  setTheme,
+  onNavigate,
+  close,
+}: {
+  visibleNavigation: { title: string; items: NavItem[] }[];
+  canWriteCatalog: boolean;
+  theme: string;
+  setTheme: (next: string) => void;
+  onNavigate: (href: string) => void;
+  close: () => void;
+}) {
+  const commands = useMemo<CommandItem[]>(() => {
+    const items: CommandItem[] = [];
+    for (const group of visibleNavigation) {
+      for (const { title, path, icon: Icon } of group.items) {
+        items.push({
+          id: "nav-" + (path || "dashboard"),
+          label: title,
+          group: group.title,
+          icon: <Icon size={15} />,
+          run: () => onNavigate(adminLink(path)),
+        });
+      }
+    }
+    if (canWriteCatalog) {
+      items.push({
+        id: "action-new-product",
+        label: "Create new product",
+        group: "Quick Actions",
+        icon: <Box size={15} />,
+        run: () => onNavigate("/admin/products/new"),
+      });
+    }
+    items.push(
+      {
+        id: "action-view-store",
+        label: "Open Customer Storefront",
+        group: "Quick Actions",
+        icon: <ExternalLink size={15} />,
+        run: () => onNavigate("/"),
+      },
+      {
+        id: "action-toggle-theme",
+        label: theme === "light" ? "Switch to dark theme" : "Switch to light theme",
+        group: "Preferences",
+        icon: theme === "light" ? <Moon size={15} /> : <Sun size={15} />,
+        run: () => setTheme(theme === "light" ? "dark" : "light"),
+      }
+    );
+    return items;
+  }, [visibleNavigation, canWriteCatalog, theme, setTheme, onNavigate]);
+
+  return (
+    <CommandPalette
+      title="Search workspace"
+      description="Jump to any admin view, storefront, or quick action."
+      commands={commands}
+      close={close}
+    />
+  );
+}
+
 export function AdminShell({
   view,
   id,
@@ -135,7 +216,6 @@ export function AdminShell({
   setCollapsed,
   theme,
   setTheme,
-  toast,
   notify,
   children,
 }: {
@@ -146,7 +226,6 @@ export function AdminShell({
   setCollapsed: (next: boolean) => void;
   theme: string;
   setTheme: (next: string) => void;
-  toast: string;
   notify?: (msg: string) => void;
   children: ReactNode;
 }) {
@@ -155,55 +234,22 @@ export function AdminShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
 
-  const visibleNavigation = navigation
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) => !item.permission || hasPermission(item.permission)),
-    }))
-    .filter((group) => group.items.length > 0);
-
-  const allNavItems = visibleNavigation.flatMap((group) =>
-    group.items.map((item) => ({ ...item, group: group.title }))
-  );
-  const activeItem = allNavItems.find((item) => item.path === view);
-
-  const commands: CommandItem[] = [
-    ...allNavItems.map(({ title, path, group, icon: Icon }) => ({
-      id: "nav-" + (path || "dashboard"),
-      label: title,
-      group,
-      icon: <Icon size={15} />,
-      run: () => router.push(adminLink(path)),
-    })),
-    ...(hasPermission("catalog:write")
-      ? [
-          {
-            id: "action-new-product",
-            label: "Create new product",
-            group: "Quick Actions",
-            icon: <Box size={15} />,
-            run: () => router.push("/admin/products/new"),
-          },
-        ]
-      : []),
-    {
-      id: "action-view-store",
-      label: "Open Customer Storefront",
-      group: "Quick Actions",
-      icon: <ExternalLink size={15} />,
-      run: () => router.push("/"),
-    },
-    {
-      id: "action-toggle-theme",
-      label: theme === "light" ? "Switch to dark theme" : "Switch to light theme",
-      group: "Preferences",
-      icon: theme === "light" ? <Moon size={15} /> : <Sun size={15} />,
-      run: () => setTheme(theme === "light" ? "dark" : "light"),
-    },
-  ];
-
-  const isUuid = (val: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+  const { visibleNavigation, activeItem } = useMemo(() => {
+    const groups: { title: string; items: NavItem[] }[] = [];
+    let matched: NavItem | undefined;
+    for (const group of navigation) {
+      const items = group.items.filter(
+        (item) => !item.permission || hasPermission(item.permission)
+      );
+      if (items.length > 0) {
+        groups.push({ title: group.title, items });
+        if (!matched) {
+          matched = items.find((item) => item.path === view);
+        }
+      }
+    }
+    return { visibleNavigation: groups, activeItem: matched };
+  }, [hasPermission, view]);
 
   const crumbs = [
     { label: "Workspace", href: "/admin" },
@@ -214,7 +260,7 @@ export function AdminShell({
             label:
               id === "new"
                 ? "New product"
-                : isUuid(id)
+                : UUID_REGEX.test(id)
                   ? view === "products"
                     ? "Product details"
                     : view === "orders"
@@ -227,6 +273,9 @@ export function AdminShell({
       : []),
     ...(subView ? [{ label: subView === "edit" ? "Edit" : subView }] : []),
   ];
+
+  const showFloatingAssistant =
+    hasPermission("ai:use") && view !== "assistant" && view !== "editor";
 
   return (
     <div
@@ -379,21 +428,23 @@ export function AdminShell({
       </div>
 
       {commandOpen ? (
-        <CommandPalette
-          title="Search workspace"
-          description="Jump to any admin view, storefront, or quick action."
-          commands={commands}
+        <AdminCommandPaletteModal
+          visibleNavigation={visibleNavigation}
+          canWriteCatalog={hasPermission("catalog:write")}
+          theme={theme}
+          setTheme={setTheme}
+          onNavigate={(href) => router.push(href)}
           close={() => setCommandOpen(false)}
         />
       ) : null}
 
-      <FloatingAdminAssistant
-        view={view}
-        pageTitle={activeItem?.title || "Dashboard"}
-        notify={notify}
-      />
-
-      <Toast message={toast} />
+      {showFloatingAssistant ? (
+        <FloatingAdminAssistant
+          view={view}
+          pageTitle={activeItem?.title || "Dashboard"}
+          notify={notify}
+        />
+      ) : null}
     </div>
   );
 }

@@ -13,18 +13,38 @@ import type {
 } from "./types";
 
 const GOOGLE_FONT_LINK_ID = "dat-global-typography-gfonts";
+const FONT_ROLES: TypographyFontRole[] = [
+  "primary",
+  "secondary",
+  "heading",
+  "body",
+  "monospace",
+];
 
-export function useGoogleFontLoader(
+let preconnectInjected = false;
+
+function ensureGoogleFontsPreconnect(): void {
+  if (preconnectInjected || typeof document === "undefined") return;
+  preconnectInjected = true;
+  const origins: Array<{ href: string; crossOrigin?: string }> = [
+    { href: "https://fonts.googleapis.com" },
+    { href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+  ];
+  for (const { href, crossOrigin } of origins) {
+    if (document.head.querySelector(`link[rel="preconnect"][href="${href}"]`)) {
+      continue;
+    }
+    const link = document.createElement("link");
+    link.rel = "preconnect";
+    link.href = href;
+    if (crossOrigin) link.crossOrigin = crossOrigin;
+    document.head.appendChild(link);
+  }
+}
+
+export function useGoogleFontStylesheet(
   typography: NormalizedGlobalTypography
-): Record<TypographyFontRole, FontLoadingStatus> {
-  const [statuses, setStatuses] = useState<Record<TypographyFontRole, FontLoadingStatus>>({
-    primary: "idle",
-    secondary: "idle",
-    heading: "idle",
-    body: "idle",
-    monospace: "idle",
-  });
-
+): string | null {
   const href = useMemo(
     () => buildGoogleFontsHref(Object.values(typography.fonts)),
     [typography.fonts]
@@ -32,8 +52,11 @@ export function useGoogleFontLoader(
 
   useEffect(() => {
     if (typeof document === "undefined") return;
-    let linkEl = document.getElementById(GOOGLE_FONT_LINK_ID) as HTMLLinkElement | null;
+    let linkEl = document.getElementById(
+      GOOGLE_FONT_LINK_ID
+    ) as HTMLLinkElement | null;
     if (href) {
+      ensureGoogleFontsPreconnect();
       if (!linkEl) {
         linkEl = document.createElement("link");
         linkEl.id = GOOGLE_FONT_LINK_ID;
@@ -48,6 +71,24 @@ export function useGoogleFontLoader(
     }
   }, [href]);
 
+  return href;
+}
+
+export function useGoogleFontLoader(
+  typography: NormalizedGlobalTypography
+): Record<TypographyFontRole, FontLoadingStatus> {
+  const [statuses, setStatuses] = useState<
+    Record<TypographyFontRole, FontLoadingStatus>
+  >({
+    primary: "idle",
+    secondary: "idle",
+    heading: "idle",
+    body: "idle",
+    monospace: "idle",
+  });
+
+  useGoogleFontStylesheet(typography);
+
   useEffect(() => {
     if (typeof document === "undefined") return;
     let cancelled = false;
@@ -57,13 +98,7 @@ export function useGoogleFontLoader(
       const next = {} as Record<TypographyFontRole, FontLoadingStatus>;
       const fontSet = "fonts" in document ? document.fonts : null;
 
-      for (const role of [
-        "primary",
-        "secondary",
-        "heading",
-        "body",
-        "monospace",
-      ] as TypographyFontRole[]) {
+      for (const role of FONT_ROLES) {
         const cfg = typography.fonts[role];
         if (cfg.source === "system") {
           next[role] = "loaded";
@@ -93,13 +128,15 @@ export function useGoogleFontLoader(
       fontSet.ready.then(() => {
         if (cancelled) return;
         setStatuses((prev) => {
+          let changed = false;
           const updated = { ...prev };
-          for (const role of Object.keys(updated) as TypographyFontRole[]) {
+          for (const role of FONT_ROLES) {
             if (updated[role] === "loading") {
               updated[role] = "loaded";
+              changed = true;
             }
           }
-          return updated;
+          return changed ? updated : prev;
         });
       });
     }
@@ -128,7 +165,8 @@ export function GlobalTypographyStyleTag({
     [typography]
   );
 
-  useGoogleFontLoader(normalized);
+  // Only inject the stylesheet & preconnect hints without subscribing to font loading state re-renders.
+  useGoogleFontStylesheet(normalized);
 
   const css = useMemo(
     () =>

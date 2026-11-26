@@ -42,7 +42,9 @@ export function Tool({
       >
         <span className="ai-el-tool-left">
           {status === "running" ? (
-            <LoaderCircle size={13} className="spin" />
+            <span className="spin inline-flex">
+              <LoaderCircle size={13} />
+            </span>
           ) : status === "failed" ? (
             <XCircle size={13} />
           ) : (

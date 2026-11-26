@@ -11,7 +11,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Pagination, Skeleton } from "@/components/ui/data-display";
@@ -93,9 +93,15 @@ function CollectionsView({ notify }: { notify: (msg: string) => void }) {
     queryFn: () => adminCatalogApi.listCollections(),
   });
   const productsQuery = useQuery({
-    queryKey: ["admin-products", "collection-picker"],
+    queryKey: ["admin-products", "", "", ""],
     queryFn: () => adminCatalogApi.listProducts(),
+    enabled: Boolean(edit),
   });
+
+  const editProductIdSet = useMemo(
+    () => new Set(edit?.productIds || []),
+    [edit?.productIds]
+  );
 
   const saveMutation = useMutation({
     mutationFn: (payload: {
@@ -328,7 +334,7 @@ function CollectionsView({ notify }: { notify: (msg: string) => void }) {
               }}
             >
               {products.map((p) => {
-                const checked = edit.productIds.includes(p.id);
+                const checked = editProductIdSet.has(p.id);
                 return (
                   <label className="check-label" key={p.id}>
                     <input
@@ -524,32 +530,48 @@ function CustomersView() {
   } | null>(null);
 
   const ordersQuery = useQuery({
-    queryKey: ["admin-orders", "customers"],
+    queryKey: ["admin-orders", ""],
     queryFn: () => adminOrderApi.list(),
   });
 
-  const orders = ordersQuery.data || [];
-  const grouped = new Map<string, { name: string; email: string; orders: OrderDto[] }>();
-  for (const o of orders) {
-    const existing = grouped.get(o.customerEmail.toLowerCase());
-    if (existing) existing.orders.push(o);
-    else {
-      grouped.set(o.customerEmail.toLowerCase(), {
-        name: o.customerName,
-        email: o.customerEmail,
-        orders: [o],
-      });
-    }
-  }
-  const customers = Array.from(grouped.values()).filter((c) => {
-    if (!query.trim()) return true;
-    const q = query.trim().toLowerCase();
-    return (
-      c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q)
-    );
-  });
+  type CustomerRow = {
+    name: string;
+    email: string;
+    orders: OrderDto[];
+    totalSpend: number;
+  };
 
-  type CustomerRow = { name: string; email: string; orders: OrderDto[] };
+  const allCustomers = useMemo<CustomerRow[]>(() => {
+    const orders = ordersQuery.data || [];
+    const grouped = new Map<string, CustomerRow>();
+    for (const o of orders) {
+      const key = o.customerEmail.toLowerCase();
+      const delta = o.status !== "CANCELED" ? Number(o.grandTotal) : 0;
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.orders.push(o);
+        existing.totalSpend += delta;
+      } else {
+        grouped.set(key, {
+          name: o.customerName,
+          email: o.customerEmail,
+          orders: [o],
+          totalSpend: delta,
+        });
+      }
+    }
+    return Array.from(grouped.values());
+  }, [ordersQuery.data]);
+
+  const customers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return allCustomers;
+    return allCustomers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q)
+    );
+  }, [allCustomers, query]);
+
   const columns: DataTableColumn<CustomerRow>[] = [
     {
       id: "name",
@@ -569,12 +591,7 @@ function CustomersView() {
     {
       id: "spend",
       header: "Lifetime spend",
-      cell: (c) => {
-        const spend = c.orders
-          .filter((o) => o.status !== "CANCELED")
-          .reduce((s, o) => s + Number(o.grandTotal), 0);
-        return <strong>{usdExact(spend)}</strong>;
-      },
+      cell: (c) => <strong>{usdExact(c.totalSpend)}</strong>,
     },
     {
       id: "latest",
@@ -831,7 +848,11 @@ function NavigationView({ notify }: { notify: (msg: string) => void }) {
       notify(err instanceof ApiError ? err.message : "Failed to update menu"),
   });
 
-  const items = navQuery.data?.items || [];
+  const items = useMemo(() => navQuery.data?.items || [], [navQuery.data]);
+  const indexById = useMemo(
+    () => new Map(items.map((entry, idx) => [entry.id, idx])),
+    [items]
+  );
 
   const columns: DataTableColumn<NavigationItemDto>[] = [
     { id: "label", header: "Label", cell: (item) => <strong>{item.label}</strong> },
@@ -841,7 +862,7 @@ function NavigationView({ notify }: { notify: (msg: string) => void }) {
       header: "Actions",
       align: "right",
       cell: (item) => {
-        const index = items.findIndex((entry) => entry.id === item.id);
+        const index = indexById.get(item.id) ?? -1;
         return canWrite ? (
           <div className="button-row" style={{ justifyContent: "flex-end" }}>
             <IconButton
@@ -979,7 +1000,7 @@ function NavigationView({ notify }: { notify: (msg: string) => void }) {
   );
 }
 
-export function UtilityPage({
+function StorePreferencesView({
   view,
   title,
   notify,
@@ -992,12 +1013,6 @@ export function UtilityPage({
     "preferences:" + view,
     {}
   );
-
-  if (view === "collections") return <CollectionsView notify={notify} />;
-  if (view === "media") return <MediaLibraryView notify={notify} />;
-  if (view === "customers") return <CustomersView />;
-  if (view === "pages") return <PagesView notify={notify} />;
-  if (view === "navigation") return <NavigationView notify={notify} />;
 
   let content: React.ReactNode = (
     <Empty title={title} text="Configuration view ready." />
@@ -1069,4 +1084,21 @@ export function UtilityPage({
       {content}
     </div>
   );
+}
+
+export function UtilityPage({
+  view,
+  title,
+  notify,
+}: {
+  view: string;
+  title: string;
+  notify: (message: string) => void;
+}) {
+  if (view === "collections") return <CollectionsView notify={notify} />;
+  if (view === "media") return <MediaLibraryView notify={notify} />;
+  if (view === "customers") return <CustomersView />;
+  if (view === "pages") return <PagesView notify={notify} />;
+  if (view === "navigation") return <NavigationView notify={notify} />;
+  return <StorePreferencesView view={view} title={title} notify={notify} />;
 }

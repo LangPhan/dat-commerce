@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowRight, Box, LockKeyhole, Sparkles } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
 } from "@/features/auth/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/format";
+import "../auth.css";
 
 const loginSchema = z.object({
   email: z.string().trim().email("Enter a valid email address"),
@@ -32,13 +33,11 @@ const registerSchema = z.object({
 type LoginValues = z.infer<typeof loginSchema>;
 type RegisterValues = z.infer<typeof registerSchema>;
 
-
-
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, ready, login, loginDemoOwner, register: registerAccount } = useAuth();
-  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoPending, startDemoTransition] = useTransition();
   const [serverError, setServerError] = useState("");
   const [mode, setMode] = useState<"login" | "register">(() =>
     searchParams.get("mode") === "register" ? "register" : "login"
@@ -286,26 +285,25 @@ function LoginForm() {
             <Button
               size="sm"
               variant="secondary"
-              disabled={demoLoading}
-              onClick={async () => {
+              disabled={demoPending}
+              onClick={() => {
                 setServerError("");
-                setDemoLoading(true);
-                try {
-                  const demoUser = await loginDemoOwner();
-                  router.replace(resolvePostAuthRedirect(demoUser, rawNext));
-                } catch (err) {
-                  if (err instanceof ApiError) {
-                    setServerError(err.message);
-                  } else {
-                    setServerError("Unable to start Admin Demo workspace");
+                startDemoTransition(async () => {
+                  try {
+                    const demoUser = await loginDemoOwner();
+                    router.replace(resolvePostAuthRedirect(demoUser, rawNext));
+                  } catch (err) {
+                    if (err instanceof ApiError) {
+                      setServerError(err.message);
+                    } else {
+                      setServerError("Unable to start Admin Demo workspace");
+                    }
                   }
-                } finally {
-                  setDemoLoading(false);
-                }
+                });
               }}
             >
               <Sparkles size={13} />
-              {demoLoading ? "Starting Admin Demo..." : "Admin Demo"}
+              {demoPending ? "Starting Admin Demo..." : "Admin Demo"}
             </Button>
           </div>
         </div>

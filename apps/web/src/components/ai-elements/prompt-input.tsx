@@ -4,6 +4,11 @@ import { ArrowUp, File as FileIcon, LoaderCircle, X } from "lucide-react";
 import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
 import { cn } from "@/lib/format";
 
+const SUPPORTS_FIELD_SIZING =
+  typeof CSS !== "undefined" &&
+  typeof CSS.supports === "function" &&
+  CSS.supports("field-sizing", "content");
+
 export function PromptInput({
   className,
   children,
@@ -59,6 +64,7 @@ export function PromptInputTextarea({
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    if (SUPPORTS_FIELD_SIZING) return;
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
@@ -71,6 +77,15 @@ export function PromptInputTextarea({
       rows={1}
       aria-label={ariaLabel}
       className="ai-el-prompt-textarea"
+      style={
+        SUPPORTS_FIELD_SIZING
+          ? {
+              fieldSizing: "content",
+              minHeight: 40,
+              maxHeight,
+            }
+          : undefined
+      }
       placeholder={placeholder}
       disabled={disabled}
       value={value}
@@ -114,7 +129,13 @@ export function PromptInputSubmit({
       aria-label={busy ? "Streaming response" : "Send message"}
       disabled={disabled || busy}
     >
-      {busy ? <LoaderCircle size={15} className="spin" /> : <ArrowUp size={15} />}
+      {busy ? (
+        <span className="spin inline-flex">
+          <LoaderCircle size={15} />
+        </span>
+      ) : (
+        <ArrowUp size={15} />
+      )}
     </button>
   );
 }

@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -58,24 +57,33 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// Module-level bootstrap promise prevents React 19 Strict Mode double-mount
+// from losing the resolution callback while ensuring session init runs once.
+let initialSessionPromise: Promise<AuthTokenResponse | null> | null = null;
+
+function getInitialSession(): Promise<AuthTokenResponse | null> {
+  if (!initialSessionPromise) {
+    initialSessionPromise = refreshSessionToken().catch(() => null);
+  }
+  return initialSessionPromise;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [ready, setReady] = useState(false);
-  const checkedRef = useRef(false);
 
   useEffect(() => {
     setOnUnauthorized(() => {
       setAccessToken(null);
       setUser(null);
+      initialSessionPromise = null;
     });
     return () => setOnUnauthorized(null);
   }, []);
 
   useEffect(() => {
-    if (checkedRef.current) return;
-    checkedRef.current = true;
     let cancelled = false;
-    refreshSessionToken()
+    getInitialSession()
       .then((refreshed) => {
         if (!cancelled) {
           setUser(refreshed?.user ?? null);
@@ -100,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       skipAuthRefresh: true,
     });
     setAccessToken(res.accessToken);
+    initialSessionPromise = Promise.resolve(res);
     setUser(res.user);
     setReady(true);
     return res.user;
@@ -112,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       skipAuthRefresh: true,
     });
     setAccessToken(res.accessToken);
+    initialSessionPromise = Promise.resolve(res);
     setUser(res.user);
     setReady(true);
     return res.user;
@@ -125,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         skipAuthRefresh: true,
       });
       setAccessToken(res.accessToken);
+      initialSessionPromise = Promise.resolve(res);
       setUser(res.user);
       setReady(true);
       return res.user;
@@ -140,18 +151,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } finally {
       setAccessToken(null);
+      initialSessionPromise = null;
       setUser(null);
     }
   }, []);
 
-  const hasPermission = useCallback(
-    (permission: string) => Boolean(user?.permissions.includes(permission)),
+  const permissionSet = useMemo(
+    () => new Set(user?.permissions ?? []),
     [user]
   );
 
+  const roleSet = useMemo(() => new Set(user?.roles ?? []), [user]);
+
+  const hasPermission = useCallback(
+    (permission: string) => permissionSet.has(permission),
+    [permissionSet]
+  );
+
   const hasRole = useCallback(
-    (role: string) => Boolean(user?.roles.includes(role)),
-    [user]
+    (role: string) => roleSet.has(role),
+    [roleSet]
   );
 
   const value = useMemo<AuthContextValue>(

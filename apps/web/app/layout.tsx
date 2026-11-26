@@ -2,10 +2,8 @@ import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { AppProviders } from "@/lib/query-provider";
 import "./globals.css";
-import "./editor.css";
 import "./storefront.css";
 import "./admin.css";
-import "./auth.css";
 
 export const metadata: Metadata = {
   title: {
@@ -24,7 +22,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var raw=localStorage.getItem("forma:theme");var t=raw?JSON.parse(raw):"light";if(t==="dark"||t==="light"){document.documentElement.dataset.theme=t;}}catch(e){}})();`,
+            __html: `(function(){try{var raw=localStorage.getItem("forma:v1:theme")||localStorage.getItem("forma:theme");var t=raw?JSON.parse(raw):"light";if(t==="dark"||t==="light"){document.documentElement.dataset.theme=t;}}catch(e){}})();`,
           }}
         />
       </head>

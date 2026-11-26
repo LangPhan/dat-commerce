@@ -39,13 +39,6 @@ export function Editor() {
 
   const previewMode = useEditorStore((s) => s.previewMode);
   const pageId = useEditorStore((s) => s.pageId);
-  const pageTitle = useEditorStore((s) => s.pageTitle);
-  const seoTitle = useEditorStore((s) => s.seoTitle);
-  const seoDescription = useEditorStore((s) => s.seoDescription);
-  const pageVersion = useEditorStore((s) => s.pageVersion);
-  const nodes = useEditorStore((s) => s.nodes);
-  const dirty = useEditorStore((s) => s.dirty);
-  const themeTokens = useEditorStore((s) => s.themeTokens);
 
   const loadPage = useEditorStore((s) => s.loadPage);
   const markSaved = useEditorStore((s) => s.markSaved);
@@ -142,14 +135,15 @@ export function Editor() {
 
   const saveDraftMutation = useMutation({
     mutationFn: async () => {
+      const state = useEditorStore.getState();
       setSaveStatus("saving");
       return pageAdapter.saveDraft({
-        pageId,
-        document: { version: 2, nodes },
-        title: pageTitle,
-        seoTitle,
-        seoDescription,
-        expectedVersion: pageVersion,
+        pageId: state.pageId,
+        document: { version: 2, nodes: state.nodes },
+        title: state.pageTitle,
+        seoTitle: state.seoTitle,
+        seoDescription: state.seoDescription,
+        expectedVersion: state.pageVersion,
         changeSummary: "Saved visual editor draft",
       });
     },
@@ -174,23 +168,24 @@ export function Editor() {
 
   const publishMutation = useMutation({
     mutationFn: async () => {
-      let currentVersion = pageVersion;
-      if (dirty) {
+      const state = useEditorStore.getState();
+      let currentVersion = state.pageVersion;
+      if (state.dirty) {
         setSaveStatus("saving");
         const saved = await pageAdapter.saveDraft({
-          pageId,
-          document: { version: 2, nodes },
-          title: pageTitle,
-          seoTitle,
-          seoDescription,
-          expectedVersion: pageVersion,
+          pageId: state.pageId,
+          document: { version: 2, nodes: state.nodes },
+          title: state.pageTitle,
+          seoTitle: state.seoTitle,
+          seoDescription: state.seoDescription,
+          expectedVersion: state.pageVersion,
           changeSummary: "Saved before publish",
         });
         hydratedPageKeyRef.current = `${saved.id}:${saved.latestVersionNumber}:${saved.version}`;
         currentVersion = saved.version;
       }
       return pageAdapter.publishPage({
-        pageId,
+        pageId: state.pageId,
         expectedVersion: currentVersion,
       });
     },
@@ -236,7 +231,8 @@ export function Editor() {
   });
 
   const rollbackMutation = useMutation({
-    mutationFn: (versionId: string) => pageAdapter.rollbackPage(pageId, versionId),
+    mutationFn: (versionId: string) =>
+      pageAdapter.rollbackPage(useEditorStore.getState().pageId, versionId),
     onSuccess: (rolled) => {
       hydratedPageKeyRef.current = "";
       queryClient.setQueryData(["cms-admin-page", rolled.id], rolled);
@@ -251,8 +247,9 @@ export function Editor() {
 
   const saveThemeMutation = useMutation({
     mutationFn: async () => {
-      if (!themeTokens) throw new Error("No theme loaded");
-      return pageAdapter.saveThemeDraft(themeTokens, "Updated in Visual Editor");
+      const currentTheme = useEditorStore.getState().themeTokens;
+      if (!currentTheme) throw new Error("No theme loaded");
+      return pageAdapter.saveThemeDraft(currentTheme, "Updated in Visual Editor");
     },
     onSuccess: (saved) => {
       hydratedThemeIdRef.current = saved.id;
@@ -268,9 +265,10 @@ export function Editor() {
 
   const publishThemeMutation = useMutation({
     mutationFn: async () => {
-      if (!themeTokens) throw new Error("No theme loaded");
+      const currentTheme = useEditorStore.getState().themeTokens;
+      if (!currentTheme) throw new Error("No theme loaded");
       const saved = await pageAdapter.saveThemeDraft(
-        themeTokens,
+        currentTheme,
         "Published from Visual Editor"
       );
       return pageAdapter.publishTheme(saved.id);
@@ -347,7 +345,24 @@ export function Editor() {
       });
   };
 
-  // Global keyboard shortcuts
+  const shortcutStateRef = useRef({
+    canWrite,
+    saveDraft: () => {
+      if (!saveDraftMutation.isPending) {
+        saveDraftMutation.mutate();
+      }
+    },
+  });
+  shortcutStateRef.current = {
+    canWrite,
+    saveDraft: () => {
+      if (!saveDraftMutation.isPending) {
+        saveDraftMutation.mutate();
+      }
+    },
+  };
+
+  // Global keyboard shortcuts (bound once)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -361,8 +376,8 @@ export function Editor() {
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        if (canWrite && pageId && !saveDraftMutation.isPending) {
-          saveDraftMutation.mutate();
+        if (shortcutStateRef.current.canWrite && useEditorStore.getState().pageId) {
+          shortcutStateRef.current.saveDraft();
         }
         return;
       }
@@ -382,12 +397,12 @@ export function Editor() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
         e.preventDefault();
-        if (canWrite) duplicateSelected();
+        if (shortcutStateRef.current.canWrite) duplicateSelected();
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
-        if (canWrite) deleteSelected();
+        if (shortcutStateRef.current.canWrite) deleteSelected();
         return;
       }
       if (e.key === "Escape") {
@@ -402,9 +417,6 @@ export function Editor() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
-    canWrite,
-    pageId,
-    saveDraftMutation,
     undo,
     redo,
     duplicateSelected,

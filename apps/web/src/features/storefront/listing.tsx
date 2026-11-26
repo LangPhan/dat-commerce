@@ -74,6 +74,7 @@ export function Listing({
   const categoriesQuery = useQuery({
     queryKey: ["store-categories"],
     queryFn: () => storeApi.listCategories(),
+    staleTime: 60_000,
   });
 
   const productsQuery = useQuery({
@@ -130,12 +131,14 @@ export function Listing({
         ]
       : []),
     ...(maxPrice ? [{ key: "__price", label: `Max $${maxPrice}` }] : []),
-    ...Object.entries(attrs)
-      .filter(([, val]) => Boolean(val))
-      .map(([code, val]) => {
-        const facet = facets.find((f) => f.code === code);
-        return { key: code, label: `${facet?.name || code}: ${val}` };
-      }),
+    ...(() => {
+      const facetNameByCode = new Map(facets.map((f) => [f.code, f.name]));
+      return Object.entries(attrs).flatMap(([code, val]) =>
+        val
+          ? [{ key: code, label: `${facetNameByCode.get(code) || code}: ${val}` }]
+          : []
+      );
+    })(),
   ];
 
   function clearFilters() {

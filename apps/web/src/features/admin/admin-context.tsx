@@ -3,9 +3,10 @@
 import { usePathname } from "next/navigation";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { Toast } from "@/components/ui/toast";
@@ -14,6 +15,61 @@ import { useAppTheme, useStoredBoolean } from "@/lib/theme";
 import { AdminShell } from "./shell";
 
 const AdminToastContext = createContext<((msg: string) => void) | null>(null);
+
+// Isolated toast pub/sub so showing/dismissing toasts never re-renders AdminLayoutShell or AdminShell.
+let currentToast = "";
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
+const toastListeners = new Set<() => void>();
+
+function emitToast(next: string) {
+  currentToast = next;
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  }
+  if (next) {
+    toastTimer = setTimeout(() => {
+      currentToast = "";
+      toastTimer = null;
+      for (const listener of toastListeners) listener();
+    }, 2800);
+  }
+  for (const listener of toastListeners) listener();
+}
+
+function subscribeToast(listener: () => void) {
+  toastListeners.add(listener);
+  return () => {
+    toastListeners.delete(listener);
+  };
+}
+
+function getToastSnapshot() {
+  return currentToast;
+}
+
+function getToastServerSnapshot() {
+  return "";
+}
+
+function AdminToastHost() {
+  const message = useSyncExternalStore(
+    subscribeToast,
+    getToastSnapshot,
+    getToastServerSnapshot
+  );
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer && toastListeners.size === 0) {
+        clearTimeout(toastTimer);
+        toastTimer = null;
+      }
+    };
+  }, []);
+
+  return <Toast message={message} />;
+}
 
 export function parseAdminRoute(pathname: string | null): string[] {
   if (!pathname) return [];
@@ -35,20 +91,18 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
   const [view = "", id, subView] = route;
   const [theme, setTheme] = useAppTheme();
   const [collapsed, setCollapsed] = useStoredBoolean("admin-collapsed", false);
-  const [toast, setToast] = useState("");
 
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(""), 2800);
-    return () => clearTimeout(timer);
-  }, [toast]);
+  const handleSetTheme = useCallback(
+    (next: string) => setTheme(next === "dark" ? "dark" : "light"),
+    [setTheme]
+  );
 
   if (view === "editor") {
     return (
       <AuthGuard requiredPermission="content:read" requireAdmin>
-        <AdminToastContext.Provider value={setToast}>
+        <AdminToastContext.Provider value={emitToast}>
           {children}
-          <Toast message={toast} />
+          <AdminToastHost />
         </AdminToastContext.Provider>
       </AuthGuard>
     );
@@ -56,7 +110,7 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
 
   return (
     <AuthGuard requireAdmin>
-      <AdminToastContext.Provider value={setToast}>
+      <AdminToastContext.Provider value={emitToast}>
         <AdminShell
           view={view}
           id={id}
@@ -64,12 +118,12 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
           collapsed={collapsed}
           setCollapsed={setCollapsed}
           theme={theme}
-          setTheme={(next) => setTheme(next === "dark" ? "dark" : "light")}
-          toast={toast}
-          notify={setToast}
+          setTheme={handleSetTheme}
+          notify={emitToast}
         >
           {children}
         </AdminShell>
+        <AdminToastHost />
       </AdminToastContext.Provider>
     </AuthGuard>
   );

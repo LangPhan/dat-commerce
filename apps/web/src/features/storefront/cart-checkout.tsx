@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CheckCircle2, Minus, Plus, Sparkles, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
@@ -260,6 +260,11 @@ export function CheckoutPage({
   const prefill = useCheckoutPrefillStore((s) => s.prefill);
   const prefillUpdatedAt = useCheckoutPrefillStore((s) => s.updatedAt);
   const clearPrefill = useCheckoutPrefillStore((s) => s.clearPrefill);
+  const hydrateFromStorage = useCheckoutPrefillStore((s) => s.hydrateFromStorage);
+
+  useEffect(() => {
+    hydrateFromStorage();
+  }, [hydrateFromStorage]);
 
   const formKey = `${prefillUpdatedAt ?? 0}:${authUser?.id ?? "guest"}`;
 

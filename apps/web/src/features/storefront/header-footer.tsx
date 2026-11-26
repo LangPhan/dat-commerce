@@ -62,6 +62,7 @@ export function StoreHeader({
     queryKey: ["store-nav", "main"],
     queryFn: () => cmsStoreApi.getNavigation("main"),
     enabled: !preview,
+    staleTime: 60_000,
   });
 
   const links = navQuery.data?.items?.length ? navQuery.data.items : initialStoreMenu;

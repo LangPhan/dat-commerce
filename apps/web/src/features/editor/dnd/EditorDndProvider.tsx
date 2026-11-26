@@ -137,7 +137,6 @@ export function EditorDndProvider({
   children: ReactNode;
   onNotify?: (msg: string) => void;
 }) {
-  const nodes = useEditorStore((s) => s.nodes);
   const executeOperation = useEditorStore((s) => s.executeOperation);
   const expandAncestors = useEditorStore((s) => s.expandAncestors);
 
@@ -166,7 +165,11 @@ export function EditorDndProvider({
   const handleDragOver = (event: DragOverEvent) => {
     if (!activeDrag) return;
     const overData = event.over?.data.current as DropTargetData | undefined;
-    const resolved = resolveDropDestination(nodes, activeDrag, overData);
+    const resolved = resolveDropDestination(
+      useEditorStore.getState().nodes,
+      activeDrag,
+      overData
+    );
     if (!resolved) {
       setOverValid({ valid: true });
       return;
@@ -181,7 +184,11 @@ export function EditorDndProvider({
 
     if (!payload || !event.over) return;
     const overData = event.over.data.current as DropTargetData | undefined;
-    const resolved = resolveDropDestination(nodes, payload, overData);
+    const resolved = resolveDropDestination(
+      useEditorStore.getState().nodes,
+      payload,
+      overData
+    );
     if (!resolved || !resolved.valid) {
       if (resolved?.reason) onNotify?.(resolved.reason);
       return;
@@ -429,5 +436,5 @@ export function PaletteDraggableItem({
 }
 
 export function findParentIdForNode(nodes: ElementNode[], nodeId: string): string | null {
-  return findParent(nodes, nodeId)?.parent?.id ?? null;
+  return findParent(useEditorStore.getState().nodes, nodeId)?.parent?.id ?? null;
 }

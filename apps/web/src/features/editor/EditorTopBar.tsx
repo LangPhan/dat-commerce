@@ -89,8 +89,6 @@ export function EditorTopBar({
   const pageId = useEditorStore((s) => s.pageId);
   const pageSlug = useEditorStore((s) => s.pageSlug);
   const pageTitle = useEditorStore((s) => s.pageTitle);
-  const seoTitle = useEditorStore((s) => s.seoTitle);
-  const seoDescription = useEditorStore((s) => s.seoDescription);
   const status = useEditorStore((s) => s.status);
   const dirty = useEditorStore((s) => s.dirty);
   const saveStatus = useEditorStore((s) => s.saveStatus);
@@ -310,9 +308,10 @@ export function EditorTopBar({
           label="Page settings"
           title="Page settings & SEO"
           onClick={() => {
-            setMetaTitleDraft(pageTitle);
-            setMetaSeoTitleDraft(seoTitle);
-            setMetaSeoDescDraft(seoDescription);
+            const state = useEditorStore.getState();
+            setMetaTitleDraft(state.pageTitle);
+            setMetaSeoTitleDraft(state.seoTitle);
+            setMetaSeoDescDraft(state.seoDescription);
             setSettingsOpen(true);
           }}
         >

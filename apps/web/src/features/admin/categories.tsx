@@ -123,14 +123,24 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
   );
 
   const rows: CategoryRow[] = useMemo(() => {
-    const byId = new Map(categories.map((c) => [c.id, c]));
+    const byId = new Map<string, CategoryDto>();
+    const childrenByParent = new Map<string | null, CategoryDto[]>();
+    for (const c of categories) {
+      byId.set(c.id, c);
+      const pKey = c.parentId || null;
+      const bucket = childrenByParent.get(pKey);
+      if (bucket) bucket.push(c);
+      else childrenByParent.set(pKey, [c]);
+    }
     const typeById = new Map(productTypes.map((pt) => [pt.id, pt.name]));
     const ordered: CategoryRow[] = [];
     const seen = new Set<string>();
 
     function visit(parentId: string | null, depth: number) {
-      for (const item of categories) {
-        if ((item.parentId || null) !== parentId || seen.has(item.id)) continue;
+      const children = childrenByParent.get(parentId);
+      if (!children) return;
+      for (const item of children) {
+        if (seen.has(item.id)) continue;
         seen.add(item.id);
         ordered.push({
           ...item,

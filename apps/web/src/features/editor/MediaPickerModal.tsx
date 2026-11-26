@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ImagePlus, Search, Sparkles, Upload } from "lucide-react";
-import { useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/data-display";
@@ -95,24 +95,29 @@ export function MediaPickerModal({
     uploadMutation.mutate(file);
   };
 
-  const q = search.trim().toLowerCase();
-  const libraryAssets = (mediaQuery.data || []).filter((asset) => {
-    if (!q) return true;
-    return (
-      asset.originalFilename.toLowerCase().includes(q) ||
-      (asset.altText || "").toLowerCase().includes(q) ||
-      asset.url.toLowerCase().includes(q)
-    );
-  });
+  const deferredSearch = useDeferredValue(search);
+  const q = deferredSearch.trim().toLowerCase();
 
-  const presetAssets = STORE_PRESET_MEDIA_ASSETS.filter((preset) => {
-    if (!q) return true;
-    return (
-      preset.name.toLowerCase().includes(q) ||
-      preset.category.toLowerCase().includes(q) ||
-      preset.url.toLowerCase().includes(q)
+  const libraryAssets = useMemo(() => {
+    const assets = mediaQuery.data || [];
+    if (!q) return assets;
+    return assets.filter(
+      (asset) =>
+        asset.originalFilename.toLowerCase().includes(q) ||
+        (asset.altText || "").toLowerCase().includes(q) ||
+        asset.url.toLowerCase().includes(q)
     );
-  });
+  }, [mediaQuery.data, q]);
+
+  const presetAssets = useMemo(() => {
+    if (!q) return STORE_PRESET_MEDIA_ASSETS;
+    return STORE_PRESET_MEDIA_ASSETS.filter(
+      (preset) =>
+        preset.name.toLowerCase().includes(q) ||
+        preset.category.toLowerCase().includes(q) ||
+        preset.url.toLowerCase().includes(q)
+    );
+  }, [q]);
 
   const pickUrl = (url: string) => {
     onSelect(url);

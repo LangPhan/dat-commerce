@@ -1,13 +1,14 @@
 "use client";
 
 import { EyeOff, Lock } from "lucide-react";
-import { Fragment, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useMemo, type CSSProperties, type ReactNode } from "react";
 import type { StoreCategoryItem, StoreProductItem } from "@/features/storefront/blocks";
 import { cn } from "@/lib/format";
 import { getElementPart } from "../parts";
 import { renderElementContent, type BuilderNodeAttrs } from "../registry/elements";
 import { sanitizeHtmlAttributes } from "../sanitizers";
 import {
+  compileEditHighlightCss,
   compileEditPartCss,
   compileLivePageCss,
   compileNodeInlineStyle,
@@ -106,15 +107,33 @@ export function PageRenderer({
   wrapEditNode?: (args: EditNodeWrapperProps) => ReactNode;
   renderContainerEndSlot?: (parentId: string | null, childCount: number) => ReactNode;
 }) {
-  const styleCss =
-    mode === "live"
-      ? compileLivePageCss(nodes, {
-          hoverOnly: Boolean(forceViewport),
-          forceViewport,
-        })
-      : compileEditPartCss(nodes, viewport, { selectedPart, hoveredPart });
-  const selectedSet = new Set(selectedIds);
-  const normalizedTypo = typography ? normalizeGlobalTypography(typography) : null;
+  const baseStyleCss = useMemo(
+    () =>
+      mode === "live"
+        ? compileLivePageCss(nodes, {
+            hoverOnly: Boolean(forceViewport),
+            forceViewport,
+          })
+        : compileEditPartCss(nodes, viewport),
+    [mode, nodes, forceViewport, viewport]
+  );
+  const highlightCss = useMemo(
+    () =>
+      mode === "edit"
+        ? compileEditHighlightCss({ selectedPart, hoveredPart })
+        : "",
+    [mode, selectedPart, hoveredPart]
+  );
+  const styleCss = highlightCss
+    ? baseStyleCss
+      ? `${baseStyleCss}\n${highlightCss}`
+      : highlightCss
+    : baseStyleCss;
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const normalizedTypo = useMemo(
+    () => (typography ? normalizeGlobalTypography(typography) : null),
+    [typography]
+  );
 
   const renderNodeList = (
     list: ElementNode[],

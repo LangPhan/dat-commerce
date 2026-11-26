@@ -43,7 +43,10 @@ function StatusPill({ status }: { status: FontLoadingStatus }) {
   if (status === "loading") {
     return (
       <Badge tone="accent">
-        <Loader2 size={10} className="animate-spin" /> Loading
+        <span className="animate-spin inline-flex" aria-hidden="true">
+          <Loader2 size={10} />
+        </span>{" "}
+        Loading
       </Badge>
     );
   }

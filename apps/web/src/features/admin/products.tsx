@@ -11,7 +11,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button, IconButton } from "@/components/ui/button";
 import {
@@ -121,15 +121,16 @@ function ProductFormDialog({
   const [description, setDescription] = useState(existing?.description || "");
   const [seoTitle, setSeoTitle] = useState(existing?.seoTitle || "");
   const [seoDescription, setSeoDescription] = useState(existing?.seoDescription || "");
-  const [categoryIds, setCategoryIds] = useState<string[]>(
+  const [categoryIds, setCategoryIds] = useState<string[]>(() =>
     existing ? existing.categories.map((c) => c.id) : []
   );
-  const [attrValues, setAttrValues] = useState<Record<string, unknown>>(
+  const categoryIdSet = useMemo(() => new Set(categoryIds), [categoryIds]);
+  const [attrValues, setAttrValues] = useState<Record<string, unknown>>(() =>
     formatAttributeInitialValues(existing)
   );
   const [images, setImages] = useState<
     { mediaAssetId?: string; url: string; altText?: string }[]
-  >(
+  >(() =>
     existing?.images?.length
       ? existing.images.map((i) => ({
           mediaAssetId: i.mediaAssetId || undefined,
@@ -141,7 +142,7 @@ function ProductFormDialog({
         : [{ url: "/media/terrain-fallback.jpg", altText: "Product" }]
   );
   const [imageUrlInput, setImageUrlInput] = useState("");
-  const [variants, setVariants] = useState<VariantInput[]>(
+  const [variants, setVariants] = useState<VariantInput[]>(() =>
     existing?.variants?.length
       ? existing.variants.map((v) => ({
           sku: v.sku,
@@ -342,22 +343,34 @@ function ProductFormDialog({
         : typeof rawVal === "string" && rawVal
           ? rawVal.split(",").map((s) => s.trim())
           : [];
+      const selectedSet = new Set(selectedList);
       return (
         <div key={attr.attributeDefinitionId} className="panel" style={{ padding: 10 }}>
           <strong style={{ fontSize: 12 }}>{labelText}</strong>
           <div className="button-row" style={{ marginTop: 6, flexWrap: "wrap" }}>
             {attr.options.map((opt) => {
-              const checked = selectedList.includes(opt.value);
+              const checked = selectedSet.has(opt.value);
               return (
                 <label className="check-label" key={opt.id}>
                   <input
                     type="checkbox"
                     checked={checked}
                     onChange={(e) => {
-                      const next = e.target.checked
-                        ? [...selectedList, opt.value]
-                        : selectedList.filter((v) => v !== opt.value);
-                      setAttrValues((prev) => ({ ...prev, [attr.code]: next }));
+                      const isChecked = e.target.checked;
+                      setAttrValues((prev) => {
+                        const prevRaw = prev[attr.code];
+                        const curr: string[] = Array.isArray(prevRaw)
+                          ? prevRaw.map(String)
+                          : typeof prevRaw === "string" && prevRaw
+                            ? prevRaw.split(",").map((s) => s.trim())
+                            : [];
+                        const next = isChecked
+                          ? curr.includes(opt.value)
+                            ? curr
+                            : [...curr, opt.value]
+                          : curr.filter((v) => v !== opt.value);
+                        return { ...prev, [attr.code]: next };
+                      });
                     }}
                   />
                   {opt.label}
@@ -552,7 +565,7 @@ function ProductFormDialog({
                     style={{ marginTop: 8, flexWrap: "wrap", gap: 10 }}
                   >
                     {categories.map((cat) => {
-                      const checked = categoryIds.includes(cat.id);
+                      const checked = categoryIdSet.has(cat.id);
                       return (
                         <label className="check-label" key={cat.id}>
                           <input

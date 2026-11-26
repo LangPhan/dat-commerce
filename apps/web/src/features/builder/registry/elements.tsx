@@ -895,18 +895,18 @@ export function renderElementContent(
       const cols = Math.max(2, Math.min(4, numProp(props, "columns", 4)));
       const catSlug = strProp(props, "categorySlug", "").toLowerCase();
       const sortBy = strProp(props, "sortBy", "newest");
-      let list = [...catalog];
+      let normalized = catalog.map((raw) => ({ raw, info: toProdInfo(raw) }));
       if (catSlug) {
-        list = list.filter((p) =>
-          toProdInfo(p).categoryKey.toLowerCase().includes(catSlug)
+        normalized = normalized.filter((item) =>
+          item.info.categoryKey.toLowerCase().includes(catSlug)
         );
       }
       if (sortBy === "best_sellers") {
-        list.sort((a, b) => toProdInfo(b).salesCount - toProdInfo(a).salesCount);
+        normalized.sort((a, b) => b.info.salesCount - a.info.salesCount);
       } else if (sortBy === "price_asc") {
-        list.sort((a, b) => toProdInfo(a).price - toProdInfo(b).price);
+        normalized.sort((a, b) => a.info.price - b.info.price);
       }
-      const shown = list.slice(0, limit);
+      const shown = normalized.slice(0, limit);
       const actionLabel = strProp(props, "actionLabel", "");
       const actionUrl = sanitizeUrl(props.actionUrl, "/store/shop");
       return (
@@ -925,10 +925,10 @@ export function renderElementContent(
               if (isEdit) e.preventDefault();
             }}
           >
-            {shown.map((product) => (
+            {shown.map(({ raw, info }) => (
               <ProductCard
-                key={toProdInfo(product).id}
-                product={product}
+                key={info.id}
+                product={raw}
               />
             ))}
           </div>
@@ -980,6 +980,14 @@ export function renderElementContent(
       const limit = Math.max(2, Math.min(12, numProp(props, "limit", 6)));
       const cols = Math.max(2, Math.min(4, numProp(props, "columns", 3)));
       const shown = categories.slice(0, limit);
+      let countByCategory: Map<string, number> | null = null;
+      if (shown.some((cat) => !isApiCat(cat))) {
+        countByCategory = new Map<string, number>();
+        for (const p of catalog) {
+          const key = toProdInfo(p).categoryKey;
+          countByCategory.set(key, (countByCategory.get(key) || 0) + 1);
+        }
+      }
       return (
         <div
           className={cn("bldr-category-grid", extraClassName)}
@@ -1008,9 +1016,7 @@ export function renderElementContent(
                   id: cat.id,
                   name: cat.name,
                   desc: cat.description,
-                  count: catalog.filter(
-                    (p) => toProdInfo(p).categoryKey === cat.name
-                  ).length,
+                  count: countByCategory?.get(cat.name) ?? 0,
                   slug: cat.name,
                   image: cat.image,
                 };

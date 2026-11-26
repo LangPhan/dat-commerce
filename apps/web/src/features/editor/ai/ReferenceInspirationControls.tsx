@@ -180,7 +180,9 @@ export function ReferenceUrlPopover({
               onClick={handleCheck}
             >
               {inspectMutation.isPending ? (
-                <LoaderCircle size={12} className="spin" />
+                <span className="spin inline-flex" aria-hidden="true">
+                  <LoaderCircle size={12} />
+                </span>
               ) : (
                 <ShieldCheck size={12} />
               )}

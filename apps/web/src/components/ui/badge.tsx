@@ -4,6 +4,44 @@ import { cn } from "@/lib/format";
 
 export type BadgeTone = "neutral" | "accent" | "green" | "amber" | "red";
 
+const TONE_CLASS_MAP: Record<BadgeTone, string> = {
+  neutral: "",
+  accent: "violet",
+  green: "green",
+  amber: "amber",
+  red: "red",
+};
+
+const STATUS_TONE_MAP: Record<string, BadgeTone> = {
+  paid: "green",
+  captured: "green",
+  delivered: "green",
+  fulfilled: "green",
+  active: "green",
+  completed: "green",
+  published: "green",
+  "in stock": "green",
+  applied: "green",
+  ready: "green",
+  success: "green",
+  pending: "amber",
+  pending_approval: "amber",
+  processing: "amber",
+  shipped: "amber",
+  "low stock": "amber",
+  draft: "amber",
+  paused: "amber",
+  in_progress: "amber",
+  failed: "red",
+  refunded: "red",
+  canceled: "red",
+  cancelled: "red",
+  "out of stock": "red",
+  "unsaved changes": "red",
+  rejected: "red",
+  expired: "red",
+};
+
 export function Badge({
   tone = "neutral",
   className = "",
@@ -13,53 +51,15 @@ export function Badge({
   className?: string;
   children: ReactNode;
 }) {
-  const toneClass =
-    tone === "accent"
-      ? "violet"
-      : tone === "green"
-        ? "green"
-        : tone === "amber"
-          ? "amber"
-          : tone === "red"
-            ? "red"
-            : "";
-  return <span className={cn("badge", toneClass, className)}>{children}</span>;
+  return (
+    <span className={cn("badge", TONE_CLASS_MAP[tone], className)}>
+      {children}
+    </span>
+  );
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  const lower = status.toLowerCase();
-  const tone: BadgeTone =
-    lower === "paid" ||
-    lower === "captured" ||
-    lower === "delivered" ||
-    lower === "fulfilled" ||
-    lower === "active" ||
-    lower === "completed" ||
-    lower === "published" ||
-    lower === "in stock" ||
-    lower === "applied" ||
-    lower === "ready" ||
-    lower === "success"
-      ? "green"
-      : lower === "pending" ||
-          lower === "pending_approval" ||
-          lower === "processing" ||
-          lower === "shipped" ||
-          lower === "low stock" ||
-          lower === "draft" ||
-          lower === "paused" ||
-          lower === "in_progress"
-        ? "amber"
-        : lower === "failed" ||
-            lower === "refunded" ||
-            lower === "canceled" ||
-            lower === "cancelled" ||
-            lower === "out of stock" ||
-            lower === "unsaved changes" ||
-            lower === "rejected" ||
-            lower === "expired"
-          ? "red"
-          : "neutral";
+  const tone: BadgeTone = STATUS_TONE_MAP[status.toLowerCase()] ?? "neutral";
 
   return (
     <Badge tone={tone}>
