@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { AppProviders } from "@/lib/query-provider";
 import "./globals.css";
 import "./editor.css";
@@ -29,6 +30,7 @@ export default function RootLayout({
       </head>
       <body>
         <AppProviders>{children}</AppProviders>
+        <Analytics />
       </body>
     </html>
   );
