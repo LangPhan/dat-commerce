@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/data-display";
 import { Listing } from "@/features/storefront/listing";
+import { parseListingSearchParams } from "@/features/storefront/listing-url";
 import {
   JsonLd,
   buildBreadcrumbJsonLd,
@@ -17,9 +18,24 @@ export const metadata: Metadata = buildStoreMetadata({
   canonical: "/store/shop",
 });
 
-export default async function ShopPage() {
+export default async function ShopPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const initialUrlState = parseListingSearchParams(await searchParams);
   const [initialProducts, initialCategories] = await Promise.all([
-    fetchStoreProducts({ size: 6 }),
+    fetchStoreProducts({
+      q: initialUrlState.q || undefined,
+      category: initialUrlState.category || undefined,
+      maxPrice: initialUrlState.maxPrice
+        ? Number(initialUrlState.maxPrice)
+        : undefined,
+      sort: initialUrlState.sort,
+      page: initialUrlState.page - 1,
+      size: 6,
+      attrs: initialUrlState.attrs,
+    }),
     fetchStoreCategories(),
   ]);
 
@@ -49,6 +65,7 @@ export default async function ShopPage() {
         <Listing
           initialProducts={initialProducts}
           initialCategories={initialCategories}
+          initialUrlState={initialUrlState}
         />
       </Suspense>
     </>

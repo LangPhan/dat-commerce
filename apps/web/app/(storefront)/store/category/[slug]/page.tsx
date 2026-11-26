@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/data-display";
 import { Listing } from "@/features/storefront/listing";
+import { parseListingSearchParams } from "@/features/storefront/listing-url";
 import {
   JsonLd,
   buildBreadcrumbJsonLd,
@@ -42,13 +43,26 @@ export async function generateMetadata({
 
 export default async function CategoryDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { slug } = await params;
+  const [{ slug }, rawSearch] = await Promise.all([params, searchParams]);
+  const initialUrlState = parseListingSearchParams(rawSearch, slug);
   const [categories, initialProducts] = await Promise.all([
     fetchStoreCategories(),
-    fetchStoreProducts({ category: slug, size: 6 }),
+    fetchStoreProducts({
+      q: initialUrlState.q || undefined,
+      category: slug,
+      maxPrice: initialUrlState.maxPrice
+        ? Number(initialUrlState.maxPrice)
+        : undefined,
+      sort: initialUrlState.sort,
+      page: initialUrlState.page - 1,
+      size: 6,
+      attrs: initialUrlState.attrs,
+    }),
   ]);
 
   const category = categories.find((c) => c.slug === slug || c.id === slug);
@@ -88,6 +102,7 @@ export default async function CategoryDetailPage({
           forcedCategory={category.slug}
           initialProducts={initialProducts}
           initialCategories={categories}
+          initialUrlState={{ ...initialUrlState, category: category.slug }}
         />
       </Suspense>
     </>

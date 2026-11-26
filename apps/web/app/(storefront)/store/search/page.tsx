@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/data-display";
 import { Listing } from "@/features/storefront/listing";
+import { parseListingSearchParams } from "@/features/storefront/listing-url";
 import { buildStoreMetadata } from "@/lib/seo";
+import { fetchStoreCategories, fetchStoreProducts } from "@/lib/store-server";
 
 export async function generateMetadata({
   searchParams,
@@ -20,7 +22,27 @@ export async function generateMetadata({
   });
 }
 
-export default function SearchPage() {
+export default async function SearchPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const initialUrlState = parseListingSearchParams(await searchParams);
+  const [initialProducts, initialCategories] = await Promise.all([
+    fetchStoreProducts({
+      q: initialUrlState.q || undefined,
+      category: initialUrlState.category || undefined,
+      maxPrice: initialUrlState.maxPrice
+        ? Number(initialUrlState.maxPrice)
+        : undefined,
+      sort: initialUrlState.sort,
+      page: initialUrlState.page - 1,
+      size: 6,
+      attrs: initialUrlState.attrs,
+    }),
+    fetchStoreCategories(),
+  ]);
+
   return (
     <Suspense
       fallback={
@@ -29,7 +51,12 @@ export default function SearchPage() {
         </div>
       }
     >
-      <Listing search />
+      <Listing
+        search
+        initialProducts={initialProducts}
+        initialCategories={initialCategories}
+        initialUrlState={initialUrlState}
+      />
     </Suspense>
   );
 }

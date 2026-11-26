@@ -2,9 +2,9 @@
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Grid2X2, List, Search, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Check, Grid2X2, Link2, List, Search, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Pagination, Skeleton } from "@/components/ui/data-display";
 import {
@@ -18,6 +18,13 @@ import { ApiError } from "@/lib/api-client";
 import { storeApi } from "@/lib/commerce-api";
 import type { CategoryDto, StoreProductListResponse } from "@/types/api-commerce";
 import { ProductCard } from "./blocks";
+import {
+  areListingStatesEqual,
+  buildListingHref,
+  parseListingSearchParams,
+  type ListingSort,
+  type ListingUrlState,
+} from "./listing-url";
 
 const PAGE_SIZE = 6;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -43,38 +50,104 @@ export function Listing({
   forcedCategory,
   initialProducts,
   initialCategories,
+  initialUrlState,
   onReady,
 }: {
   search?: boolean;
   forcedCategory?: string;
   initialProducts?: StoreProductListResponse | null;
   initialCategories?: CategoryDto[];
+  initialUrlState?: ListingUrlState;
   onReady?: () => void;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const urlCategory = forcedCategory || searchParams.get("category") || "";
-  const urlQuery = searchParams.get("q") || "";
 
-  const [categoryOverride, setCategoryOverride] = useState<string | null>(null);
-  const [queryOverride, setQueryOverride] = useState<string | null>(null);
-  const [sort, setSort] = useState("featured");
-  const [maxPrice, setMaxPrice] = useState<string>("");
-  const [attrs, setAttrs] = useState<Record<string, string>>({});
-  const [listView, setListView] = useState(false);
-  const [page, setPage] = useState(1);
+  const urlState = useMemo(
+    () => parseListingSearchParams(searchParams, forcedCategory),
+    [searchParams, forcedCategory]
+  );
 
-  const activeCategory = categoryOverride !== null ? categoryOverride : urlCategory;
-  const activeQuery = queryOverride !== null ? queryOverride : urlQuery;
-  const [debouncedQuery, setDebouncedQuery] = useState(activeQuery);
+  const activeCategory = urlState.category;
+  const sort = urlState.sort;
+  const maxPrice = urlState.maxPrice;
+  const attrs = urlState.attrs;
+  const listView = urlState.view === "list";
+  const page = urlState.page;
+
+  const [searchInput, setSearchInput] = useState(urlState.q);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const prevUrlQRef = useRef(urlState.q);
 
   useEffect(() => {
-    const trimmed = activeQuery.trim();
-    if (trimmed === debouncedQuery.trim()) return;
+    if (prevUrlQRef.current !== urlState.q) {
+      prevUrlQRef.current = urlState.q;
+      setSearchInput(urlState.q);
+    }
+  }, [urlState.q]);
+
+  const commitUrlState = useCallback(
+    (
+      patch: Partial<ListingUrlState>,
+      options?: { mode?: "push" | "replace"; targetPathname?: string }
+    ) => {
+      const cleanedAttrs: Record<string, string> = {};
+      const nextAttrsRaw = patch.attrs !== undefined ? patch.attrs : urlState.attrs;
+      for (const [k, v] of Object.entries(nextAttrsRaw)) {
+        const trimmedK = k.trim();
+        const trimmedV = v.trim();
+        if (trimmedK && trimmedV) {
+          cleanedAttrs[trimmedK] = trimmedV;
+        }
+      }
+
+      const nextState: ListingUrlState = {
+        ...urlState,
+        ...patch,
+        attrs: cleanedAttrs,
+      };
+
+      let targetPath = options?.targetPathname ?? pathname;
+      let targetForcedCategory = forcedCategory;
+      if (!options?.targetPathname && forcedCategory && nextState.category !== forcedCategory) {
+        if (nextState.category) {
+          targetPath = `/store/category/${encodeURIComponent(nextState.category)}`;
+          targetForcedCategory = nextState.category;
+        } else {
+          targetPath = "/store/shop";
+          targetForcedCategory = undefined;
+        }
+      } else if (options?.targetPathname === "/store/shop") {
+        targetForcedCategory = undefined;
+      }
+
+      const nextHref = buildListingHref(targetPath, nextState, {
+        forcedCategory: targetForcedCategory,
+      });
+      const currentRawQuery = searchParams.toString();
+      const currentHref = currentRawQuery ? `${pathname}?${currentRawQuery}` : pathname;
+      if (nextHref === currentHref) {
+        return;
+      }
+
+      if (options?.mode === "replace") {
+        router.replace(nextHref, { scroll: false });
+      } else {
+        router.push(nextHref, { scroll: false });
+      }
+    },
+    [urlState, pathname, forcedCategory, searchParams, router]
+  );
+
+  useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (trimmed === urlState.q) return;
     const timer = window.setTimeout(() => {
-      setDebouncedQuery(activeQuery);
+      commitUrlState({ q: trimmed, page: 1 }, { mode: "replace" });
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [activeQuery, debouncedQuery]);
+  }, [searchInput, urlState.q, commitUrlState]);
 
   const categoriesQuery = useQuery({
     queryKey: ["store-categories"],
@@ -83,18 +156,15 @@ export function Listing({
     staleTime: 60_000,
   });
 
-  const isDefaultFilterState =
-    page === 1 &&
-    sort === "featured" &&
-    maxPrice === "" &&
-    Object.keys(attrs).length === 0 &&
-    debouncedQuery.trim() === urlQuery.trim() &&
-    activeCategory === urlCategory;
+  const matchesInitialSsrState =
+    Boolean(initialProducts) &&
+    Boolean(initialUrlState) &&
+    areListingStatesEqual(urlState, initialUrlState!);
 
   const productsQuery = useQuery({
     queryKey: [
       "store-products",
-      debouncedQuery,
+      urlState.q,
       activeCategory,
       maxPrice,
       sort,
@@ -103,7 +173,7 @@ export function Listing({
     ],
     queryFn: () =>
       storeApi.listProducts({
-        q: debouncedQuery.trim() || undefined,
+        q: urlState.q || undefined,
         category: activeCategory || undefined,
         maxPrice: maxPrice ? Number(maxPrice) : undefined,
         sort,
@@ -111,7 +181,7 @@ export function Listing({
         size: PAGE_SIZE,
         attrs,
       }),
-    initialData: isDefaultFilterState && initialProducts ? initialProducts : undefined,
+    initialData: matchesInitialSsrState ? initialProducts ?? undefined : undefined,
     staleTime: 60_000,
     placeholderData: keepPreviousData,
   });
@@ -130,12 +200,26 @@ export function Listing({
   const items = data?.items || [];
   const facets = data?.facets || [];
   const totalElements = data?.totalElements || 0;
+  const totalPages = data?.totalPages || 0;
+
+  useEffect(() => {
+    if (!productsQuery.isPlaceholderData && data && totalPages > 0 && page > totalPages) {
+      commitUrlState({ page: totalPages }, { mode: "replace" });
+    }
+  }, [productsQuery.isPlaceholderData, data, totalPages, page, commitUrlState]);
 
   const activeCategoryObj = categories.find(
     (c) =>
       c.slug.toLowerCase() === activeCategory.toLowerCase() ||
       c.name.toLowerCase() === activeCategory.toLowerCase()
   );
+
+  const maxPriceItems = useMemo(() => {
+    if (!maxPrice || MAX_PRICE_ITEMS.some((i) => i.value === maxPrice)) {
+      return MAX_PRICE_ITEMS;
+    }
+    return [...MAX_PRICE_ITEMS, { value: maxPrice, label: `Under $${maxPrice}` }];
+  }, [maxPrice]);
 
   const activeChips = [
     ...(activeCategory
@@ -158,12 +242,32 @@ export function Listing({
   ];
 
   function clearFilters() {
-    setCategoryOverride("");
-    setQueryOverride("");
-    setDebouncedQuery("");
-    setMaxPrice("");
-    setAttrs({});
-    setPage(1);
+    setSearchInput("");
+    commitUrlState(
+      {
+        q: "",
+        category: "",
+        maxPrice: "",
+        sort: "featured",
+        attrs: {},
+        page: 1,
+      },
+      {
+        mode: "push",
+        targetPathname: forcedCategory ? "/store/shop" : pathname,
+      }
+    );
+  }
+
+  async function handleCopyShareLink() {
+    if (typeof window === "undefined" || !navigator.clipboard?.writeText) return;
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopiedLink(true);
+      window.setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      /* Clipboard permission unavailable */
+    }
   }
 
   return (
@@ -188,10 +292,13 @@ export function Listing({
           <input
             aria-label="Search products"
             placeholder="Search by product, brand, CPU, waterproof, material…"
-            value={activeQuery}
-            onChange={(e) => {
-              setQueryOverride(e.target.value);
-              setPage(1);
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitUrlState({ q: searchInput.trim(), page: 1 }, { mode: "replace" });
+              }
             }}
           />
         </label>
@@ -200,8 +307,7 @@ export function Listing({
           value={sort}
           onValueChange={(next) => {
             if (!next) return;
-            setSort(next);
-            setPage(1);
+            commitUrlState({ sort: next as ListingSort, page: 1 }, { mode: "push" });
           }}
         >
           <SelectTrigger aria-label="Sort products">
@@ -219,7 +325,7 @@ export function Listing({
           label="Grid view"
           aria-pressed={!listView}
           className={!listView ? "active" : ""}
-          onClick={() => setListView(false)}
+          onClick={() => commitUrlState({ view: "grid" }, { mode: "replace" })}
         >
           <Grid2X2 size={16} />
         </IconButton>
@@ -227,9 +333,16 @@ export function Listing({
           label="List view"
           aria-pressed={listView}
           className={listView ? "active" : ""}
-          onClick={() => setListView(true)}
+          onClick={() => commitUrlState({ view: "list" }, { mode: "replace" })}
         >
           <List size={16} />
+        </IconButton>
+        <IconButton
+          label={copiedLink ? "Link copied" : "Copy shareable link"}
+          title={copiedLink ? "Link copied" : "Copy shareable link"}
+          onClick={handleCopyShareLink}
+        >
+          {copiedLink ? <Check size={16} /> : <Link2 size={16} />}
         </IconButton>
       </div>
 
@@ -239,92 +352,96 @@ export function Listing({
             <strong className="filters-title">Filters</strong>
           </div>
           <div className="filters-scroll">
-          <label>
-            Category
-            <Select
-              items={[
-                { value: "", label: "All categories" },
-                ...categories.map((cat) => ({ value: cat.slug, label: cat.name })),
-              ]}
-              value={activeCategory}
-              onValueChange={(next) => {
-                setCategoryOverride(next ?? "");
-                setAttrs({});
-                setPage(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">All categories</SelectItem>
-                {categories.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.slug}>
-                    {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+            <label>
+              Category
+              <Select
+                items={[
+                  { value: "", label: "All categories" },
+                  ...categories.map((cat) => ({ value: cat.slug, label: cat.name })),
+                ]}
+                value={activeCategory}
+                onValueChange={(next) => {
+                  commitUrlState(
+                    { category: next ?? "", attrs: {}, page: 1 },
+                    { mode: "push" }
+                  );
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All categories</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.slug}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
 
-          <label>
-            Max price
-            <Select
-              items={MAX_PRICE_ITEMS}
-              value={maxPrice}
-              onValueChange={(next) => {
-                setMaxPrice(next ?? "");
-                setPage(1);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MAX_PRICE_ITEMS.map((item) => (
-                  <SelectItem key={item.value || "any"} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+            <label>
+              Max price
+              <Select
+                items={maxPriceItems}
+                value={maxPrice}
+                onValueChange={(next) => {
+                  commitUrlState({ maxPrice: next ?? "", page: 1 }, { mode: "push" });
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {maxPriceItems.map((item) => (
+                    <SelectItem key={item.value || "any"} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
 
-          {facets.map((facet) => {
-            const facetItems = [
-              { value: "", label: "Any" },
-              ...facet.values.map((val) => ({ value: val, label: val })),
-            ];
-            return (
-              <label key={facet.code}>
-                {facet.name}
-                {facet.unit ? ` (${facet.unit})` : ""}
-                <Select
-                  items={facetItems}
-                  value={attrs[facet.code] || ""}
-                  onValueChange={(next) => {
-                    const val = next ?? "";
-                    setAttrs((prev) => ({ ...prev, [facet.code]: val }));
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {facetItems.map((item) => (
-                      <SelectItem key={item.value || "any"} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-            );
-          })}
-
+            {facets.map((facet) => {
+              const facetItems = [
+                { value: "", label: "Any" },
+                ...facet.values.map((val) => ({ value: val, label: val })),
+              ];
+              return (
+                <label key={facet.code}>
+                  {facet.name}
+                  {facet.unit ? ` (${facet.unit})` : ""}
+                  <Select
+                    items={facetItems}
+                    value={attrs[facet.code] || ""}
+                    onValueChange={(next) => {
+                      const val = (next ?? "").trim();
+                      const nextAttrs = { ...attrs };
+                      if (val) {
+                        nextAttrs[facet.code] = val;
+                      } else {
+                        delete nextAttrs[facet.code];
+                      }
+                      commitUrlState({ attrs: nextAttrs, page: 1 }, { mode: "push" });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {facetItems.map((item) => (
+                        <SelectItem key={item.value || "any"} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+              );
+            })}
           </div>
-          {activeChips.length > 0 ? (
+          {activeChips.length > 0 || urlState.q || sort !== "featured" ? (
             <div className="filters-footer">
               <Button size="sm" onClick={clearFilters}>
                 Clear all filters
@@ -343,14 +460,14 @@ export function Listing({
                   className="filter-chip"
                   onClick={() => {
                     if (chip.key === "__category") {
-                      setCategoryOverride("");
-                      setAttrs({});
+                      commitUrlState({ category: "", attrs: {}, page: 1 }, { mode: "push" });
                     } else if (chip.key === "__price") {
-                      setMaxPrice("");
+                      commitUrlState({ maxPrice: "", page: 1 }, { mode: "push" });
                     } else {
-                      setAttrs((prev) => ({ ...prev, [chip.key]: "" }));
+                      const nextAttrs = { ...attrs };
+                      delete nextAttrs[chip.key];
+                      commitUrlState({ attrs: nextAttrs, page: 1 }, { mode: "push" });
                     }
-                    setPage(1);
                   }}
                 >
                   <span>{chip.label}</span>
@@ -393,7 +510,12 @@ export function Listing({
                 page={page}
                 totalItems={totalElements}
                 pageSize={PAGE_SIZE}
-                onPageChange={setPage}
+                onPageChange={(nextPage) => {
+                  commitUrlState({ page: nextPage }, { mode: "push" });
+                  if (typeof window !== "undefined") {
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }
+                }}
               />
             </>
           ) : (

@@ -71,14 +71,28 @@ export function fetchStoreProduct(
 }
 
 export async function fetchStoreProducts(params?: {
-  size?: number;
-  category?: string;
   q?: string;
+  category?: string;
+  maxPrice?: number;
+  sort?: string;
+  page?: number;
+  size?: number;
+  attrs?: Record<string, string>;
 }): Promise<StoreProductListResponse | null> {
   const qs = new URLSearchParams();
-  if (params?.size) qs.set("size", String(params.size));
-  if (params?.category) qs.set("category", params.category);
   if (params?.q) qs.set("q", params.q);
+  if (params?.category) qs.set("category", params.category);
+  if (params?.maxPrice !== undefined && Number.isFinite(params.maxPrice)) {
+    qs.set("maxPrice", String(params.maxPrice));
+  }
+  if (params?.sort) qs.set("sort", params.sort);
+  if (params?.page !== undefined) qs.set("page", String(params.page));
+  if (params?.size !== undefined) qs.set("size", String(params.size));
+  if (params?.attrs) {
+    for (const [code, val] of Object.entries(params.attrs)) {
+      if (val) qs.set(`attr.${code}`, val);
+    }
+  }
   const query = qs.toString();
   return fetchStoreJson<StoreProductListResponse>(
     `/api/v1/store/products${query ? `?${query}` : ""}`
