@@ -14,3 +14,6 @@ next-env.d.ts
 playwright-report/
 test-results/
 .DS_Store
+.agents/
+SKILL.md
+skills-lock.json
