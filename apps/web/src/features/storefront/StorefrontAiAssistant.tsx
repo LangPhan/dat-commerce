@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { StoreImage } from "@/components/ui/store-image";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
@@ -472,9 +473,12 @@ export function StorefrontAiAssistant({
                                 {m.recommendedProducts.map((rec) => (
                                   <div key={rec.productId} className="store-ai-rec-card">
                                     {rec.imageUrl ? (
-                                      <img
+                                      <StoreImage
                                         src={rec.imageUrl}
                                         alt={rec.name}
+                                        width={48}
+                                        height={48}
+                                        sizes="48px"
                                         className="store-ai-rec-thumb"
                                       />
                                     ) : (

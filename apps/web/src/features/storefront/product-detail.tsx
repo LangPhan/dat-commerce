@@ -6,6 +6,7 @@ import { Check, Heart, Minus, Plus, ShoppingBag, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button, IconButton } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
+import { StoreImage } from "@/components/ui/store-image";
 import { Tabs } from "@/components/ui/overlay";
 import {
   Select,
@@ -99,7 +100,14 @@ function ProductDetailInner({
             onClick={() => setZoom((z) => !z)}
             aria-label={zoom ? "Zoom out product image" : "Zoom in product image"}
           >
-            <img src={activeImage} alt={product.name} />
+            <StoreImage
+              src={activeImage}
+              alt={product.name}
+              width={960}
+              height={814}
+              sizes="(max-width: 900px) 100vw, 55vw"
+              preload
+            />
           </button>
           {gallery.length > 1 ? (
             <div className="detail-thumbs">
@@ -111,7 +119,13 @@ function ProductDetailInner({
                   aria-label={`View image ${idx + 1}`}
                   onClick={() => setActiveImage(url)}
                 >
-                  <img src={url} alt={`${product.name} thumbnail ${idx + 1}`} />
+                  <StoreImage
+                    src={url}
+                    alt={`${product.name} thumbnail ${idx + 1}`}
+                    width={64}
+                    height={54}
+                    sizes="64px"
+                  />
                 </button>
               ))}
             </div>

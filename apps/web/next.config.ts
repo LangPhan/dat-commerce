@@ -6,6 +6,14 @@ const config: NextConfig = {
   output: process.env.DOCKER_BUILD === "true" ? "standalone" : undefined,
   devIndicators: false,
   agentRules: false,
+  images: {
+    formats: ["image/avif", "image/webp"],
+    remotePatterns: [
+      { protocol: "https", hostname: "**" },
+      { protocol: "http", hostname: "localhost" },
+      { protocol: "http", hostname: "127.0.0.1" },
+    ],
+  },
   experimental: {
     optimizePackageImports: [
       "lucide-react",

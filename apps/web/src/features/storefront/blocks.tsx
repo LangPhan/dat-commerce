@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight, Play, Star } from "lucide-react";
 import { useState } from "react";
 import { Modal } from "@/components/ui/dialog";
+import { StoreImage } from "@/components/ui/store-image";
 import { cn, usd } from "@/lib/format";
 const EMPTY_PRODUCTS: StoreProductItem[] = [];
 const EMPTY_CATEGORIES: StoreCategoryItem[] = [];
@@ -68,7 +69,14 @@ export function ProductCard({ product }: { product: StoreProductItem }) {
   return (
     <Link className="product-card" data-builder-part="card" href={p.href}>
       <div className="product-card-img-wrap" data-builder-part="image_wrap">
-        <img src={p.image} alt={p.name} data-builder-part="image" />
+        <StoreImage
+          src={p.image}
+          alt={p.name}
+          width={800}
+          height={678}
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+          data-builder-part="image"
+        />
         {isLow ? (
           <span className="product-card-badge" data-builder-part="badge">
             Only {p.stock} left
@@ -184,7 +192,16 @@ export function StoreBlock({
             </Link>
           ) : null}
         </div>
-        {layout === "split" ? <img src={image} alt={heading} /> : null}
+        {layout === "split" ? (
+          <StoreImage
+            src={image}
+            alt={heading}
+            width={1200}
+            height={900}
+            sizes="(max-width: 900px) 100vw, 50vw"
+            preload={type === "Hero"}
+          />
+        ) : null}
       </section>
     );
   }
@@ -193,7 +210,13 @@ export function StoreBlock({
     return (
       <section className={cn("store-section", toneClass, spacingClass)}>
         <div className="store-split-editorial">
-          <img src={image} alt={heading} />
+          <StoreImage
+            src={image}
+            alt={heading}
+            width={1200}
+            height={923}
+            sizes="(max-width: 900px) 100vw, 50vw"
+          />
           <div>
             {kicker ? (
               <div
@@ -311,7 +334,13 @@ export function StoreBlock({
                       key={category.id}
                       href={`/store/shop?category=${encodeURIComponent(category.slug)}`}
                     >
-                      <img src={imgUrl} alt={category.name} />
+                      <StoreImage
+                        src={imgUrl}
+                        alt={category.name}
+                        width={800}
+                        height={571}
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                      />
                       <strong>{category.name}</strong>
                       <ArrowRight size={15} />
                       <small>
@@ -329,7 +358,13 @@ export function StoreBlock({
                     key={category.id}
                     href={`/store/shop?category=${encodeURIComponent(category.name)}`}
                   >
-                    <img src={category.image || stats?.image || image} alt={category.name} />
+                    <StoreImage
+                      src={category.image || stats?.image || image}
+                      alt={category.name}
+                      width={800}
+                      height={571}
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                    />
                     <strong>{category.name}</strong>
                     <ArrowRight size={15} />
                     <small>
@@ -377,7 +412,13 @@ export function StoreBlock({
         <div className="gallery-mosaic">
           {galleryItems.map((tile) => (
             <figure key={tile.id} className="gallery-tile">
-              <img src={tile.image || image} alt={tile.title} />
+              <StoreImage
+                src={tile.image || image}
+                alt={tile.title}
+                width={640}
+                height={640}
+                sizes="(max-width: 640px) 50vw, 25vw"
+              />
               <figcaption>
                 <strong>{tile.title}</strong> — {tile.body}
               </figcaption>
@@ -520,7 +561,13 @@ export function StoreBlock({
         <h2>{heading}</h2>
         <p>{copy}</p>
         <div className="video-showcase">
-          <img src={image} alt={heading} />
+          <StoreImage
+            src={image}
+            alt={heading}
+            width={1280}
+            height={720}
+            sizes="(max-width: 900px) 100vw, 820px"
+          />
           <button
             type="button"
             className="video-play-btn"
@@ -536,9 +583,12 @@ export function StoreBlock({
         {videoOpen ? (
           <Modal title={heading} description={copy} close={() => setVideoOpen(false)}>
             <div className="form-stack">
-              <img
+              <StoreImage
                 src={image}
                 alt={heading}
+                width={1280}
+                height={720}
+                sizes="(max-width: 768px) 100vw, 680px"
                 style={{
                   width: "100%",
                   borderRadius: 8,

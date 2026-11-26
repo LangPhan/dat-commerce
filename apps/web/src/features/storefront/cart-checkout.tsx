@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, Skeleton } from "@/components/ui/data-display";
+import { StoreImage } from "@/components/ui/store-image";
 import {
   Select,
   SelectContent,
@@ -110,9 +111,12 @@ export function CartPage({
 
             {items.map((item) => (
               <div className="cart-line" key={item.variantId}>
-                <img
+                <StoreImage
                   src={item.imageUrl || "/media/terrain-fallback.jpg"}
                   alt={item.productName}
+                  width={72}
+                  height={60}
+                  sizes="72px"
                 />
                 <div>
                   <Link href={`/store/product/${encodeURIComponent(item.productSlug)}`}>
