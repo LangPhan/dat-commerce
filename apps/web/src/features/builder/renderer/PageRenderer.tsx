@@ -196,6 +196,7 @@ export function PageRenderer({
                 nodeType={node.type}
                 motion={node.motion}
                 viewport={forceViewport || "desktop"}
+                forceViewport={forceViewport}
                 mode="live"
                 globalMotion={globalMotion}
                 customPresets={customPresets}

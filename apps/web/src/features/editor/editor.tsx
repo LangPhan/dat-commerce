@@ -184,6 +184,18 @@ export function Editor() {
         hydratedPageKeyRef.current = `${saved.id}:${saved.latestVersionNumber}:${saved.version}`;
         currentVersion = saved.version;
       }
+      if (state.themeDirty && state.themeTokens) {
+        const savedTheme = await pageAdapter.saveThemeDraft(
+          state.themeTokens,
+          "Published with page from Visual Editor"
+        );
+        const pubTheme = await pageAdapter.publishTheme(savedTheme.id);
+        hydratedThemeIdRef.current = pubTheme.id;
+        markThemeSaved();
+        void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
+        void queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
+        void queryClient.invalidateQueries({ queryKey: ["store-theme"] });
+      }
       return pageAdapter.publishPage({
         pageId: state.pageId,
         expectedVersion: currentVersion,

@@ -409,6 +409,7 @@ function ProductDetailInner({
 
 export function ProductDetail({
   idOrSlug,
+  initialProduct,
   onAddToCart,
   adding,
   wished,
@@ -416,6 +417,7 @@ export function ProductDetail({
   onReady,
 }: {
   idOrSlug: string;
+  initialProduct?: ProductDto | null;
   onAddToCart: (variantId: string, qty: number, buyNow?: boolean) => void;
   adding: boolean;
   wished: boolean;
@@ -425,6 +427,8 @@ export function ProductDetail({
   const productQuery = useQuery({
     queryKey: ["store-product", idOrSlug],
     queryFn: () => storeApi.getProduct(idOrSlug),
+    initialData: initialProduct ?? undefined,
+    staleTime: 60_000,
   });
 
   const notifiedReadyRef = useRef(false);

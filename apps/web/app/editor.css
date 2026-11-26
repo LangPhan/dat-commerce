@@ -2146,6 +2146,7 @@ label.ed-media-dropzone > input[type="file"]:not([aria-hidden="true"]),
 .ed-prop-trigger {
   flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
   height: 34px;
   padding: 0 9px;
   display: flex;
@@ -2181,13 +2182,18 @@ label.ed-media-dropzone > input[type="file"]:not([aria-hidden="true"]),
   display: inline-flex;
   align-items: center;
   min-width: 0;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
 }
 
 .ed-prop-label {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11.5px;
   font-weight: 600;
   color: var(--muted);
@@ -2203,6 +2209,7 @@ label.ed-media-dropzone > input[type="file"]:not([aria-hidden="true"]),
   justify-content: flex-end;
   gap: 6px;
   min-width: 0;
+  overflow: hidden;
   flex: 1 1 auto;
 }
 
@@ -2948,4 +2955,180 @@ label.ed-media-dropzone > input[type="file"]:not([aria-hidden="true"]),
   font-size: 11px;
   color: var(--ink-muted);
   line-height: 1.35;
+}
+
+/* Selectable Site Header / Footer Chrome */
+.ed-chrome-editable {
+  position: relative;
+  cursor: pointer;
+  transition: outline-color 0.12s ease;
+}
+
+.ed-chrome-editable:hover {
+  outline: 1.5px dashed rgba(91, 70, 232, 0.72);
+  outline-offset: -2px;
+}
+
+.ed-chrome-editable.is-selected {
+  outline: 2px solid #5b46e8;
+  outline-offset: -2px;
+  z-index: 6;
+}
+
+.ed-chrome-badge {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  z-index: 12;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: rgba(91, 70, 232, 0.9);
+  color: #ffffff;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.ed-chrome-editable:hover .ed-chrome-badge,
+.ed-chrome-editable.is-selected .ed-chrome-badge {
+  opacity: 1;
+}
+
+.ed-layer-chrome {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.ed-chrome-inspector-head {
+  padding: 12px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.ed-chrome-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px;
+}
+
+.ed-chrome-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.ed-chrome-section:last-child {
+  border-bottom: 0;
+}
+
+.ed-chrome-section h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #64748b);
+}
+
+.ed-chrome-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ed-chrome-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ed-chrome-inline-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ed-chrome-inline-row > input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ed-chrome-color-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.ed-chrome-toggles-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ed-chrome-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ed-chrome-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) auto;
+  gap: 5px;
+  align-items: center;
+}
+
+.ed-chrome-list-row input,
+.ed-chrome-list-row select,
+.ed-chrome-add-row input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #d1d5db);
+  background: var(--surface, #ffffff);
+  color: var(--text, #111318);
+  font-size: 12px;
+}
+
+.ed-chrome-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ed-chrome-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 5px;
+  align-items: center;
+}
+
+.ed-chrome-columns-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ed-chrome-col-card {
+  padding: 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e5e7eb);
+  background: var(--subtle, #f8fafc);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }

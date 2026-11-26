@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewportMode } from "@/hooks/use-viewport-mode";
 import { useReducedMotion } from "./use-reduced-motion";
 import {
   useEffect,
@@ -77,6 +78,7 @@ export function MotionWrapper({
   nodeType,
   motion,
   viewport,
+  forceViewport,
   mode,
   globalMotion,
   customPresets = [],
@@ -89,6 +91,7 @@ export function MotionWrapper({
   nodeType: ElementType;
   motion?: ElementMotionConfig;
   viewport: ViewportMode;
+  forceViewport?: ViewportMode;
   mode: "edit" | "live";
   globalMotion?: GlobalMotionSettings | NormalizedGlobalMotion | null;
   customPresets?: AnimationPresetDefinition[];
@@ -98,6 +101,8 @@ export function MotionWrapper({
   children: ReactNode;
 }) {
   const prefersReducedMotion = useReducedMotion();
+  const liveViewport = useViewportMode(mode === "live" && !forceViewport);
+  const effectiveViewport = mode === "live" ? (forceViewport || liveViewport) : viewport;
   const normalizedGlobal = useMemo(
     () => normalizeGlobalMotion(globalMotion),
     [globalMotion]
@@ -107,11 +112,11 @@ export function MotionWrapper({
     () =>
       resolveElementMotionForViewport(
         motion,
-        viewport,
+        effectiveViewport,
         customPresets,
         normalizedGlobal
       ),
-    [motion, viewport, customPresets, normalizedGlobal]
+    [motion, effectiveViewport, customPresets, normalizedGlobal]
   );
 
   const isReduced =

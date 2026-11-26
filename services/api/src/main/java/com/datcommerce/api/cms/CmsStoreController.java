@@ -19,6 +19,11 @@ public class CmsStoreController {
         this.animationPresetService = animationPresetService;
     }
 
+    @GetMapping("/pages")
+    public List<CmsService.StorePageSummaryDto> listPages() {
+        return cmsService.listPublishedPages();
+    }
+
     @GetMapping("/pages/{slug}")
     public CmsService.StorePageResponse getPage(@PathVariable String slug) {
         return cmsService.getPublishedPage(slug);

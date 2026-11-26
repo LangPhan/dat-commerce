@@ -678,8 +678,53 @@
   line-height: 1.6;
 }
 
-@media (max-width: 760px) {
-  .bldr-featured-product {
+/* Zero-specificity CSS-first responsive defaults (unified tablet <=1024px, mobile <=767px) */
+:where(.bldr-type-columns[data-columns-ratio="sidebar-left"]) {
+  grid-template-columns: 1fr 2fr;
+}
+
+:where(.bldr-type-columns[data-columns-ratio="sidebar-right"]) {
+  grid-template-columns: 2fr 1fr;
+}
+
+:where(.bldr-icon-list.is-grid),
+:where(.bldr-gallery),
+:where(.bldr-product-grid),
+:where(.bldr-category-grid) {
+  grid-template-columns: repeat(var(--bldr-cols, 3), minmax(0, 1fr));
+}
+
+@media (max-width: 1024px) {
+  :where(.bldr-gallery),
+  :where(.bldr-product-grid),
+  :where(.bldr-category-grid) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  :where(.bldr-type-columns[data-columns-ratio]),
+  :where(.bldr-icon-list.is-grid),
+  :where(.bldr-gallery),
+  :where(.bldr-product-grid),
+  :where(.bldr-category-grid),
+  :where(.bldr-featured-product) {
     grid-template-columns: 1fr;
   }
+}
+
+/* Editor artboard viewport parity */
+.ed-artboard-frame.vp-tablet :where(.bldr-gallery),
+.ed-artboard-frame.vp-tablet :where(.bldr-product-grid),
+.ed-artboard-frame.vp-tablet :where(.bldr-category-grid) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ed-artboard-frame.vp-mobile :where(.bldr-type-columns[data-columns-ratio]),
+.ed-artboard-frame.vp-mobile :where(.bldr-icon-list.is-grid),
+.ed-artboard-frame.vp-mobile :where(.bldr-gallery),
+.ed-artboard-frame.vp-mobile :where(.bldr-product-grid),
+.ed-artboard-frame.vp-mobile :where(.bldr-category-grid),
+.ed-artboard-frame.vp-mobile :where(.bldr-featured-product) {
+  grid-template-columns: 1fr;
 }

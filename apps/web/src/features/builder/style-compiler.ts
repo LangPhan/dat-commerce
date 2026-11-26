@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { MEDIA_QUERIES } from "./breakpoints";
 import { sanitizeStyleValues } from "./sanitizers";
 import type {
   ElementNode,
@@ -270,7 +271,7 @@ export function compileLivePageCss(
           const vis = node.visibility;
           if (vis) {
             if (vis.desktop === false) {
-              baseRules.push(`@media (min-width: 1025px) { ${selector} { display: none !important; } }`);
+              baseRules.push(`@media ${MEDIA_QUERIES.desktop} { ${selector} { display: none !important; } }`);
             }
             if (vis.tablet === false) {
               tabletRules.push(`  ${selector} { display: none !important; }`);
@@ -325,10 +326,10 @@ export function compileLivePageCss(
   if (baseRules.length) sections.push(baseRules.join("\n"));
   if (hoverRules.length) sections.push(hoverRules.join("\n"));
   if (tabletRules.length) {
-    sections.push(`@media (max-width: 1024px) {\n${tabletRules.join("\n")}\n}`);
+    sections.push(`@media ${MEDIA_QUERIES.tablet} {\n${tabletRules.join("\n")}\n}`);
   }
   if (mobileRules.length) {
-    sections.push(`@media (max-width: 640px) {\n${mobileRules.join("\n")}\n}`);
+    sections.push(`@media ${MEDIA_QUERIES.mobile} {\n${mobileRules.join("\n")}\n}`);
   }
   return sections.join("\n");
 }

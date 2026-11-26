@@ -4,6 +4,7 @@ import { normalizeGlobalMotion } from "@/features/motion/defaults";
 import { globalMotionSchema } from "@/features/motion/schema";
 import { normalizeGlobalTypography } from "@/features/typography/defaults";
 import { formatCssFontStack } from "@/features/typography/resolve";
+import { themeFooterSchema, themeHeaderSchema } from "@/features/storefront/chrome-defaults";
 import { globalTypographySchema } from "@/features/typography/schema";
 import { z } from "zod";
 import type {
@@ -135,6 +136,8 @@ export const themeTokensSchema = z.object({
     })
     .optional(),
   motion: globalMotionSchema.optional(),
+  header: themeHeaderSchema.optional(),
+  footer: themeFooterSchema.optional(),
 });
 
 export function apiBlocksToEditorBlocks(content?: PageContentPayload | null): Block[] {

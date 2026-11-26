@@ -8,6 +8,7 @@ import {
   Layers,
   MousePointerClick,
   Palette,
+  PanelTop,
   Redo2,
   RotateCcw,
   Sparkles,
@@ -34,7 +35,9 @@ import {
   createCustomPaletteColor,
   getBrandPaletteOptions,
 } from "@/features/editor/brand-palette";
+import { FooterEditorForm, HeaderEditorForm } from "@/features/editor/ChromeEditorForms";
 import { ColorControl } from "@/features/editor/inspector-controls";
+import { StoreFooter, StoreHeader } from "@/features/storefront/header-footer";
 import { dtoToPresetDefinition } from "@/features/motion/presets";
 import type { AnimationPresetDefinition } from "@/features/motion/types";
 import type { TypographyAiPreviewState } from "@/features/typography/components/TypographyAiBar";
@@ -108,6 +111,7 @@ type ThemeSectionId =
   | "spacing"
   | "motion"
   | "buttons"
+  | "header_footer"
   | "components";
 
 type TypoSubTab = "presets" | "fonts" | "specimen";
@@ -149,6 +153,7 @@ const NAV_ITEMS: Array<{
   { id: "spacing", label: "Global Spacing", icon: Layers },
   { id: "motion", label: "Global Motion", icon: Sparkles },
   { id: "buttons", label: "Global Buttons", icon: MousePointerClick },
+  { id: "header_footer", label: "Header & Footer", icon: PanelTop },
   { id: "components", label: "Global Components", icon: Box },
 ];
 
@@ -941,6 +946,70 @@ function ThemeWorkspace({
                       Shop Collection
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {section === "header_footer" ? (
+            <div className="theme-panel-stack">
+              <div className="theme-section-head">
+                <div>
+                  <h2>Storefront Header &amp; Footer</h2>
+                  <p>Customize the announcement bar, logo, navigation links, footer columns, and colors.</p>
+                </div>
+              </div>
+
+              <div className="theme-card-box" style={{ overflow: "hidden", padding: 0 }}>
+                <div className="store public-store" style={{ minHeight: "auto" }}>
+                  <StoreHeader
+                    preview
+                    cart={2}
+                    wishlistCount={1}
+                    currentPath="/"
+                    headerConfig={tokens.header}
+                  />
+                  <div style={{ padding: "20px 24px", textAlign: "center", fontSize: 12.5 }} className="muted">
+                    Page content preview area
+                  </div>
+                  <StoreFooter
+                    preview
+                    footerConfig={tokens.footer}
+                    onNotify={notify}
+                  />
+                </div>
+              </div>
+
+              <div className="theme-two-grid">
+                <div className="theme-card-box">
+                  <h3 style={{ margin: "0 0 8px" }}>Header Settings</h3>
+                  <HeaderEditorForm
+                    header={tokens.header}
+                    canWrite={canWrite}
+                    brandPalette={palette}
+                    onNotify={notify}
+                    onChange={(nextHeader) =>
+                      commitTokensChange(
+                        { ...tokens, header: nextHeader },
+                        "Update storefront header"
+                      )
+                    }
+                  />
+                </div>
+                <div className="theme-card-box">
+                  <h3 style={{ margin: "0 0 8px" }}>Footer Settings</h3>
+                  <FooterEditorForm
+                    footer={tokens.footer}
+                    canWrite={canWrite}
+                    brandPalette={palette}
+                    onNotify={notify}
+                    onChange={(nextFooter) =>
+                      commitTokensChange(
+                        { ...tokens, footer: nextFooter },
+                        "Update storefront footer"
+                      )
+                    }
+                  />
                 </div>
               </div>
             </div>

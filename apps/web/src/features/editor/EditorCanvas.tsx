@@ -51,6 +51,7 @@ export function EditorCanvas({
   const aiPreview = useEditorStore((s) => s.aiPreview);
   const lastAppliedAiCompare = useEditorStore((s) => s.lastAppliedAiCompare);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  const selectedChrome = useEditorStore((s) => s.selectedChrome);
   const hoveredId = useEditorStore((s) => s.hoveredId);
   const selectedPart = useEditorStore((s) => s.selectedPart);
   const hoveredPart = useEditorStore((s) => s.hoveredPart);
@@ -66,6 +67,7 @@ export function EditorCanvas({
   const aiBarOpen = useEditorStore((s) => s.aiBarOpen);
 
   const selectNode = useEditorStore((s) => s.selectNode);
+  const selectChrome = useEditorStore((s) => s.selectChrome);
   const selectPart = useEditorStore((s) => s.selectPart);
   const setHoveredId = useEditorStore((s) => s.setHoveredId);
   const setHoveredPart = useEditorStore((s) => s.setHoveredPart);
@@ -132,7 +134,7 @@ export function EditorCanvas({
       <div
         className={cn("ed-canvas-scroll", !aiBarOpen && "ed-ai-hidden")}
         onClick={() => {
-          if (!previewMode) selectNode(null);
+          if (!previewMode) { selectNode(null); selectChrome(null); }
         }}
       >
         <div
@@ -159,11 +161,33 @@ export function EditorCanvas({
               scopeSelector=".ed-store-surface"
               forceViewport={viewport}
             />
-            <div className={previewMode ? undefined : "ed-chrome-muted"}>
+            <div
+              className={
+                previewMode
+                  ? undefined
+                  : cn(
+                      "ed-chrome-editable",
+                      selectedChrome === "header" && "is-selected"
+                    )
+              }
+              onClick={
+                previewMode
+                  ? undefined
+                  : (e) => {
+                      e.stopPropagation();
+                      selectChrome("header");
+                    }
+              }
+            >
+              {!previewMode ? (
+                <span className="ed-chrome-badge">Site Header</span>
+              ) : null}
               <StoreHeader
+                preview
                 cart={0}
                 wishlistCount={0}
                 currentPath="/store"
+                headerConfig={activeThemeTokens?.header}
               />
             </div>
 
@@ -235,8 +259,32 @@ export function EditorCanvas({
               />
             )}
 
-            <div className={previewMode ? undefined : "ed-chrome-muted"}>
-              <StoreFooter />
+            <div
+              className={
+                previewMode
+                  ? undefined
+                  : cn(
+                      "ed-chrome-editable",
+                      selectedChrome === "footer" && "is-selected"
+                    )
+              }
+              onClick={
+                previewMode
+                  ? undefined
+                  : (e) => {
+                      e.stopPropagation();
+                      selectChrome("footer");
+                    }
+              }
+            >
+              {!previewMode ? (
+                <span className="ed-chrome-badge">Site Footer</span>
+              ) : null}
+              <StoreFooter
+                preview
+                footerConfig={activeThemeTokens?.footer}
+                onNotify={onNotify}
+              />
             </div>
           </div>
         </div>

@@ -116,7 +116,114 @@ public class ThemeTokenValidator {
         root.put("container", container);
         root.put("spacing", spacing);
         root.put("shadows", shadows);
+        root.put("header", defaultHeaderConfig());
+        root.put("footer", defaultFooterConfig());
         return root;
+    }
+
+    public static Map<String, Object> defaultHeaderConfig() {
+        Map<String, Object> announcement = new LinkedHashMap<>();
+        announcement.put("enabled", true);
+        announcement.put("text", "Free carbon-neutral shipping on orders over {freeShippingThreshold}");
+        announcement.put("linkUrl", "");
+        announcement.put("bgColor", "#1C271F");
+        announcement.put("textColor", "#F3F5EF");
+
+        Map<String, Object> logo = new LinkedHashMap<>();
+        logo.put("text", "TERRAIN");
+        logo.put("imageUrl", "");
+        logo.put("showIcon", true);
+        logo.put("heightPx", 28);
+
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put("sticky", true);
+        layout.put("heightPx", 62);
+        layout.put("bgColor", "#FFFFFF");
+        layout.put("textColor", "#1C221E");
+        layout.put("borderColor", "#E3E7E0");
+
+        Map<String, Object> actions = new LinkedHashMap<>();
+        actions.put("showSearch", true);
+        actions.put("showWishlist", true);
+        actions.put("showAccount", true);
+        actions.put("showCart", true);
+
+        Map<String, Object> header = new LinkedHashMap<>();
+        header.put("announcement", announcement);
+        header.put("logo", logo);
+        header.put("layout", layout);
+        header.put("actions", actions);
+        return header;
+    }
+
+    public static Map<String, Object> defaultFooterConfig() {
+        Map<String, Object> brand = new LinkedHashMap<>();
+        brand.put("name", "Terrain Supply");
+        brand.put("logoImageUrl", "");
+        brand.put("showIcon", true);
+        brand.put("description", "Multi-category technical essentials and precision studio hardware, powered by Dat Commerce.");
+
+        List<Map<String, Object>> columns = List.of(
+                footerCol("shop", "Shop", List.of(
+                        footerLink("all-products", "All products", "/store/shop"),
+                        footerLink("categories", "Categories", "/store/categories"),
+                        footerLink("collections", "Collections", "/store/collections"),
+                        footerLink("search", "Search catalog", "/store/search")
+                )),
+                footerCol("customer", "Customer", List.of(
+                        footerLink("account", "Account", "/store/account"),
+                        footerLink("history", "Order history", "/store/history"),
+                        footerLink("wishlist", "Wishlist", "/store/wishlist"),
+                        footerLink("cart", "Shopping cart", "/store/cart")
+                )),
+                footerCol("platform", "Platform", List.of(
+                        footerLink("about", "About us", "/store/about"),
+                        footerLink("contact", "Contact support", "/store/contact"),
+                        footerLink("admin", "Merchant admin", "/admin"),
+                        footerLink("editor", "Theme Editor", "/admin/editor")
+                ))
+        );
+
+        Map<String, Object> newsletter = new LinkedHashMap<>();
+        newsletter.put("enabled", false);
+        newsletter.put("title", "Stay in the loop");
+        newsletter.put("placeholder", "you@example.com");
+        newsletter.put("buttonLabel", "Subscribe");
+
+        Map<String, Object> bottomBar = new LinkedHashMap<>();
+        bottomBar.put("copyrightText", "© {year} Terrain Supply. Powered by Dat Commerce.");
+        bottomBar.put("contactEmail", "hello@datcommerce.local");
+
+        Map<String, Object> style = new LinkedHashMap<>();
+        style.put("bgColor", "#1C271F");
+        style.put("textColor", "#F3F5EF");
+        style.put("mutedColor", "#A6B7AA");
+        style.put("borderColor", "#2D3D31");
+
+        Map<String, Object> footer = new LinkedHashMap<>();
+        footer.put("brand", brand);
+        footer.put("columns", columns);
+        footer.put("newsletter", newsletter);
+        footer.put("socialLinks", List.of());
+        footer.put("bottomBar", bottomBar);
+        footer.put("style", style);
+        return footer;
+    }
+
+    private static Map<String, Object> footerCol(String id, String title, List<Map<String, Object>> links) {
+        Map<String, Object> col = new LinkedHashMap<>();
+        col.put("id", id);
+        col.put("title", title);
+        col.put("links", links);
+        return col;
+    }
+
+    private static Map<String, Object> footerLink(String id, String label, String url) {
+        Map<String, Object> link = new LinkedHashMap<>();
+        link.put("id", id);
+        link.put("label", label);
+        link.put("url", url);
+        return link;
     }
 
     public Map<String, Object> validateAndNormalize(Map<String, Object> rawTokens) {
@@ -251,6 +358,9 @@ public class ThemeTokenValidator {
         if (rawTokens.containsKey("motion") && rawTokens.get("motion") != null) {
             out.put("motion", animationValidationService.validateAndNormalizeGlobalMotion(rawTokens.get("motion")));
         }
+
+        out.put("header", validateAndNormalizeHeader(rawTokens.get("header")));
+        out.put("footer", validateAndNormalizeFooter(rawTokens.get("footer")));
 
         return out;
     }
@@ -683,4 +793,243 @@ public class ThemeTokenValidator {
         }
         return trimmed;
     }
+
+    private static final Set<String> ALLOWED_SOCIAL_PLATFORMS = Set.of(
+            "instagram", "facebook", "x", "youtube", "tiktok", "linkedin"
+    );
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> validateAndNormalizeHeader(Object rawHeaderObj) {
+        Map<String, Object> defaults = defaultHeaderConfig();
+        if (!(rawHeaderObj instanceof Map<?, ?> rawHeader)) {
+            return defaults;
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+
+        Map<String, Object> ann = new LinkedHashMap<>((Map<String, Object>) defaults.get("announcement"));
+        if (rawHeader.get("announcement") instanceof Map<?, ?> rawAnn) {
+            if (rawAnn.get("enabled") instanceof Boolean b) ann.put("enabled", b);
+            if (rawAnn.get("text") != null) ann.put("text", cleanBoundedText(rawAnn.get("text"), 160, "header.announcement.text"));
+            if (rawAnn.get("linkUrl") != null) ann.put("linkUrl", validateOptionalSafeUrl(rawAnn.get("linkUrl"), "header.announcement.linkUrl", false));
+            if (rawAnn.get("bgColor") != null) ann.put("bgColor", validateColorOrVar(rawAnn.get("bgColor"), "header.announcement.bgColor"));
+            if (rawAnn.get("textColor") != null) ann.put("textColor", validateColorOrVar(rawAnn.get("textColor"), "header.announcement.textColor"));
+        }
+        out.put("announcement", ann);
+
+        Map<String, Object> logo = new LinkedHashMap<>((Map<String, Object>) defaults.get("logo"));
+        if (rawHeader.get("logo") instanceof Map<?, ?> rawLogo) {
+            if (rawLogo.get("text") != null) logo.put("text", cleanBoundedText(rawLogo.get("text"), 60, "header.logo.text"));
+            if (rawLogo.get("imageUrl") != null) logo.put("imageUrl", validateOptionalSafeUrl(rawLogo.get("imageUrl"), "header.logo.imageUrl", true));
+            if (rawLogo.get("showIcon") instanceof Boolean b) logo.put("showIcon", b);
+            if (rawLogo.get("heightPx") != null) logo.put("heightPx", validateIntRange(rawLogo.get("heightPx"), 18, 56, "header.logo.heightPx"));
+        }
+        out.put("logo", logo);
+
+        Map<String, Object> layout = new LinkedHashMap<>((Map<String, Object>) defaults.get("layout"));
+        if (rawHeader.get("layout") instanceof Map<?, ?> rawLayout) {
+            if (rawLayout.get("sticky") instanceof Boolean b) layout.put("sticky", b);
+            if (rawLayout.get("heightPx") != null) layout.put("heightPx", validateIntRange(rawLayout.get("heightPx"), 48, 104, "header.layout.heightPx"));
+            if (rawLayout.get("bgColor") != null) layout.put("bgColor", validateColorOrVar(rawLayout.get("bgColor"), "header.layout.bgColor"));
+            if (rawLayout.get("textColor") != null) layout.put("textColor", validateColorOrVar(rawLayout.get("textColor"), "header.layout.textColor"));
+            if (rawLayout.get("borderColor") != null) layout.put("borderColor", validateColorOrVar(rawLayout.get("borderColor"), "header.layout.borderColor"));
+        }
+        out.put("layout", layout);
+
+        Map<String, Object> actions = new LinkedHashMap<>((Map<String, Object>) defaults.get("actions"));
+        if (rawHeader.get("actions") instanceof Map<?, ?> rawActions) {
+            for (String key : List.of("showSearch", "showWishlist", "showAccount", "showCart")) {
+                if (rawActions.get(key) instanceof Boolean b) actions.put(key, b);
+            }
+        }
+        out.put("actions", actions);
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> validateAndNormalizeFooter(Object rawFooterObj) {
+        Map<String, Object> defaults = defaultFooterConfig();
+        if (!(rawFooterObj instanceof Map<?, ?> rawFooter)) {
+            return defaults;
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+
+        Map<String, Object> brand = new LinkedHashMap<>((Map<String, Object>) defaults.get("brand"));
+        if (rawFooter.get("brand") instanceof Map<?, ?> rawBrand) {
+            if (rawBrand.get("name") != null) brand.put("name", cleanBoundedText(rawBrand.get("name"), 80, "footer.brand.name"));
+            if (rawBrand.get("logoImageUrl") != null) brand.put("logoImageUrl", validateOptionalSafeUrl(rawBrand.get("logoImageUrl"), "footer.brand.logoImageUrl", true));
+            if (rawBrand.get("showIcon") instanceof Boolean b) brand.put("showIcon", b);
+            if (rawBrand.get("description") != null) brand.put("description", cleanBoundedText(rawBrand.get("description"), 280, "footer.brand.description"));
+        }
+        out.put("brand", brand);
+
+        if (rawFooter.containsKey("columns")) {
+            if (!(rawFooter.get("columns") instanceof List<?> rawCols)) {
+                throw new ApiException(ErrorCode.VALIDATION_ERROR, "footer.columns must be an array");
+            }
+            if (rawCols.size() > 4) {
+                throw new ApiException(ErrorCode.VALIDATION_ERROR, "footer.columns supports at most 4 columns");
+            }
+            List<Map<String, Object>> cols = new ArrayList<>();
+            Set<String> seenColIds = new HashSet<>();
+            for (Object colObj : rawCols) {
+                if (!(colObj instanceof Map<?, ?> colMap)) {
+                    throw new ApiException(ErrorCode.VALIDATION_ERROR, "Each footer column must be an object");
+                }
+                String title = cleanBoundedText(colMap.get("title") == null ? "" : colMap.get("title"), 40, "footer.columns.title");
+                if (title.isEmpty()) {
+                    throw new ApiException(ErrorCode.VALIDATION_ERROR, "Footer column title cannot be blank");
+                }
+                String rawId = colMap.get("id") == null ? "" : String.valueOf(colMap.get("id")).trim();
+                String baseId = rawId.isEmpty() ? slugifyPaletteId(title) : rawId;
+                if (!SAFE_PALETTE_ID.matcher(baseId).matches()) {
+                    throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid footer column id: " + baseId);
+                }
+                String colId = ensureUniqueId(baseId, seenColIds);
+                seenColIds.add(colId);
+
+                List<Map<String, Object>> links = new ArrayList<>();
+                if (colMap.get("links") instanceof List<?> rawLinks) {
+                    if (rawLinks.size() > 10) {
+                        throw new ApiException(ErrorCode.VALIDATION_ERROR, "Each footer column supports at most 10 links");
+                    }
+                    Set<String> seenLinkIds = new HashSet<>();
+                    for (Object linkObj : rawLinks) {
+                        if (!(linkObj instanceof Map<?, ?> linkMap)) {
+                            throw new ApiException(ErrorCode.VALIDATION_ERROR, "Each footer link must be an object");
+                        }
+                        String label = cleanBoundedText(linkMap.get("label") == null ? "" : linkMap.get("label"), 60, "footer.columns.links.label");
+                        if (label.isEmpty()) {
+                            throw new ApiException(ErrorCode.VALIDATION_ERROR, "Footer link label cannot be blank");
+                        }
+                        String url = linkMap.get("url") == null ? "" : String.valueOf(linkMap.get("url")).trim();
+                        BlockSchemaValidator.validateSafeUrl(url, "footer.columns.links.url", false);
+                        String rawLId = linkMap.get("id") == null ? "" : String.valueOf(linkMap.get("id")).trim();
+                        String baseLId = rawLId.isEmpty() ? slugifyPaletteId(label) : rawLId;
+                        if (!SAFE_PALETTE_ID.matcher(baseLId).matches()) {
+                            throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid footer link id: " + baseLId);
+                        }
+                        String linkId = ensureUniqueId(baseLId, seenLinkIds);
+                        seenLinkIds.add(linkId);
+                        links.add(footerLink(linkId, label, url));
+                    }
+                }
+                cols.add(footerCol(colId, title, links));
+            }
+            out.put("columns", cols);
+        } else {
+            out.put("columns", defaults.get("columns"));
+        }
+
+        Map<String, Object> newsletter = new LinkedHashMap<>((Map<String, Object>) defaults.get("newsletter"));
+        if (rawFooter.get("newsletter") instanceof Map<?, ?> rawNl) {
+            if (rawNl.get("enabled") instanceof Boolean b) newsletter.put("enabled", b);
+            if (rawNl.get("title") != null) newsletter.put("title", cleanBoundedText(rawNl.get("title"), 80, "footer.newsletter.title"));
+            if (rawNl.get("placeholder") != null) newsletter.put("placeholder", cleanBoundedText(rawNl.get("placeholder"), 80, "footer.newsletter.placeholder"));
+            if (rawNl.get("buttonLabel") != null) newsletter.put("buttonLabel", cleanBoundedText(rawNl.get("buttonLabel"), 40, "footer.newsletter.buttonLabel"));
+        }
+        out.put("newsletter", newsletter);
+
+        if (rawFooter.containsKey("socialLinks")) {
+            if (!(rawFooter.get("socialLinks") instanceof List<?> rawSocials)) {
+                throw new ApiException(ErrorCode.VALIDATION_ERROR, "footer.socialLinks must be an array");
+            }
+            if (rawSocials.size() > 8) {
+                throw new ApiException(ErrorCode.VALIDATION_ERROR, "footer.socialLinks supports at most 8 items");
+            }
+            List<Map<String, Object>> socials = new ArrayList<>();
+            Set<String> seenSocialIds = new HashSet<>();
+            for (Object sObj : rawSocials) {
+                if (!(sObj instanceof Map<?, ?> sMap)) {
+                    throw new ApiException(ErrorCode.VALIDATION_ERROR, "Each footer social link must be an object");
+                }
+                String platform = validateEnum(
+                        sMap.get("platform") == null ? "" : String.valueOf(sMap.get("platform")),
+                        ALLOWED_SOCIAL_PLATFORMS,
+                        "platform",
+                        "footer.socialLinks"
+                );
+                String url = sMap.get("url") == null ? "" : String.valueOf(sMap.get("url")).trim();
+                BlockSchemaValidator.validateSafeUrl(url, "footer.socialLinks.url", false);
+                String rawSId = sMap.get("id") == null ? "" : String.valueOf(sMap.get("id")).trim();
+                String baseSId = rawSId.isEmpty() ? platform : rawSId;
+                if (!SAFE_PALETTE_ID.matcher(baseSId).matches()) {
+                    throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid footer social id: " + baseSId);
+                }
+                String sId = ensureUniqueId(baseSId, seenSocialIds);
+                seenSocialIds.add(sId);
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("id", sId);
+                entry.put("platform", platform);
+                entry.put("url", url);
+                socials.add(entry);
+            }
+            out.put("socialLinks", socials);
+        } else {
+            out.put("socialLinks", defaults.get("socialLinks"));
+        }
+
+        Map<String, Object> bottomBar = new LinkedHashMap<>((Map<String, Object>) defaults.get("bottomBar"));
+        if (rawFooter.get("bottomBar") instanceof Map<?, ?> rawBottom) {
+            if (rawBottom.get("copyrightText") != null) bottomBar.put("copyrightText", cleanBoundedText(rawBottom.get("copyrightText"), 160, "footer.bottomBar.copyrightText"));
+            if (rawBottom.get("contactEmail") != null) bottomBar.put("contactEmail", cleanBoundedText(rawBottom.get("contactEmail"), 120, "footer.bottomBar.contactEmail"));
+        }
+        out.put("bottomBar", bottomBar);
+
+        Map<String, Object> style = new LinkedHashMap<>((Map<String, Object>) defaults.get("style"));
+        if (rawFooter.get("style") instanceof Map<?, ?> rawStyle) {
+            for (String key : List.of("bgColor", "textColor", "mutedColor", "borderColor")) {
+                if (rawStyle.get(key) != null) {
+                    style.put(key, validateColorOrVar(rawStyle.get(key), "footer.style." + key));
+                }
+            }
+        }
+        out.put("style", style);
+        return out;
+    }
+
+    private static String cleanBoundedText(Object raw, int maxLen, String field) {
+        String s = String.valueOf(raw).trim();
+        if (s.length() > maxLen) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, field + " cannot exceed " + maxLen + " characters");
+        }
+        return s;
+    }
+
+    private static String validateOptionalSafeUrl(Object raw, String field, boolean isMedia) {
+        String u = String.valueOf(raw).trim();
+        if (u.isEmpty()) return "";
+        BlockSchemaValidator.validateSafeUrl(u, field, isMedia);
+        return u;
+    }
+
+    private static String validateColorOrVar(Object raw, String field) {
+        String c = String.valueOf(raw).trim();
+        if (HEX_COLOR.matcher(c).matches()) {
+            return c.toUpperCase(Locale.ROOT);
+        }
+        if (CSS_VAR_COLOR.matcher(c).matches()) {
+            return c;
+        }
+        throw new ApiException(ErrorCode.VALIDATION_ERROR, field + " must be a 6-digit hex color or CSS variable");
+    }
+
+    private static int validateIntRange(Object raw, int min, int max, String field) {
+        int val;
+        if (raw instanceof Number n) {
+            val = n.intValue();
+        } else {
+            try {
+                val = Integer.parseInt(String.valueOf(raw).trim());
+            } catch (NumberFormatException ex) {
+                throw new ApiException(ErrorCode.VALIDATION_ERROR, field + " must be an integer");
+            }
+        }
+        if (val < min || val > max) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, field + " must be between " + min + " and " + max);
+        }
+        return val;
+    }
+
 }

@@ -344,6 +344,8 @@ export function LeftSidebar() {
   const [activeCategory, setActiveCategory] = useState<ElementCategory | "all">("all");
 
   const nodes = useEditorStore((s) => s.nodes);
+  const selectedChrome = useEditorStore((s) => s.selectedChrome);
+  const selectChrome = useEditorStore((s) => s.selectChrome);
   const pageTitle = useEditorStore((s) => s.pageTitle);
   const insertElement = useEditorStore((s) => s.insertElement);
   const history = useEditorStore((s) => s.history);
@@ -487,6 +489,18 @@ export function LeftSidebar() {
             <span>Double-click to rename</span>
           </div>
           <div className="ed-sidebar-scroll ed-layers-tree">
+            <button
+              type="button"
+              className={cn(
+                "ed-layer-row ed-layer-chrome",
+                selectedChrome === "header" && "is-selected"
+              )}
+              onClick={() => selectChrome("header")}
+            >
+              <PanelTop size={13} />
+              <span>Site Header</span>
+              <Badge tone="neutral">Global</Badge>
+            </button>
             {nodes.length === 0 ? (
               <p className="muted" style={{ padding: 14, fontSize: 12.5 }}>
                 Page has no elements yet. Drag an element from the Elements tab.
@@ -502,6 +516,18 @@ export function LeftSidebar() {
                 />
               ))
             )}
+            <button
+              type="button"
+              className={cn(
+                "ed-layer-row ed-layer-chrome",
+                selectedChrome === "footer" && "is-selected"
+              )}
+              onClick={() => selectChrome("footer")}
+            >
+              <AppWindow size={13} />
+              <span>Site Footer</span>
+              <Badge tone="neutral">Global</Badge>
+            </button>
           </div>
         </div>
       ) : null}

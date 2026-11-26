@@ -93,6 +93,12 @@ export type PageDetailDto = {
   updatedAt: string;
 };
 
+export type StorePageSummaryDto = {
+  slug: string;
+  title: string;
+  updatedAt: string;
+};
+
 export type StorePageResponse = {
   id: string;
   slug: string;
@@ -108,6 +114,80 @@ export type BrandPaletteColor = {
   id: string;
   name: string;
   hex: string;
+};
+
+export type ThemeHeaderConfig = {
+  announcement?: {
+    enabled?: boolean;
+    text?: string;
+    linkUrl?: string;
+    bgColor?: string;
+    textColor?: string;
+  };
+  logo?: {
+    text?: string;
+    imageUrl?: string;
+    showIcon?: boolean;
+    heightPx?: number;
+  };
+  layout?: {
+    sticky?: boolean;
+    heightPx?: number;
+    bgColor?: string;
+    textColor?: string;
+    borderColor?: string;
+  };
+  actions?: {
+    showSearch?: boolean;
+    showWishlist?: boolean;
+    showAccount?: boolean;
+    showCart?: boolean;
+  };
+};
+
+export type ThemeFooterLink = {
+  id: string;
+  label: string;
+  url: string;
+};
+
+export type ThemeFooterColumn = {
+  id: string;
+  title: string;
+  links: ThemeFooterLink[];
+};
+
+export type ThemeFooterSocialLink = {
+  id: string;
+  platform: "instagram" | "facebook" | "x" | "youtube" | "tiktok" | "linkedin";
+  url: string;
+};
+
+export type ThemeFooterConfig = {
+  brand?: {
+    name?: string;
+    logoImageUrl?: string;
+    showIcon?: boolean;
+    description?: string;
+  };
+  columns?: ThemeFooterColumn[];
+  newsletter?: {
+    enabled?: boolean;
+    title?: string;
+    placeholder?: string;
+    buttonLabel?: string;
+  };
+  socialLinks?: ThemeFooterSocialLink[];
+  bottomBar?: {
+    copyrightText?: string;
+    contactEmail?: string;
+  };
+  style?: {
+    bgColor?: string;
+    textColor?: string;
+    mutedColor?: string;
+    borderColor?: string;
+  };
 };
 
 export type ThemeTokens = {
@@ -140,6 +220,8 @@ export type ThemeTokens = {
     elevated?: string;
   };
   motion?: GlobalMotionSettings;
+  header?: ThemeHeaderConfig;
+  footer?: ThemeFooterConfig;
 };
 
 export type ThemeVersionDto = {

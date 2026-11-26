@@ -74,7 +74,7 @@ describe("Deep repeating sub-element partStyles and AI Before/After toggle", () 
       '.bldr-page-root [data-builder-node="best-grid"][data-builder-node="best-grid"] [data-builder-part="card"][data-builder-part="card"]'
     );
     expect(liveCss).toContain("border-radius: 16px;");
-    expect(liveCss).toContain("@media (max-width: 640px)");
+    expect(liveCss).toContain("@media (max-width: 767px)");
 
     const previewMobileCss = compileLivePageCss(updated, {
       hoverOnly: true,

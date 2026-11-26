@@ -1,4 +1,10 @@
-import type { StorePageResponse } from "@/types/api-cms-ai";
+import type {
+  AnimationPresetDto,
+  NavigationMenuDto,
+  StorePageResponse,
+  StorePageSummaryDto,
+  ThemeVersionDto,
+} from "@/types/api-cms-ai";
 import type {
   CategoryDto,
   CollectionDto,
@@ -33,11 +39,49 @@ export function fetchStorePage(slug: string): Promise<StorePageResponse | null> 
   );
 }
 
+export async function fetchStorePublishedPages(): Promise<StorePageSummaryDto[]> {
+  return (await fetchStoreJson<StorePageSummaryDto[]>("/api/v1/store/pages")) ?? [];
+}
+
+export function fetchStoreTheme(): Promise<ThemeVersionDto | null> {
+  return fetchStoreJson<ThemeVersionDto>("/api/v1/store/theme");
+}
+
+export function fetchStoreNavigation(
+  menuKey = "main"
+): Promise<NavigationMenuDto | null> {
+  return fetchStoreJson<NavigationMenuDto>(
+    `/api/v1/store/navigation/${encodeURIComponent(menuKey)}`
+  );
+}
+
+export async function fetchStoreAnimationPresets(): Promise<AnimationPresetDto[]> {
+  return (
+    (await fetchStoreJson<AnimationPresetDto[]>("/api/v1/store/animation-presets")) ??
+    []
+  );
+}
+
 export function fetchStoreProduct(
   idOrSlug: string
 ): Promise<ProductDto | null> {
   return fetchStoreJson<ProductDto>(
     `/api/v1/store/products/${encodeURIComponent(idOrSlug)}`
+  );
+}
+
+export async function fetchStoreProducts(params?: {
+  size?: number;
+  category?: string;
+  q?: string;
+}): Promise<StoreProductListResponse | null> {
+  const qs = new URLSearchParams();
+  if (params?.size) qs.set("size", String(params.size));
+  if (params?.category) qs.set("category", params.category);
+  if (params?.q) qs.set("q", params.q);
+  const query = qs.toString();
+  return fetchStoreJson<StoreProductListResponse>(
+    `/api/v1/store/products${query ? `?${query}` : ""}`
   );
 }
 
@@ -54,8 +98,6 @@ export async function fetchStoreCollections(): Promise<CollectionDto[]> {
 export async function fetchStoreProductsForSitemap(
   size = 100
 ): Promise<ProductDto[]> {
-  const res = await fetchStoreJson<StoreProductListResponse>(
-    `/api/v1/store/products?size=${size}`
-  );
+  const res = await fetchStoreProducts({ size });
   return res?.items ?? [];
 }

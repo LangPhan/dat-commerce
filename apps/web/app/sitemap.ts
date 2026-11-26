@@ -4,9 +4,12 @@ import {
   fetchStoreCategories,
   fetchStoreCollections,
   fetchStoreProductsForSitemap,
+  fetchStorePublishedPages,
 } from "@/lib/store-server";
 
 export const dynamic = "force-dynamic";
+
+const RESERVED_CMS_SLUGS = new Set(["home", "about", "collections"]);
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const siteUrl = getSiteUrl();
@@ -51,10 +54,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  const [products, categories, collections] = await Promise.all([
+  const [products, categories, collections, publishedPages] = await Promise.all([
     fetchStoreProductsForSitemap(100),
     fetchStoreCategories(),
     fetchStoreCollections(),
+    fetchStorePublishedPages(),
   ]);
 
   const productEntries: MetadataRoute.Sitemap = products.map((product) => ({
@@ -80,10 +84,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })
   );
 
+  const customPageEntries: MetadataRoute.Sitemap = publishedPages
+    .filter((p) => !RESERVED_CMS_SLUGS.has(p.slug.toLowerCase()))
+    .map((page) => ({
+      url: `${siteUrl}/store/${encodeURIComponent(page.slug)}`,
+      lastModified: page.updatedAt ? new Date(page.updatedAt) : now,
+      changeFrequency: "weekly",
+      priority: 0.65,
+    }));
+
   return [
     ...staticEntries,
     ...productEntries,
     ...categoryEntries,
     ...collectionEntries,
+    ...customPageEntries,
   ];
 }

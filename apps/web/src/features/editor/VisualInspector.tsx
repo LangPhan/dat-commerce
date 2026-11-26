@@ -115,6 +115,7 @@ import {
   SpacingBoxControl,
   UnitControl,
 } from "./inspector-controls";
+import { FooterEditorForm, HeaderEditorForm } from "./ChromeEditorForms";
 
 type InspectorTab = "content" | "layout" | "style" | "motion" | "advanced";
 
@@ -1284,6 +1285,8 @@ export function VisualInspector({
 
   const nodes = useEditorStore((s) => s.nodes);
   const selectedIds = useEditorStore((s) => s.selectedIds);
+  const selectedChrome = useEditorStore((s) => s.selectedChrome);
+  const selectChrome = useEditorStore((s) => s.selectChrome);
   const selectedPart = useEditorStore((s) => s.selectedPart);
   const viewport = useEditorStore((s) => s.viewport);
   const themeTokens = useEditorStore((s) => s.themeTokens);
@@ -1416,7 +1419,82 @@ export function VisualInspector({
         </button>
       </div>
 
-      {showThemeView && themeTokens ? (
+      {!inspectGlobalTheme && selectedChrome && themeTokens ? (
+        <div className="ed-inspector-scroll">
+          <div className="ed-chrome-inspector-head">
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <strong>
+                  {selectedChrome === "header" ? "Site Header" : "Site Footer"}
+                </strong>
+                <Badge tone="accent">Site-wide</Badge>
+              </div>
+              <p className="muted" style={{ fontSize: 11.5, margin: "3px 0 0" }}>
+                Changes apply across every storefront page when saved &amp; published with Theme.
+              </p>
+            </div>
+            <div className="button-row" style={{ marginTop: 8 }}>
+              <Button
+                size="sm"
+                type="button"
+                disabled={!canWrite || savingTheme || !themeDirty}
+                onClick={onSaveTheme}
+              >
+                {savingTheme ? "Saving..." : "Save Theme"}
+              </Button>
+              {canPublish ? (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  type="button"
+                  disabled={publishingTheme}
+                  onClick={onPublishTheme}
+                >
+                  {publishingTheme ? "Publishing..." : "Publish Theme"}
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="ghost"
+                type="button"
+                onClick={() => selectChrome(null)}
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+
+          {selectedChrome === "header" ? (
+            <HeaderEditorForm
+              header={themeTokens.header}
+              canWrite={canWrite}
+              canUploadMedia={canUploadMedia}
+              brandPalette={brandPalette}
+              onNotify={onNotify}
+              onChange={(nextHeader) =>
+                updateThemeTokens(
+                  { ...themeTokens, header: nextHeader },
+                  { summary: "Updated site header", source: "manual" }
+                )
+              }
+            />
+          ) : (
+            <FooterEditorForm
+              footer={themeTokens.footer}
+              canWrite={canWrite}
+              canUploadMedia={canUploadMedia}
+              brandPalette={brandPalette}
+              onNotify={onNotify}
+              onChange={(nextFooter) =>
+                updateThemeTokens(
+                  { ...themeTokens, footer: nextFooter },
+                  { summary: "Updated site footer", source: "manual" }
+                )
+              }
+            />
+          )}
+        </div>
+      ) : showThemeView && themeTokens ? (
         <GlobalThemePanel
           tokens={themeTokens}
           dirty={themeDirty}

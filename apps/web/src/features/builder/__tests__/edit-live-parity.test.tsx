@@ -166,4 +166,67 @@ describe("Edit vs Live flex/grid wrapper layout parity", () => {
     const liveContainer = liveSection?.firstElementChild as HTMLElement | null;
     expect(liveContainer?.getAttribute("data-builder-node")).toBe("promo-inner-container");
   });
+
+  it("renders live columns, product_grid, category_grid, image_gallery, and icon_list with CSS-first hooks instead of inline grid-template-columns", () => {
+    const cols = createElementNode("columns");
+    cols.id = "cols-1";
+    cols.props = { ratio: "sidebar-left" };
+
+    const pgrid = createElementNode("product_grid");
+    pgrid.id = "pg-1";
+    pgrid.props = { columns: 4, limit: 2 };
+
+    const cgrid = createElementNode("category_grid");
+    cgrid.id = "cg-1";
+    cgrid.props = { columns: 3, limit: 2 };
+
+    const gal = createElementNode("image_gallery");
+    gal.id = "gal-1";
+    gal.props = {
+      columns: 3,
+      items: [{ id: "g1", title: "One", image: "https://cdn.example.com/1.jpg" }],
+    };
+
+    const icons = createElementNode("icon_list");
+    icons.id = "il-1";
+    icons.props = {
+      layout: "grid",
+      columns: 3,
+      items: [{ id: "i1", title: "Fast", icon: "check" }],
+    };
+
+    pgrid.styles = {
+      base: {},
+      tablet: { padding: "12px" },
+      mobile: { padding: "8px" },
+    };
+
+    const { container } = render(
+      <PageRenderer mode="live" nodes={[cols, pgrid, cgrid, gal, icons]} />
+    );
+
+    const colsEl = container.querySelector('[data-builder-node="cols-1"]') as HTMLElement;
+    expect(colsEl.getAttribute("data-columns-ratio")).toBe("sidebar-left");
+    expect(colsEl.style.gridTemplateColumns).toBe("");
+
+    const pgEl = container.querySelector(".bldr-product-grid") as HTMLElement;
+    expect(pgEl.style.getPropertyValue("--bldr-cols")).toBe("4");
+    expect(pgEl.style.gridTemplateColumns).toBe("");
+
+    const cgEl = container.querySelector('[data-builder-node="cg-1"]') as HTMLElement;
+    expect(cgEl.style.getPropertyValue("--bldr-cols")).toBe("3");
+    expect(cgEl.style.gridTemplateColumns).toBe("");
+
+    const galEl = container.querySelector('[data-builder-node="gal-1"]') as HTMLElement;
+    expect(galEl.style.getPropertyValue("--bldr-cols")).toBe("3");
+    expect(galEl.style.gridTemplateColumns).toBe("");
+
+    const ilEl = container.querySelector('[data-builder-node="il-1"]') as HTMLElement;
+    expect(ilEl.style.getPropertyValue("--bldr-cols")).toBe("3");
+    expect(ilEl.style.gridTemplateColumns).toBe("");
+
+    const styleTag = container.querySelector(".bldr-page-root > style")?.textContent || "";
+    expect(styleTag).toContain("@media (max-width: 1024px)");
+    expect(styleTag).toContain("@media (max-width: 767px)");
+  });
 });

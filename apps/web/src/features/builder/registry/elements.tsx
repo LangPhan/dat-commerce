@@ -577,16 +577,6 @@ export function renderElementContent(
               "section")
           : "div";
       const ratio = strProp(props, "ratio", "equal");
-      const ratioStyle: CSSProperties =
-        node.type === "columns" &&
-        ctx.viewport !== "mobile" &&
-        ratio === "sidebar-left"
-          ? { gridTemplateColumns: "1fr 2fr" }
-          : node.type === "columns" &&
-              ctx.viewport !== "mobile" &&
-              ratio === "sidebar-right"
-            ? { gridTemplateColumns: "2fr 1fr" }
-            : {};
       const childrenEl = ctx.renderChildren?.(node);
       const hasChildren = Boolean(node.children && node.children.length > 0);
       return (
@@ -597,7 +587,8 @@ export function renderElementContent(
             extraClassName
           )}
           {...domAttrs}
-          style={{ ...compiledStyle, ...ratioStyle }}
+          {...(node.type === "columns" ? { "data-columns-ratio": ratio } : {})}
+          style={compiledStyle}
         >
           {hasChildren ? (
             childrenEl
@@ -802,12 +793,7 @@ export function renderElementContent(
           {...domAttrs}
           style={{
             ...(layout === "grid"
-              ? {
-                  gridTemplateColumns:
-                    ctx.viewport === "mobile"
-                      ? "1fr"
-                      : `repeat(${cols}, minmax(0, 1fr))`,
-                }
+              ? ({ "--bldr-cols": String(cols) } as CSSProperties)
               : {}),
             ...compiledStyle,
           }}
@@ -843,12 +829,7 @@ export function renderElementContent(
           className={cn("bldr-gallery", extraClassName)}
           {...domAttrs}
           style={{
-            gridTemplateColumns:
-              ctx.viewport === "mobile"
-                ? "1fr"
-                : ctx.viewport === "tablet"
-                  ? "repeat(2, minmax(0, 1fr))"
-                  : `repeat(${cols}, minmax(0, 1fr))`,
+            ...({ "--bldr-cols": String(cols) } as CSSProperties),
             ...compiledStyle,
           }}
         >
@@ -913,14 +894,7 @@ export function renderElementContent(
         <div className={extraClassName} {...domAttrs} style={compiledStyle}>
           <div
             className="bldr-product-grid"
-            style={{
-              gridTemplateColumns:
-                ctx.viewport === "mobile"
-                  ? "1fr"
-                  : ctx.viewport === "tablet"
-                    ? "repeat(2, minmax(0, 1fr))"
-                    : `repeat(${cols}, minmax(0, 1fr))`,
-            }}
+            style={{ "--bldr-cols": String(cols) } as CSSProperties}
             onClickCapture={(e) => {
               if (isEdit) e.preventDefault();
             }}
@@ -993,12 +967,7 @@ export function renderElementContent(
           className={cn("bldr-category-grid", extraClassName)}
           {...domAttrs}
           style={{
-            gridTemplateColumns:
-              ctx.viewport === "mobile"
-                ? "1fr"
-                : ctx.viewport === "tablet"
-                  ? "repeat(2, minmax(0, 1fr))"
-                  : `repeat(${cols}, minmax(0, 1fr))`,
+            ...({ "--bldr-cols": String(cols) } as CSSProperties),
             ...compiledStyle,
           }}
         >

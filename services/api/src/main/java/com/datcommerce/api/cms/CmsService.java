@@ -58,6 +58,15 @@ public class CmsService {
     // ---- Storefront Public APIs ----
 
     @Transactional(readOnly = true)
+    public List<StorePageSummaryDto> listPublishedPages() {
+        UUID storeId = defaultStoreId();
+        return pageRepository.findAllByStoreIdOrderBySlugAsc(storeId).stream()
+                .filter(p -> p.getPublishedVersionId() != null && "PUBLISHED".equalsIgnoreCase(p.getStatus()))
+                .map(p -> new StorePageSummaryDto(p.getSlug(), p.getTitle(), p.getUpdatedAt()))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public StorePageResponse getPublishedPage(String slug) {
         UUID storeId = defaultStoreId();
         PageEntity page = pageRepository.findByStoreIdAndSlugIgnoreCase(storeId, slug.trim())
@@ -570,6 +579,13 @@ public class CmsService {
             PageVersionDto publishedVersion,
             PageVersionDto latestVersion,
             List<PageVersionDto> versions,
+            Instant updatedAt
+    ) {
+    }
+
+    public record StorePageSummaryDto(
+            String slug,
+            String title,
             Instant updatedAt
     ) {
     }

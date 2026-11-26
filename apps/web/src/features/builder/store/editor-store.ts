@@ -48,6 +48,7 @@ export interface EditorStoreState {
 
   nodes: ElementNode[];
   selectedIds: string[];
+  selectedChrome: "header" | "footer" | null;
   hoveredId: string | null;
   selectedPart: { nodeId: string; partKey: string } | null;
   hoveredPart: { nodeId: string; partKey: string } | null;
@@ -121,6 +122,7 @@ export interface EditorStoreState {
 
   selectNode: (id: string | null, opts?: { additive?: boolean }) => void;
   selectPart: (nodeId: string, partKey: string | null) => void;
+  selectChrome: (target: "header" | "footer" | null) => void;
   setHoveredId: (id: string | null) => void;
   setHoveredPart: (part: { nodeId: string; partKey: string } | null) => void;
   toggleLayerExpanded: (id: string) => void;
@@ -244,6 +246,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
 
   nodes: [],
   selectedIds: [],
+  selectedChrome: null,
   hoveredId: null,
   selectedPart: null,
   hoveredPart: null,
@@ -371,7 +374,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
 
   selectNode: (id, opts) =>
     set((s) => {
-      if (!id) return { selectedIds: [], selectedPart: null };
+      if (!id) return { selectedIds: [], selectedPart: null, selectedChrome: null };
       if (opts?.additive) {
         const exists = s.selectedIds.includes(id);
         const nextIds = exists
@@ -385,14 +388,22 @@ export const useEditorStore = create<EditorStoreState>((set, get) => ({
               : null,
         };
       }
-      return { selectedIds: [id], selectedPart: null };
+      return { selectedIds: [id], selectedPart: null, selectedChrome: null };
     }),
 
   selectPart: (nodeId, partKey) =>
     set({
       selectedIds: [nodeId],
       selectedPart: partKey ? { nodeId, partKey } : null,
+      selectedChrome: null,
     }),
+
+  selectChrome: (target) =>
+    set(
+      target
+        ? { selectedChrome: target, selectedIds: [], selectedPart: null }
+        : { selectedChrome: null }
+    ),
 
   setHoveredId: (hoveredId) => set({ hoveredId }),
 

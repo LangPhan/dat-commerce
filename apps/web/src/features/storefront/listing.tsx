@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { ApiError } from "@/lib/api-client";
 import { storeApi } from "@/lib/commerce-api";
+import type { CategoryDto, StoreProductListResponse } from "@/types/api-commerce";
 import { ProductCard } from "./blocks";
 
 const PAGE_SIZE = 6;
@@ -40,10 +41,14 @@ const MAX_PRICE_ITEMS = [
 export function Listing({
   search = false,
   forcedCategory,
+  initialProducts,
+  initialCategories,
   onReady,
 }: {
   search?: boolean;
   forcedCategory?: string;
+  initialProducts?: StoreProductListResponse | null;
+  initialCategories?: CategoryDto[];
   onReady?: () => void;
 }) {
   const searchParams = useSearchParams();
@@ -74,8 +79,17 @@ export function Listing({
   const categoriesQuery = useQuery({
     queryKey: ["store-categories"],
     queryFn: () => storeApi.listCategories(),
+    initialData: initialCategories,
     staleTime: 60_000,
   });
+
+  const isDefaultFilterState =
+    page === 1 &&
+    sort === "featured" &&
+    maxPrice === "" &&
+    Object.keys(attrs).length === 0 &&
+    debouncedQuery.trim() === urlQuery.trim() &&
+    activeCategory === urlCategory;
 
   const productsQuery = useQuery({
     queryKey: [
@@ -97,6 +111,8 @@ export function Listing({
         size: PAGE_SIZE,
         attrs,
       }),
+    initialData: isDefaultFilterState && initialProducts ? initialProducts : undefined,
+    staleTime: 60_000,
     placeholderData: keepPreviousData,
   });
 
