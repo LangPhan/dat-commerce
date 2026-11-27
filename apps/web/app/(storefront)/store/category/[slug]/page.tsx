@@ -13,6 +13,13 @@ import {
 } from "@/lib/seo";
 import { fetchStoreCategories, fetchStoreProducts } from "@/lib/store-server";
 
+export const revalidate = 60;
+
+export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
+  const categories = await fetchStoreCategories();
+  return categories.map((c) => ({ slug: c.slug }));
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -43,25 +50,18 @@ export async function generateMetadata({
 
 export default async function CategoryDetailPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [{ slug }, rawSearch] = await Promise.all([params, searchParams]);
-  const initialUrlState = parseListingSearchParams(rawSearch, slug);
+  const { slug } = await params;
+  const initialUrlState = parseListingSearchParams({}, slug);
   const [categories, initialProducts] = await Promise.all([
     fetchStoreCategories(),
     fetchStoreProducts({
-      q: initialUrlState.q || undefined,
       category: slug,
-      maxPrice: initialUrlState.maxPrice
-        ? Number(initialUrlState.maxPrice)
-        : undefined,
       sort: initialUrlState.sort,
-      page: initialUrlState.page - 1,
+      page: 0,
       size: 6,
-      attrs: initialUrlState.attrs,
     }),
   ]);
 

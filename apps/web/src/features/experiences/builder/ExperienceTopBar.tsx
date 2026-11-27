@@ -348,7 +348,7 @@ export function ExperienceTopBar({
         ) : null}
 
         <Link
-          href="/store"
+          href="/"
           target="_blank"
           className="btn btn-sm"
           title="Open live storefront in new tab"

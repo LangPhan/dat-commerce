@@ -1,5 +1,8 @@
 "use client";
 
+import { revalidateStorefrontCache } from "@/lib/revalidate-store";
+import { STORE_CACHE_TAGS } from "@/lib/store-cache-tags";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
@@ -132,6 +135,7 @@ export function ExperiencesHub({
       void queryClient.invalidateQueries({ queryKey: ["admin-experiences"] });
       void queryClient.invalidateQueries({ queryKey: ["admin-experience-live-sim"] });
       void queryClient.invalidateQueries({ queryKey: ["store-active-experience"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.experience], paths: ["/"] }).catch(() => undefined);
       notify(`"${updated.name}" is now LIVE on storefront`);
     },
     onError: (err) => notify(err instanceof Error ? err.message : "Activation failed"),
@@ -143,6 +147,7 @@ export function ExperiencesHub({
       void queryClient.invalidateQueries({ queryKey: ["admin-experiences"] });
       void queryClient.invalidateQueries({ queryKey: ["admin-experience-live-sim"] });
       void queryClient.invalidateQueries({ queryKey: ["store-active-experience"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.experience], paths: ["/"] }).catch(() => undefined);
       notify(`Paused "${updated.name}"`);
     },
     onError: (err) => notify(err instanceof Error ? err.message : "Deactivation failed"),
@@ -163,6 +168,7 @@ export function ExperiencesHub({
       void queryClient.invalidateQueries({ queryKey: ["admin-experiences"] });
       void queryClient.invalidateQueries({ queryKey: ["admin-experience-live-sim"] });
       void queryClient.invalidateQueries({ queryKey: ["store-active-experience"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.experience], paths: ["/"] }).catch(() => undefined);
       notify("Deleted experience");
     },
     onError: (err) => notify(err instanceof Error ? err.message : "Delete failed"),
@@ -174,6 +180,7 @@ export function ExperiencesHub({
       queryClient.setQueryData(["admin-experience-settings"], updated);
       void queryClient.invalidateQueries({ queryKey: ["admin-experience-live-sim"] });
       void queryClient.invalidateQueries({ queryKey: ["store-active-experience"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.experience], paths: ["/"] }).catch(() => undefined);
       notify("Updated seasonal interaction & performance settings");
     },
     onError: (err) => notify(err instanceof Error ? err.message : "Settings update failed"),

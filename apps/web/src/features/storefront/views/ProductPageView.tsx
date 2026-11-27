@@ -18,24 +18,24 @@ export function ProductPageView({
 }) {
   const { wishlistSet, toggleWishlist, addToCart, addingToCart } = useStorefront();
 
-  const catalogQuery = useQuery({
-    queryKey: ["store-home-catalog"],
-    queryFn: () => storeApi.listProducts({ size: 24 }),
-    initialData: initialRelated
-      ? { items: initialRelated, page: 0, size: 24, totalElements: initialRelated.length, totalPages: 1, facets: [] }
-      : undefined,
+  const hasInitialRelated = Boolean(initialRelated && initialRelated.length > 0);
+  const relatedQuery = useQuery({
+    queryKey: ["store-related-products", idOrSlug],
+    queryFn: () => storeApi.listProducts({ size: 5 }),
+    enabled: !hasInitialRelated,
     staleTime: 60_000,
   });
 
-  const catalog = catalogQuery.data?.items || initialRelated || [];
-  const related = catalog
+  const relatedSource = hasInitialRelated
+    ? initialRelated!
+    : relatedQuery.data?.items || [];
+  const related = relatedSource
     .filter((p) => p.id !== idOrSlug && p.slug !== idOrSlug)
     .slice(0, 4);
-  const matchedProduct =
-    initialProduct || catalog.find((p) => p.id === idOrSlug || p.slug === idOrSlug);
+
   const isWished =
     wishlistSet.has(idOrSlug) ||
-    (matchedProduct ? wishlistSet.has(matchedProduct.id) : false);
+    (initialProduct ? wishlistSet.has(initialProduct.id) : false);
 
   return (
     <>

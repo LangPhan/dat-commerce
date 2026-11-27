@@ -149,8 +149,7 @@ export function StorefrontShell({
     queryKey: ["store-theme"],
     queryFn: () => cmsStoreApi.getTheme(),
     initialData: initialTheme ?? undefined,
-    initialDataUpdatedAt: 0,
-    staleTime: 0,
+    staleTime: initialTheme ? 30_000 : 0,
     refetchOnWindowFocus: true,
   });
 
@@ -166,19 +165,33 @@ export function StorefrontShell({
     queryKey: ["store-nav", "main"],
     queryFn: () => cmsStoreApi.getNavigation("main"),
     initialData: initialNavigation ?? undefined,
-    initialDataUpdatedAt: 0,
-    staleTime: 0,
+    staleTime: initialNavigation ? 30_000 : 0,
     refetchOnWindowFocus: true,
   });
+
+  const prevInitialNavAtRef = useRef(initialNavigation?.updatedAt);
+  useEffect(() => {
+    if (initialNavigation && initialNavigation.updatedAt !== prevInitialNavAtRef.current) {
+      prevInitialNavAtRef.current = initialNavigation.updatedAt;
+      queryClient.setQueryData(["store-nav", "main"], initialNavigation);
+    }
+  }, [initialNavigation, queryClient]);
 
   const experienceQuery = useQuery({
     queryKey: ["store-active-experience"],
     queryFn: () => experienceStoreApi.getActive(),
     initialData: initialExperience ?? undefined,
-    initialDataUpdatedAt: 0,
-    staleTime: 0,
+    staleTime: initialExperience ? 15_000 : 0,
     refetchOnWindowFocus: true,
   });
+
+  const prevInitialExpAtRef = useRef(initialExperience?.resolvedAt);
+  useEffect(() => {
+    if (initialExperience && initialExperience.resolvedAt !== prevInitialExpAtRef.current) {
+      prevInitialExpAtRef.current = initialExperience.resolvedAt;
+      queryClient.setQueryData(["store-active-experience"], initialExperience);
+    }
+  }, [initialExperience, queryClient]);
 
   const activeExperience = experienceQuery.data;
 

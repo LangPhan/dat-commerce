@@ -285,7 +285,7 @@ export function makeBlock(type: BlockKind, id: string): Block {
 }
 
 export const initialStoreMenu: StoreMenuLink[] = [
-  { id: "home", label: "Home", url: "/store" },
+  { id: "home", label: "Home", url: "/" },
   { id: "shop", label: "Shop", url: "/store/shop" },
   { id: "categories", label: "Categories", url: "/store/categories" },
   { id: "collections", label: "Collections", url: "/store/collections" },

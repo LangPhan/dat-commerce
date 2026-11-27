@@ -10,6 +10,13 @@ import {
 } from "@/lib/seo";
 import { fetchStoreCollections, fetchStoreProducts } from "@/lib/store-server";
 
+export const revalidate = 60;
+
+export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
+  const collections = await fetchStoreCollections();
+  return collections.map((c) => ({ slug: c.slug }));
+}
+
 export async function generateMetadata({
   params,
 }: {

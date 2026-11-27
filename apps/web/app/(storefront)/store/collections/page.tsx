@@ -12,6 +12,8 @@ import {
   fetchStoreProducts,
 } from "@/lib/store-server";
 
+export const revalidate = 60;
+
 export async function generateMetadata(): Promise<Metadata> {
   const cmsPage = await fetchStorePage("collections");
   return buildStoreMetadata({

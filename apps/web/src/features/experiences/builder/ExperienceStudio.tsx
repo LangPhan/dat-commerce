@@ -1,5 +1,8 @@
 "use client";
 
+import { revalidateStorefrontCache } from "@/lib/revalidate-store";
+import { STORE_CACHE_TAGS } from "@/lib/store-cache-tags";
+
 import {
   DndContext,
   DragOverlay,
@@ -167,6 +170,7 @@ export function ExperienceStudio({
       queryClient.setQueryData(["admin-experience", updated.id], updated);
       void queryClient.invalidateQueries({ queryKey: ["admin-experiences"] });
       void queryClient.invalidateQueries({ queryKey: ["store-active-experience"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.experience], paths: ["/"] }).catch(() => undefined);
       setToast(`Saved v${updated.latestVersionNumber}`);
     },
     onError: (err) => {
@@ -188,6 +192,7 @@ export function ExperienceStudio({
       queryClient.setQueryData(["admin-experience", updated.id], updated);
       void queryClient.invalidateQueries({ queryKey: ["admin-experiences"] });
       void queryClient.invalidateQueries({ queryKey: ["store-active-experience"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.experience], paths: ["/"] }).catch(() => undefined);
       setToast(`"${updated.name}" is now LIVE on storefront`);
     },
     onError: (err) => {
@@ -204,6 +209,7 @@ export function ExperienceStudio({
       queryClient.setQueryData(["admin-experience", updated.id], updated);
       void queryClient.invalidateQueries({ queryKey: ["admin-experiences"] });
       void queryClient.invalidateQueries({ queryKey: ["store-active-experience"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.experience], paths: ["/"] }).catch(() => undefined);
       setToast(`Paused "${updated.name}"`);
     },
     onError: (err) => {
@@ -230,6 +236,7 @@ export function ExperienceStudio({
       queryClient.setQueryData(["admin-experience", updated.id], updated);
       void queryClient.invalidateQueries({ queryKey: ["admin-experiences"] });
       void queryClient.invalidateQueries({ queryKey: ["store-active-experience"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.experience], paths: ["/"] }).catch(() => undefined);
       setToast(`Scheduled "${updated.name}" (${updated.status})`);
     },
     onError: (err) => {
@@ -249,6 +256,7 @@ export function ExperienceStudio({
       queryClient.setQueryData(["admin-experience", updated.id], updated);
       void queryClient.invalidateQueries({ queryKey: ["admin-experiences"] });
       void queryClient.invalidateQueries({ queryKey: ["store-active-experience"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.experience], paths: ["/"] }).catch(() => undefined);
       setToast(`Restored snapshot into v${updated.latestVersionNumber}`);
     },
     onError: (err) => {

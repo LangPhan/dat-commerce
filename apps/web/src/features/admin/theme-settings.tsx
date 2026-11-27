@@ -1,5 +1,8 @@
 "use client";
 
+import { revalidateStorefrontCache } from "@/lib/revalidate-store";
+import { STORE_CACHE_TAGS } from "@/lib/store-cache-tags";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Box,

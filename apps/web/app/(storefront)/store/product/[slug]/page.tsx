@@ -10,6 +10,13 @@ import {
 } from "@/lib/seo";
 import { fetchStoreProduct, fetchStoreProducts } from "@/lib/store-server";
 
+export const revalidate = 60;
+
+export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
+  const res = await fetchStoreProducts({ size: 100 });
+  return (res?.items ?? []).map((p) => ({ slug: p.slug }));
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -48,14 +55,18 @@ export default async function ProductDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [product, catalogRes] = await Promise.all([
+  const [product, relatedRes] = await Promise.all([
     fetchStoreProduct(slug),
-    fetchStoreProducts({ size: 24 }),
+    fetchStoreProducts({ size: 5 }),
   ]);
 
   if (!product) {
     notFound();
   }
+
+  const related = (relatedRes?.items ?? [])
+    .filter((p) => p.id !== product.id && p.slug !== product.slug)
+    .slice(0, 4);
 
   const primaryCat = product.categories[0];
   const breadcrumbItems = [
@@ -81,7 +92,7 @@ export default async function ProductDetailPage({
       <ProductPageView
         idOrSlug={slug}
         initialProduct={product}
-        initialRelated={catalogRes?.items}
+        initialRelated={related}
       />
     </>
   );

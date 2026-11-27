@@ -15,6 +15,8 @@ import {
 } from "@/lib/store-server";
 import { initialBlocks } from "@/mocks/pages";
 
+export const revalidate = 60;
+
 const DEFAULT_DESCRIPTION =
   "AI-native ecommerce platform for designing, merchandising, and operating your store.";
 
@@ -34,7 +36,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function HomePage() {
   const [homePage, catalogRes, categories, presets, theme] = await Promise.all([
     fetchStorePage("home"),
-    fetchStoreProducts({ size: 24 }),
+    fetchStoreProducts({ size: 16 }),
     fetchStoreCategories(),
     fetchStoreAnimationPresets(),
     fetchStoreTheme(),

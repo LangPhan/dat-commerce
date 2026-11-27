@@ -1,5 +1,8 @@
 "use client";
 
+import { revalidateStorefrontCache } from "@/lib/revalidate-store";
+import { STORE_CACHE_TAGS } from "@/lib/store-cache-tags";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Folder, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -73,6 +76,8 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
       setModalDraft(null);
+      queryClient.invalidateQueries({ queryKey: ["store-categories"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.categories, STORE_CACHE_TAGS.catalog], paths: ["/", "/store/categories", "/store/shop"] }).catch(() => undefined);
       notify("Category created");
     },
     onError: (err) =>
@@ -94,6 +99,8 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
       setModalDraft(null);
+      queryClient.invalidateQueries({ queryKey: ["store-categories"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.categories, STORE_CACHE_TAGS.catalog], paths: ["/", "/store/categories", "/store/shop"] }).catch(() => undefined);
       notify("Category saved");
     },
     onError: (err) =>
@@ -105,6 +112,8 @@ export function CategoryManager({ notify }: { notify: (message: string) => void 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
       setConfirmDelete(null);
+      queryClient.invalidateQueries({ queryKey: ["store-categories"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.categories, STORE_CACHE_TAGS.catalog], paths: ["/", "/store/categories", "/store/shop"] }).catch(() => undefined);
       notify("Category removed");
     },
     onError: (err) => {

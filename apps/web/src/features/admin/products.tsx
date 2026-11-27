@@ -1,5 +1,8 @@
 "use client";
 
+import { revalidateStorefrontCache } from "@/lib/revalidate-store";
+import { STORE_CACHE_TAGS } from "@/lib/store-cache-tags";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -234,6 +237,9 @@ function ProductFormDialog({
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["admin-products"] });
       queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+      queryClient.invalidateQueries({ queryKey: ["store-products"] });
+      queryClient.invalidateQueries({ queryKey: ["store-home-catalog"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.catalog], paths: ["/", "/store/shop", `/store/product/${created.slug}`] }).catch(() => undefined);
       notify("Product created");
       onOpenChange(false);
       onSaved?.(created);
@@ -270,6 +276,10 @@ function ProductFormDialog({
       queryClient.invalidateQueries({ queryKey: ["admin-products"] });
       queryClient.invalidateQueries({ queryKey: ["admin-product", updated.id] });
       queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
+      queryClient.invalidateQueries({ queryKey: ["store-products"] });
+      queryClient.invalidateQueries({ queryKey: ["store-home-catalog"] });
+      queryClient.invalidateQueries({ queryKey: ["store-product", updated.slug] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.catalog], paths: ["/", "/store/shop", `/store/product/${updated.slug}`] }).catch(() => undefined);
       setConfirmTypeSwitch(false);
       notify("Product saved");
       onOpenChange(false);
@@ -958,6 +968,10 @@ function ProductDetailView({
       queryClient.invalidateQueries({ queryKey: ["admin-product", product.id] });
       queryClient.invalidateQueries({ queryKey: ["admin-products"] });
       setEditVariant(null);
+      queryClient.invalidateQueries({ queryKey: ["store-products"] });
+      queryClient.invalidateQueries({ queryKey: ["store-home-catalog"] });
+      queryClient.invalidateQueries({ queryKey: ["store-product", product.slug] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.catalog], paths: ["/", "/store/shop", `/store/product/${product.slug}`] }).catch(() => undefined);
       notify("Variant pricing and status updated");
     },
     onError: (err) =>
@@ -971,6 +985,10 @@ function ProductDetailView({
       queryClient.invalidateQueries({ queryKey: ["admin-product", product.id] });
       queryClient.invalidateQueries({ queryKey: ["admin-products"] });
       setAddVariantOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["store-products"] });
+      queryClient.invalidateQueries({ queryKey: ["store-home-catalog"] });
+      queryClient.invalidateQueries({ queryKey: ["store-product", product.slug] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.catalog], paths: ["/", "/store/shop", `/store/product/${product.slug}`] }).catch(() => undefined);
       notify("Variant added");
     },
     onError: (err) =>
@@ -985,6 +1003,10 @@ function ProductDetailView({
       queryClient.invalidateQueries({ queryKey: ["admin-products"] });
       queryClient.invalidateQueries({ queryKey: ["admin-inventory"] });
       setAdjustTarget(null);
+      queryClient.invalidateQueries({ queryKey: ["store-products"] });
+      queryClient.invalidateQueries({ queryKey: ["store-home-catalog"] });
+      queryClient.invalidateQueries({ queryKey: ["store-product", product.slug] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.catalog], paths: ["/", "/store/shop", `/store/product/${product.slug}`] }).catch(() => undefined);
       notify("Inventory adjusted");
     },
     onError: (err) =>

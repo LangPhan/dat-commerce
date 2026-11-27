@@ -1,5 +1,8 @@
 "use client";
 
+import { revalidateStorefrontCache } from "@/lib/revalidate-store";
+import { STORE_CACHE_TAGS } from "@/lib/store-cache-tags";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -842,6 +845,7 @@ function NavigationView({ notify }: { notify: (msg: string) => void }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-nav", "main"] });
       queryClient.invalidateQueries({ queryKey: ["store-nav", "main"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.navigation], paths: ["/"] }).catch(() => undefined);
       notify("Navigation menu saved");
     },
     onError: (err) =>

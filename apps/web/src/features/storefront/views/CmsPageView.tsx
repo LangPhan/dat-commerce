@@ -1,11 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import dynamic from "next/dynamic";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Skeleton } from "@/components/ui/data-display";
 import { isV2Content } from "@/features/builder/migration";
+import { PageRenderer } from "@/features/builder/renderer/PageRenderer";
 import { dtoToPresetDefinition } from "@/features/motion/presets";
 import { cmsStoreApi } from "@/lib/cms-ai-api";
 import { apiBlocksToEditorBlocks } from "@/lib/cms-schema";
@@ -15,11 +15,6 @@ import type { CategoryDto, ProductDto } from "@/types/api-commerce";
 import type { Block } from "@/types/editor";
 import { StoreBlock } from "../blocks";
 import { useStorefront } from "../storefront-context";
-
-const PageRenderer = dynamic(
-  () => import("@/features/builder/renderer/PageRenderer").then((m) => m.PageRenderer),
-  { loading: () => <div className="store-boot-placeholder" aria-hidden="true" /> }
-);
 
 export function CmsPageView({
   slug,
@@ -36,17 +31,25 @@ export function CmsPageView({
   initialPresets?: AnimationPresetDto[];
   fallbackBlocks?: Block[];
 }) {
+  const queryClient = useQueryClient();
   const { theme, quickAddToCart, notify } = useStorefront();
 
   const cmsPageQuery = useQuery({
     queryKey: ["store-cms-page", slug],
     queryFn: () => cmsStoreApi.getPage(slug),
     initialData: initialPage ?? undefined,
-    initialDataUpdatedAt: 0,
-    staleTime: 0,
+    staleTime: initialPage ? 30_000 : 0,
     refetchOnWindowFocus: true,
     retry: false,
   });
+
+  const prevInitialPageVerRef = useRef(initialPage?.versionNumber);
+  useEffect(() => {
+    if (initialPage && initialPage.versionNumber !== prevInitialPageVerRef.current) {
+      prevInitialPageVerRef.current = initialPage.versionNumber;
+      queryClient.setQueryData(["store-cms-page", slug], initialPage);
+    }
+  }, [initialPage, slug, queryClient]);
 
   const catalogQuery = useQuery({
     queryKey: ["store-home-catalog"],

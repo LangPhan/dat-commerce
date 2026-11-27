@@ -1,5 +1,8 @@
 "use client";
 
+import { revalidateStorefrontCache } from "@/lib/revalidate-store";
+import { STORE_CACHE_TAGS } from "@/lib/store-cache-tags";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Empty, Skeleton } from "@/components/ui/data-display";
@@ -236,6 +239,10 @@ export function Editor() {
       queryClient.setQueryData(["cms-admin-page", published.id], published);
       void queryClient.invalidateQueries({ queryKey: ["cms-admin-pages"] });
       void queryClient.invalidateQueries({ queryKey: ["store-cms-page"] });
+      void revalidateStorefrontCache({
+        tags: [STORE_CACHE_TAGS.pages, STORE_CACHE_TAGS.page(published.slug), STORE_CACHE_TAGS.theme],
+        paths: ["/", published.slug === "home" ? "/" : `/store/${published.slug}`],
+      }).catch(() => undefined);
       setToast(`Published "${published.title}" to live storefront`);
     },
     onError: (err) => {
@@ -274,6 +281,10 @@ export function Editor() {
       queryClient.setQueryData(["cms-admin-page", rolled.id], rolled);
       void queryClient.invalidateQueries({ queryKey: ["cms-admin-pages"] });
       void queryClient.invalidateQueries({ queryKey: ["store-cms-page"] });
+      void revalidateStorefrontCache({
+        tags: [STORE_CACHE_TAGS.pages, STORE_CACHE_TAGS.page(rolled.slug)],
+        paths: ["/", rolled.slug === "home" ? "/" : `/store/${rolled.slug}`],
+      }).catch(() => undefined);
       setToast(`Rolled back and published v${rolled.latestVersionNumber}`);
     },
     onError: (err) => {
@@ -316,6 +327,10 @@ export function Editor() {
       void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
       void queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
       void queryClient.invalidateQueries({ queryKey: ["store-theme"] });
+      void revalidateStorefrontCache({
+        tags: [STORE_CACHE_TAGS.theme],
+        paths: ["/"],
+      }).catch(() => undefined);
       setToast("Theme tokens published live");
     },
     onError: (err) => {

@@ -9,6 +9,8 @@ import {
 } from "@/lib/seo";
 import { fetchStoreCategories, fetchStoreProducts } from "@/lib/store-server";
 
+export const revalidate = 60;
+
 export const metadata: Metadata = buildStoreMetadata({
   title: "Categories",
   description: "Explore every product category with specification filters.",

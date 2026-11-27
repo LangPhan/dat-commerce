@@ -1,5 +1,8 @@
 "use client";
 
+import { revalidateStorefrontCache } from "@/lib/revalidate-store";
+import { STORE_CACHE_TAGS } from "@/lib/store-cache-tags";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, FolderOpen, Plus, Trash2 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -71,6 +74,7 @@ export function HeaderEditorForm({
     onSuccess: (updated) => {
       queryClient.setQueryData(["cms-admin-nav", "main"], updated);
       void queryClient.invalidateQueries({ queryKey: ["store-nav", "main"] });
+      void revalidateStorefrontCache({ tags: [STORE_CACHE_TAGS.navigation], paths: ["/"] }).catch(() => undefined);
       onNotify?.("Navigation links updated");
     },
     onError: (err) => {

@@ -13,6 +13,8 @@ import {
 } from "@/lib/store-server";
 import { pageTemplates } from "@/mocks/pages";
 
+export const revalidate = 60;
+
 export async function generateMetadata(): Promise<Metadata> {
   const cmsPage = await fetchStorePage("about");
   return buildStoreMetadata({

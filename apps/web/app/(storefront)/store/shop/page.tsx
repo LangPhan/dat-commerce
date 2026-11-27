@@ -11,6 +11,8 @@ import {
 } from "@/lib/seo";
 import { fetchStoreCategories, fetchStoreProducts } from "@/lib/store-server";
 
+export const revalidate = 60;
+
 export const metadata: Metadata = buildStoreMetadata({
   title: "Shop All Products",
   description:
@@ -18,23 +20,13 @@ export const metadata: Metadata = buildStoreMetadata({
   canonical: "/store/shop",
 });
 
-export default async function ShopPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const initialUrlState = parseListingSearchParams(await searchParams);
+export default async function ShopPage() {
+  const initialUrlState = parseListingSearchParams({});
   const [initialProducts, initialCategories] = await Promise.all([
     fetchStoreProducts({
-      q: initialUrlState.q || undefined,
-      category: initialUrlState.category || undefined,
-      maxPrice: initialUrlState.maxPrice
-        ? Number(initialUrlState.maxPrice)
-        : undefined,
       sort: initialUrlState.sort,
-      page: initialUrlState.page - 1,
+      page: 0,
       size: 6,
-      attrs: initialUrlState.attrs,
     }),
     fetchStoreCategories(),
   ]);
