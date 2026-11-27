@@ -2,12 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import {
-  ArrowDownRight,
-  ArrowRight,
-  Package,
-  TrendingUp,
-} from "lucide-react";
+import { ArrowDownRight, ArrowRight, Package, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,7 +82,9 @@ function RevenueChart({
           ? REV_CHART_W / 2
           : REV_PAD_X + (i / (series.length - 1)) * REV_USABLE_W;
       const y =
-        REV_PAD_Y + REV_USABLE_H - (Number(pt.amount) / maxAmount) * REV_USABLE_H;
+        REV_PAD_Y +
+        REV_USABLE_H -
+        (Number(pt.amount) / maxAmount) * REV_USABLE_H;
       pts[i] = { ...pt, x, y };
       polyParts[i] = `${x},${y}`;
     }
@@ -248,15 +245,21 @@ export function Dashboard({ notify }: { notify: (msg: string) => void }) {
       header: "Status",
       cell: (order) => <StatusBadge status={order.status} />,
     },
-    { id: "total", header: "Total", cell: (order) => usdExact(order.grandTotal) },
+    {
+      id: "total",
+      header: "Total",
+      cell: (order) => usdExact(order.grandTotal),
+    },
   ];
 
   return (
-    <div className="admin-page-scroll">
+    <>
       <div className="admin-title">
         <div>
           <h1>Overview</h1>
-          <p>Live store revenue, order throughput, and catalog stock telemetry.</p>
+          <p>
+            Live store revenue, order throughput, and catalog stock telemetry.
+          </p>
         </div>
         <div className="button-row">
           <Link className="btn" href="/admin/orders">
@@ -267,138 +270,161 @@ export function Dashboard({ notify }: { notify: (msg: string) => void }) {
           </Link>
         </div>
       </div>
-
-      <div className="metrics">
-        <div className="panel metric">
-          <span>Gross revenue</span>
-          <strong>{usdExact(summary.totalRevenue)}</strong>
-          <small className="muted">Calculated from live non-canceled orders</small>
-        </div>
-        <div className="panel metric">
-          <span>Total orders</span>
-          <strong>{summary.totalOrders}</strong>
-          <small className="muted">Persisted in PostgreSQL</small>
-        </div>
-        <div className="panel metric">
-          <span>Average order value</span>
-          <strong>{usdExact(summary.averageOrderValue)}</strong>
-          <small className="muted">Per fulfilled or active order</small>
-        </div>
-        <div className="panel metric">
-          <span>Catalog & stock</span>
-          <strong>{summary.productCount} products</strong>
-          <small className={summary.lowStockCount ? "danger" : "muted"}>
-            <Package size={13} /> {summary.lowStockCount} low-stock{" "}
-            {summary.lowStockCount === 1 ? "SKU" : "SKUs"}
-          </small>
-        </div>
-      </div>
-
-      <div className="dash-charts">
-        <RevenueChart revenueSeries={summary.revenueSeries} />
-
-        <section className="panel sales-category">
-          <div className="chart-head">
-            <div>
-              <h2>Sales by category</h2>
-              <p className="muted">Share of gross merchandise value</p>
-            </div>
-            <TrendingUp size={16} className="muted" />
+      <div className="admin-page-scroll">
+        <div className="metrics">
+          <div className="panel metric">
+            <span>Gross revenue</span>
+            <strong>{usdExact(summary.totalRevenue)}</strong>
+            <small className="muted">
+              Calculated from live non-canceled orders
+            </small>
           </div>
-          {summary.categoryBreakdown.length ? (
-            summary.categoryBreakdown.map((row) => (
-              <div key={row.category}>
-                <span>
-                  <span>{row.category}</span>
-                  <span>
-                    {usd(Number(row.revenue))} · <strong>{row.share}%</strong>
-                  </span>
-                </span>
-                <progress aria-label={row.category} value={row.share} max={100} />
-              </div>
-            ))
-          ) : (
-            <p className="muted" style={{ fontSize: 12.5 }}>
-              No order revenue recorded yet.
-            </p>
-          )}
-        </section>
-      </div>
-
-      <div className="dash-charts">
-        <DataTable
-          title="Recent orders"
-          headerActions={
-            <Link href="/admin/orders" className="inline-label" style={{ fontSize: 12, fontWeight: 600, color: "var(--accent-text)" }}>
-              View all orders <ArrowRight size={14} />
-            </Link>
-          }
-          columns={recentOrderColumns}
-          data={allOrders}
-          getRowKey={(order) => order.id}
-          pageSize={5}
-          emptyState={
-            <p className="muted" style={{ padding: "8px 0" }}>
-              No recent orders available for this role.
-            </p>
-          }
-        />
-
-        <section className="panel">
-          <div className="section-title">
-            <h2>Top products</h2>
-            <Link href="/admin/products">
-              Catalog <ArrowRight size={13} />
-            </Link>
+          <div className="panel metric">
+            <span>Total orders</span>
+            <strong>{summary.totalOrders}</strong>
+            <small className="muted">Persisted in PostgreSQL</small>
           </div>
-          {summary.topProducts.map((item) => (
-            <Link
-              key={item.productId}
-              className="dash-product"
-              href={`/admin/products/${item.productId}`}
-            >
-              <img src={item.imageUrl || "/media/terrain-fallback.jpg"} alt="" />
+          <div className="panel metric">
+            <span>Average order value</span>
+            <strong>{usdExact(summary.averageOrderValue)}</strong>
+            <small className="muted">Per fulfilled or active order</small>
+          </div>
+          <div className="panel metric">
+            <span>Catalog & stock</span>
+            <strong>{summary.productCount} products</strong>
+            <small className={summary.lowStockCount ? "danger" : "muted"}>
+              <Package size={13} /> {summary.lowStockCount} low-stock{" "}
+              {summary.lowStockCount === 1 ? "SKU" : "SKUs"}
+            </small>
+          </div>
+        </div>
+
+        <div className="dash-charts">
+          <RevenueChart revenueSeries={summary.revenueSeries} />
+
+          <section className="panel sales-category">
+            <div className="chart-head">
               <div>
-                <strong style={{ display: "block" }}>{item.name}</strong>
-                <span className="muted" style={{ fontSize: 11 }}>
-                  {usd(Number(item.price))}
-                </span>
+                <h2>Sales by category</h2>
+                <p className="muted">Share of gross merchandise value</p>
               </div>
-              <small>{item.unitsSold} sold</small>
-            </Link>
-          ))}
+              <TrendingUp size={16} className="muted" />
+            </div>
+            {summary.categoryBreakdown.length ? (
+              summary.categoryBreakdown.map((row) => (
+                <div key={row.category}>
+                  <span>
+                    <span>{row.category}</span>
+                    <span>
+                      {usd(Number(row.revenue))} · <strong>{row.share}%</strong>
+                    </span>
+                  </span>
+                  <progress
+                    aria-label={row.category}
+                    value={row.share}
+                    max={100}
+                  />
+                </div>
+              ))
+            ) : (
+              <p className="muted" style={{ fontSize: 12.5 }}>
+                No order revenue recorded yet.
+              </p>
+            )}
+          </section>
+        </div>
 
-          <h2 className="low-title">Low stock alerts</h2>
-          {summary.lowStockItems.length ? (
-            summary.lowStockItems.map((item) => (
-              <div key={item.variantId} className="dash-product">
-                <ArrowDownRight size={15} className="danger" />
+        <div className="dash-charts">
+          <DataTable
+            title="Recent orders"
+            headerActions={
+              <Link
+                href="/admin/orders"
+                className="inline-label"
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--accent-text)",
+                }}
+              >
+                View all orders <ArrowRight size={14} />
+              </Link>
+            }
+            columns={recentOrderColumns}
+            data={allOrders}
+            getRowKey={(order) => order.id}
+            pageSize={5}
+            emptyState={
+              <p className="muted" style={{ padding: "8px 0" }}>
+                No recent orders available for this role.
+              </p>
+            }
+          />
+
+          <section className="panel">
+            <div className="section-title">
+              <h2>Top products</h2>
+              <Link href="/admin/products">
+                Catalog <ArrowRight size={13} />
+              </Link>
+            </div>
+            {summary.topProducts.map((item) => (
+              <Link
+                key={item.productId}
+                className="dash-product"
+                href={`/admin/products/${item.productId}`}
+              >
+                <img
+                  src={item.imageUrl || "/media/terrain-fallback.jpg"}
+                  alt=""
+                />
                 <div>
-                  <Link href={`/admin/products/${item.productId}`}>
-                    <strong>{item.productName}</strong>
-                  </Link>
-                  <span className="muted" style={{ display: "block", fontSize: 11 }}>
-                    <code>{item.sku}</code> · Only {item.availableStock} left
+                  <strong style={{ display: "block" }}>{item.name}</strong>
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    {usd(Number(item.price))}
                   </span>
                 </div>
-                {canAdjustInventory ? (
-                  <Button
-                    size="sm"
-                    disabled={restockMutation.isPending}
-                    onClick={() => restockMutation.mutate({ variantId: item.variantId })}
-                  >
-                    +10
-                  </Button>
-                ) : null}
-              </div>
-            ))
-          ) : (
-            <p className="muted" style={{ fontSize: 12.5 }}>
-              All tracked SKUs have healthy stock above 5 units.
-            </p>
-          )}
-        </section>
+                <small>{item.unitsSold} sold</small>
+              </Link>
+            ))}
+
+            <h2 className="low-title">Low stock alerts</h2>
+            {summary.lowStockItems.length ? (
+              summary.lowStockItems.map((item) => (
+                <div key={item.variantId} className="dash-product">
+                  <ArrowDownRight size={15} className="danger" />
+                  <div>
+                    <Link href={`/admin/products/${item.productId}`}>
+                      <strong>{item.productName}</strong>
+                    </Link>
+                    <span
+                      className="muted"
+                      style={{ display: "block", fontSize: 11 }}
+                    >
+                      <code>{item.sku}</code> · Only {item.availableStock} left
+                    </span>
+                  </div>
+                  {canAdjustInventory ? (
+                    <Button
+                      size="sm"
+                      disabled={restockMutation.isPending}
+                      onClick={() =>
+                        restockMutation.mutate({ variantId: item.variantId })
+                      }
+                    >
+                      +10
+                    </Button>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <p className="muted" style={{ fontSize: 12.5 }}>
+                All tracked SKUs have healthy stock above 5 units.
+              </p>
+            )}
+          </section>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
