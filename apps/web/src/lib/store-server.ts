@@ -17,12 +17,17 @@ import { getApiInternalUrl } from "./site-url";
 const SERVER_FETCH_TIMEOUT_MS = 2500;
 const REVALIDATE_SECONDS = 60;
 
-async function fetchStoreJson<T>(path: string): Promise<T | null> {
+async function fetchStoreJson<T>(
+  path: string,
+  options?: { fresh?: boolean }
+): Promise<T | null> {
   const baseUrl = getApiInternalUrl();
   try {
     const response = await fetch(`${baseUrl}${path}`, {
       headers: { Accept: "application/json" },
-      next: { revalidate: REVALIDATE_SECONDS },
+      ...(options?.fresh
+        ? { cache: "no-store" as const }
+        : { next: { revalidate: REVALIDATE_SECONDS } }),
       signal: AbortSignal.timeout(SERVER_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) {
@@ -36,7 +41,8 @@ async function fetchStoreJson<T>(path: string): Promise<T | null> {
 
 export function fetchStorePage(slug: string): Promise<StorePageResponse | null> {
   return fetchStoreJson<StorePageResponse>(
-    `/api/v1/store/pages/${encodeURIComponent(slug)}`
+    `/api/v1/store/pages/${encodeURIComponent(slug)}`,
+    { fresh: true }
   );
 }
 
@@ -45,29 +51,22 @@ export async function fetchStorePublishedPages(): Promise<StorePageSummaryDto[]>
 }
 
 export function fetchStoreTheme(): Promise<ThemeVersionDto | null> {
-  return fetchStoreJson<ThemeVersionDto>("/api/v1/store/theme");
+  return fetchStoreJson<ThemeVersionDto>("/api/v1/store/theme", { fresh: true });
 }
 
-export async function fetchStoreActiveExperience(): Promise<ResolvedStorefrontExperienceDto | null> {
-  const baseUrl = getApiInternalUrl();
-  try {
-    const response = await fetch(`${baseUrl}/api/v1/store/experiences/active`, {
-      headers: { Accept: "application/json" },
-      next: { revalidate: 15 },
-      signal: AbortSignal.timeout(SERVER_FETCH_TIMEOUT_MS),
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as ResolvedStorefrontExperienceDto;
-  } catch {
-    return null;
-  }
+export function fetchStoreActiveExperience(): Promise<ResolvedStorefrontExperienceDto | null> {
+  return fetchStoreJson<ResolvedStorefrontExperienceDto>(
+    "/api/v1/store/experiences/active",
+    { fresh: true }
+  );
 }
 
 export function fetchStoreNavigation(
   menuKey = "main"
 ): Promise<NavigationMenuDto | null> {
   return fetchStoreJson<NavigationMenuDto>(
-    `/api/v1/store/navigation/${encodeURIComponent(menuKey)}`
+    `/api/v1/store/navigation/${encodeURIComponent(menuKey)}`,
+    { fresh: true }
   );
 }
 

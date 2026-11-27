@@ -42,7 +42,9 @@ export function CmsPageView({
     queryKey: ["store-cms-page", slug],
     queryFn: () => cmsStoreApi.getPage(slug),
     initialData: initialPage ?? undefined,
-    staleTime: 60_000,
+    initialDataUpdatedAt: 0,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
     retry: false,
   });
 

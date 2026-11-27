@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -148,21 +149,35 @@ export function StorefrontShell({
     queryKey: ["store-theme"],
     queryFn: () => cmsStoreApi.getTheme(),
     initialData: initialTheme ?? undefined,
-    staleTime: 60_000,
+    initialDataUpdatedAt: 0,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
+
+  const prevInitialThemeIdRef = useRef(initialTheme?.id);
+  useEffect(() => {
+    if (initialTheme && initialTheme.id !== prevInitialThemeIdRef.current) {
+      prevInitialThemeIdRef.current = initialTheme.id;
+      queryClient.setQueryData(["store-theme"], initialTheme);
+    }
+  }, [initialTheme, queryClient]);
 
   const navQuery = useQuery({
     queryKey: ["store-nav", "main"],
     queryFn: () => cmsStoreApi.getNavigation("main"),
     initialData: initialNavigation ?? undefined,
-    staleTime: 60_000,
+    initialDataUpdatedAt: 0,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const experienceQuery = useQuery({
     queryKey: ["store-active-experience"],
     queryFn: () => experienceStoreApi.getActive(),
     initialData: initialExperience ?? undefined,
-    staleTime: 25_000,
+    initialDataUpdatedAt: 0,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const activeExperience = experienceQuery.data;

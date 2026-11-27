@@ -86,13 +86,15 @@ export function mergeExperienceHeaderConfig(
     return baseHeader ?? undefined;
   }
   const h = override.headerOverride;
+  const announcementHidden = baseHeader?.announcement?.enabled === false;
   return {
     ...baseHeader,
     announcement: {
       ...baseHeader?.announcement,
-      ...(h.announcementText ? { enabled: true, text: h.announcementText } : {}),
+      ...(h.announcementText ? { text: h.announcementText } : {}),
       ...(h.announcementBg ? { bgColor: h.announcementBg } : {}),
       ...(h.announcementTextColor ? { textColor: h.announcementTextColor } : {}),
+      ...(announcementHidden ? { enabled: false } : {}),
     },
     layout: {
       ...baseHeader?.layout,

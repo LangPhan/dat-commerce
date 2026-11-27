@@ -311,6 +311,7 @@ function ThemeWorkspace({
     onSuccess: (pub) => {
       setSyncedServerId(pub.id);
       setDirty(false);
+      queryClient.setQueryData(["store-theme"], pub);
       queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
       queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
       queryClient.invalidateQueries({ queryKey: ["store-theme"] });
@@ -323,6 +324,7 @@ function ThemeWorkspace({
   const publishVersionMutation = useMutation({
     mutationFn: (versionId?: string) => cmsAdminApi.publishTheme(versionId),
     onSuccess: (pub) => {
+      queryClient.setQueryData(["store-theme"], pub);
       queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
       queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
       queryClient.invalidateQueries({ queryKey: ["store-theme"] });
@@ -338,6 +340,7 @@ function ThemeWorkspace({
       setDirty(false);
       setSyncedServerId(rolled.id);
       setTokens(rolled.tokens);
+      queryClient.setQueryData(["store-theme"], rolled);
       queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
       queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
       queryClient.invalidateQueries({ queryKey: ["store-theme"] });

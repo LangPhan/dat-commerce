@@ -86,8 +86,23 @@ describe("experiences schema, catalog & theme merge", () => {
         },
       }
     );
+    expect(header?.announcement?.enabled).toBe(true);
     expect(header?.announcement?.text).toBe("Black Friday VIP");
     expect(header?.announcement?.bgColor).toBe("#000000");
+
+    // Respects explicitly hidden announcement bar from Theme Editor
+    const hiddenHeader = mergeExperienceHeaderConfig(
+      { announcement: { enabled: false, text: "Default", bgColor: "#111111" } },
+      {
+        enabled: true,
+        mode: "accent_tint",
+        headerOverride: {
+          announcementText: "Holiday Gift Guide",
+          announcementBg: "#14532D",
+        },
+      }
+    );
+    expect(hiddenHeader?.announcement?.enabled).toBe(false);
   });
 
   it("matches target page patterns accurately", () => {

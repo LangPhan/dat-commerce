@@ -137,6 +137,16 @@ export function Editor() {
     mutationFn: async () => {
       const state = useEditorStore.getState();
       setSaveStatus("saving");
+      if (state.themeDirty && state.themeTokens) {
+        const savedTheme = await pageAdapter.saveThemeDraft(
+          state.themeTokens,
+          "Saved theme draft from Visual Editor"
+        );
+        hydratedThemeIdRef.current = savedTheme.id;
+        markThemeSaved();
+        void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
+        void queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
+      }
       return pageAdapter.saveDraft({
         pageId: state.pageId,
         document: { version: 2, nodes: state.nodes },
@@ -184,6 +194,11 @@ export function Editor() {
         hydratedPageKeyRef.current = `${saved.id}:${saved.latestVersionNumber}:${saved.version}`;
         currentVersion = saved.version;
       }
+      const latestTheme = themeQuery.data?.latest;
+      const publishedTheme = themeQuery.data?.published;
+      const hasUnpublishedThemeDraft = Boolean(
+        latestTheme && latestTheme.id !== publishedTheme?.id
+      );
       if (state.themeDirty && state.themeTokens) {
         const savedTheme = await pageAdapter.saveThemeDraft(
           state.themeTokens,
@@ -192,6 +207,15 @@ export function Editor() {
         const pubTheme = await pageAdapter.publishTheme(savedTheme.id);
         hydratedThemeIdRef.current = pubTheme.id;
         markThemeSaved();
+        queryClient.setQueryData(["store-theme"], pubTheme);
+        void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
+        void queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
+        void queryClient.invalidateQueries({ queryKey: ["store-theme"] });
+      } else if (hasUnpublishedThemeDraft && latestTheme) {
+        const pubTheme = await pageAdapter.publishTheme(latestTheme.id);
+        hydratedThemeIdRef.current = pubTheme.id;
+        markThemeSaved();
+        queryClient.setQueryData(["store-theme"], pubTheme);
         void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
         void queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
         void queryClient.invalidateQueries({ queryKey: ["store-theme"] });
@@ -288,6 +312,7 @@ export function Editor() {
     onSuccess: (published) => {
       hydratedThemeIdRef.current = published.id;
       markThemeSaved();
+      queryClient.setQueryData(["store-theme"], published);
       void queryClient.invalidateQueries({ queryKey: ["cms-admin-theme"] });
       void queryClient.invalidateQueries({ queryKey: ["admin-theme"] });
       void queryClient.invalidateQueries({ queryKey: ["store-theme"] });

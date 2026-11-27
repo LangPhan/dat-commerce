@@ -91,6 +91,8 @@ export function EditorTopBar({
   const pageTitle = useEditorStore((s) => s.pageTitle);
   const status = useEditorStore((s) => s.status);
   const dirty = useEditorStore((s) => s.dirty);
+  const themeDirty = useEditorStore((s) => s.themeDirty);
+  const hasUnsaved = dirty || themeDirty;
   const saveStatus = useEditorStore((s) => s.saveStatus);
   const viewport = useEditorStore((s) => s.viewport);
   const zoom = useEditorStore((s) => s.zoom);
@@ -169,12 +171,12 @@ export function EditorTopBar({
         </div>
 
         <div className="ed-status-cluster">
-          <Badge tone={dirty ? "accent" : "green"}>
-            {!dirty && !savingDraft ? <CheckCircle2 size={11} /> : null}
+          <Badge tone={hasUnsaved ? "accent" : "green"}>
+            {!hasUnsaved && !savingDraft ? <CheckCircle2 size={11} /> : null}
             <span>
               {savingDraft || saveStatus === "saving"
                 ? "Saving"
-                : dirty || saveStatus === "unsaved"
+                : hasUnsaved || saveStatus === "unsaved"
                   ? "Unsaved"
                   : "Saved"}
             </span>
