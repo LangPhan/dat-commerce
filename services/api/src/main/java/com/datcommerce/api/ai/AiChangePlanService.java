@@ -4,6 +4,8 @@ import com.datcommerce.api.audit.AuditLogService;
 import com.datcommerce.api.catalog.CatalogAdminService;
 import com.datcommerce.api.catalog.CatalogDtos;
 import com.datcommerce.api.cms.CmsService;
+import com.datcommerce.api.experience.SeasonalExperienceDtos;
+import com.datcommerce.api.experience.SeasonalExperienceService;
 import com.datcommerce.api.common.exception.ApiException;
 import com.datcommerce.api.common.exception.ErrorCode;
 import com.datcommerce.api.common.security.AuthenticatedUser;
@@ -37,17 +39,20 @@ public class AiChangePlanService {
     private final InventoryService inventoryService;
     private final PromotionService promotionService;
     private final CmsService cmsService;
+    private final SeasonalExperienceService seasonalExperienceService;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
     private final TransactionTemplate requiresNewTx;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public AiChangePlanService(
             AiChangePlanRepository changePlanRepository,
             CatalogAdminService catalogAdminService,
             InventoryService inventoryService,
             PromotionService promotionService,
             CmsService cmsService,
+            SeasonalExperienceService seasonalExperienceService,
             AuditLogService auditLogService,
             ObjectMapper objectMapper,
             MeterRegistry meterRegistry,
@@ -58,6 +63,7 @@ public class AiChangePlanService {
         this.inventoryService = inventoryService;
         this.promotionService = promotionService;
         this.cmsService = cmsService;
+        this.seasonalExperienceService = seasonalExperienceService;
         this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
         this.meterRegistry = meterRegistry;
@@ -385,6 +391,20 @@ public class AiChangePlanService {
                         beforeTheme.latest() != null ? beforeTheme.latest().tokens() : Map.of()
                 );
             }
+            case "UPSERT_SEASONAL_EXPERIENCE" -> {
+                seasonalExperienceService.createExperience(actor, new SeasonalExperienceDtos.CreateExperienceRequest(
+                        String.valueOf(ops.getOrDefault("name", "AI Seasonal Experience")),
+                        null,
+                        null,
+                        ops.get("category") != null ? String.valueOf(ops.get("category")) : "CUSTOM",
+                        ops.get("presetKey") != null ? String.valueOf(ops.get("presetKey")) : null,
+                        "MANUAL",
+                        null, null, "UTC", "NONE",
+                        null, null, null, null, null,
+                        ops.get("config") != null ? convertMap(ops.get("config")) : null
+                ));
+                yield null;
+            }
             default -> throw new ApiException(ErrorCode.BAD_REQUEST, "Unsupported change plan type: " + plan.getPlanType());
         };
     }
@@ -441,7 +461,7 @@ public class AiChangePlanService {
             case "BULK_PRICE_UPDATE" -> "pricing:write";
             case "ADJUST_STOCK" -> "inventory:write";
             case "CREATE_PROMOTION" -> "promotion:write";
-            case "PAGE_CHANGE", "THEME_CHANGE" -> "content:write";
+            case "PAGE_CHANGE", "THEME_CHANGE", "UPSERT_SEASONAL_EXPERIENCE" -> "content:write";
             default -> "catalog:write";
         };
     }

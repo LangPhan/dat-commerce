@@ -97,7 +97,7 @@ export function AdminLayoutShell({ children }: { children: ReactNode }) {
     [setTheme]
   );
 
-  if (view === "editor") {
+  if (view === "editor" || (view === "experiences" && Boolean(id))) {
     return (
       <AuthGuard requiredPermission="content:read" requireAdmin>
         <AdminToastContext.Provider value={emitToast}>

@@ -1,5 +1,12 @@
 package com.datcommerce.api.cms;
 
+import com.datcommerce.api.experience.SeasonalExperienceEntity;
+import com.datcommerce.api.experience.SeasonalExperienceRepository;
+import com.datcommerce.api.experience.SeasonalExperienceResolverService;
+import com.datcommerce.api.experience.SeasonalExperienceSettingsRepository;
+import com.datcommerce.api.experience.SeasonalExperienceTemplates;
+import com.datcommerce.api.experience.SeasonalExperienceVersionEntity;
+import com.datcommerce.api.experience.SeasonalExperienceVersionRepository;
 import com.datcommerce.api.store.StoreEntity;
 import com.datcommerce.api.store.StoreRepository;
 import java.time.Instant;
@@ -24,19 +31,28 @@ public class DevCmsSeeder implements ApplicationRunner {
     private final PageVersionRepository pageVersionRepository;
     private final ThemeConfigRepository themeConfigRepository;
     private final NavigationMenuRepository navigationMenuRepository;
+    private final SeasonalExperienceRepository experienceRepository;
+    private final SeasonalExperienceVersionRepository experienceVersionRepository;
+    private final SeasonalExperienceSettingsRepository experienceSettingsRepository;
 
     public DevCmsSeeder(
             StoreRepository storeRepository,
             PageRepository pageRepository,
             PageVersionRepository pageVersionRepository,
             ThemeConfigRepository themeConfigRepository,
-            NavigationMenuRepository navigationMenuRepository
+            NavigationMenuRepository navigationMenuRepository,
+            SeasonalExperienceRepository experienceRepository,
+            SeasonalExperienceVersionRepository experienceVersionRepository,
+            SeasonalExperienceSettingsRepository experienceSettingsRepository
     ) {
         this.storeRepository = storeRepository;
         this.pageRepository = pageRepository;
         this.pageVersionRepository = pageVersionRepository;
         this.themeConfigRepository = themeConfigRepository;
         this.navigationMenuRepository = navigationMenuRepository;
+        this.experienceRepository = experienceRepository;
+        this.experienceVersionRepository = experienceVersionRepository;
+        this.experienceSettingsRepository = experienceSettingsRepository;
     }
 
     @Override
@@ -93,6 +109,52 @@ public class DevCmsSeeder implements ApplicationRunner {
                     "Seasonal capsules uniting trail hardware and studio tools.",
                     collectionBlocks(), now);
         }
+
+        if (experienceSettingsRepository.findById(storeId).isEmpty()) {
+            experienceSettingsRepository.save(SeasonalExperienceResolverService.defaultSettings(storeId));
+        }
+
+        if (experienceRepository.findAllByStoreIdOrderByPriorityDescUpdatedAtDesc(storeId).isEmpty()) {
+            seedDraftExperience(storeId, "christmas-wonderland", now);
+            seedDraftExperience(storeId, "flash-sale-surge", now);
+        }
+    }
+
+    private void seedDraftExperience(UUID storeId, String presetKey, Instant now) {
+        var tpl = SeasonalExperienceTemplates.findByKey(presetKey);
+        if (tpl == null) return;
+        UUID expId = UUID.randomUUID();
+        SeasonalExperienceEntity exp = new SeasonalExperienceEntity();
+        exp.setId(expId);
+        exp.setStoreId(storeId);
+        exp.setSlug(tpl.presetKey());
+        exp.setName(tpl.name());
+        exp.setDescription(tpl.description());
+        exp.setCategory(tpl.category());
+        exp.setPresetKey(tpl.presetKey());
+        exp.setStatus("DRAFT");
+        exp.setActivationMode("MANUAL");
+        exp.setManualOverride(false);
+        exp.setTimezone("UTC");
+        exp.setRecurrenceRule("NONE");
+        exp.setPriority(tpl.defaultPriority());
+        exp.setBlendMode(tpl.defaultBlendMode());
+        exp.setExclusiveGroupsJson(tpl.defaultExclusiveGroups());
+        exp.setTargetPagesJson(List.of("*"));
+        exp.setMaxParticleBudget(120);
+        exp.setLatestVersionNumber(1);
+        exp.setCreatedAt(now);
+        exp.setUpdatedAt(now);
+        experienceRepository.saveAndFlush(exp);
+
+        SeasonalExperienceVersionEntity ver = new SeasonalExperienceVersionEntity();
+        ver.setId(UUID.randomUUID());
+        ver.setExperienceId(expId);
+        ver.setVersionNumber(1);
+        ver.setConfigJson(tpl.config());
+        ver.setChangeSummary("Seeded starter draft from template");
+        ver.setCreatedAt(now);
+        experienceVersionRepository.save(ver);
     }
 
     private void seedPage(

@@ -30,6 +30,7 @@ import {
   Sun,
   Tag,
   Users,
+  Wand2,
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
@@ -101,6 +102,7 @@ export const navigation: { title: string; items: NavItem[] }[] = [
       nav("Pages", "pages", PanelTop, "content:read"),
       nav("Theme", "theme", Palette, "content:read"),
       nav("Theme Editor", "editor", Layers, "content:read"),
+      nav("Seasonal Experiences", "experiences", Wand2, "content:read"),
       nav("Navigation", "navigation", Menu, "content:read"),
       nav("Media Library", "media", ImageIcon, "content:read"),
     ],

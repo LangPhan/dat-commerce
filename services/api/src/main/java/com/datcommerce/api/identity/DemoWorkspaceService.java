@@ -213,6 +213,13 @@ public class DemoWorkspaceService {
         jdbcTemplate.update("DELETE FROM customer_ai_conversations WHERE store_id = ?", storeId);
         jdbcTemplate.update("DELETE FROM ai_user_daily_token_usage WHERE store_id = ?", storeId);
         jdbcTemplate.update("DELETE FROM animation_presets WHERE store_id = ?", storeId);
+        jdbcTemplate.update("DELETE FROM seasonal_experience_settings WHERE store_id = ?", storeId);
+        jdbcTemplate.update(
+                "DELETE FROM seasonal_experience_versions WHERE experience_id IN "
+                        + "(SELECT id FROM seasonal_experiences WHERE store_id = ?)",
+                storeId
+        );
+        jdbcTemplate.update("DELETE FROM seasonal_experiences WHERE store_id = ?", storeId);
         jdbcTemplate.update("DELETE FROM navigation_menus WHERE store_id = ?", storeId);
         jdbcTemplate.update("DELETE FROM page_versions WHERE page_id IN (SELECT id FROM pages WHERE store_id = ?)", storeId);
         jdbcTemplate.update("DELETE FROM pages WHERE store_id = ?", storeId);
@@ -299,6 +306,69 @@ public class DemoWorkspaceService {
                             + "VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, 0, NOW(), NOW())",
                     UUID.randomUUID(), dstStoreId, pr.get("preset_key"), pr.get("name"), pr.get("category"),
                     pr.get("description"), pr.get("config_json"), pr.get("is_system"), pr.get("is_favorite")
+            );
+        }
+
+        Map<UUID, UUID> expMap = new HashMap<>();
+        List<Map<String, Object>> experiences = jdbcTemplate.queryForList(
+                "SELECT id, slug, name, description, category, preset_key, status, activation_mode, manual_override, "
+                        + "starts_at, ends_at, timezone, recurrence_rule, priority, blend_mode, "
+                        + "exclusive_groups_json::text AS exclusive_groups_json, target_pages_json::text AS target_pages_json, "
+                        + "max_particle_budget, active_version_id "
+                        + "FROM seasonal_experiences WHERE store_id = ?",
+                srcStoreId
+        );
+        for (Map<String, Object> exp : experiences) {
+            UUID oldExpId = (UUID) exp.get("id");
+            UUID newExpId = UUID.randomUUID();
+            expMap.put(oldExpId, newExpId);
+            UUID oldActiveVerId = (UUID) exp.get("active_version_id");
+
+            List<Map<String, Object>> vers = jdbcTemplate.queryForList(
+                    "SELECT id, config_json::text AS config_json, change_summary "
+                            + "FROM seasonal_experience_versions WHERE experience_id = ? ORDER BY version_number DESC LIMIT 1",
+                    oldExpId
+            );
+            jdbcTemplate.update(
+                    "INSERT INTO seasonal_experiences (id, store_id, slug, name, description, category, preset_key, status, "
+                            + "activation_mode, manual_override, starts_at, ends_at, timezone, recurrence_rule, priority, blend_mode, "
+                            + "exclusive_groups_json, target_pages_json, max_particle_budget, active_version_id, latest_version_number, version, created_at, updated_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, NULL, 1, 0, NOW(), NOW())",
+                    newExpId, dstStoreId, exp.get("slug"), exp.get("name"), exp.get("description"),
+                    exp.get("category"), exp.get("preset_key"), exp.get("status"), exp.get("activation_mode"),
+                    exp.get("manual_override"), exp.get("starts_at"), exp.get("ends_at"), exp.get("timezone"),
+                    exp.get("recurrence_rule"), exp.get("priority"), exp.get("blend_mode"),
+                    exp.get("exclusive_groups_json"), exp.get("target_pages_json"), exp.get("max_particle_budget")
+            );
+            if (!vers.isEmpty()) {
+                Map<String, Object> chosen = vers.get(0);
+                UUID newVerId = UUID.randomUUID();
+                jdbcTemplate.update(
+                        "INSERT INTO seasonal_experience_versions (id, experience_id, version_number, config_json, change_summary, created_at) "
+                                + "VALUES (?, ?, 1, CAST(? AS jsonb), ?, NOW())",
+                        newVerId, newExpId, chosen.get("config_json"), chosen.get("change_summary")
+                );
+                if (oldActiveVerId != null) {
+                    jdbcTemplate.update("UPDATE seasonal_experiences SET active_version_id = ? WHERE id = ?", newVerId, newExpId);
+                }
+            }
+        }
+
+        List<Map<String, Object>> expSettings = jdbcTemplate.queryForList(
+                "SELECT enabled, conflict_strategy, max_concurrent_experiences, global_particle_cap, "
+                        + "mobile_performance_mode, respect_reduced_motion, fallback_behavior, default_experience_id, allow_customer_dismiss "
+                        + "FROM seasonal_experience_settings WHERE store_id = ?",
+                srcStoreId
+        );
+        for (Map<String, Object> st : expSettings) {
+            UUID newDefaultExpId = expMap.get((UUID) st.get("default_experience_id"));
+            jdbcTemplate.update(
+                    "INSERT INTO seasonal_experience_settings (store_id, enabled, conflict_strategy, max_concurrent_experiences, "
+                            + "global_particle_cap, mobile_performance_mode, respect_reduced_motion, fallback_behavior, default_experience_id, "
+                            + "allow_customer_dismiss, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+                    dstStoreId, st.get("enabled"), st.get("conflict_strategy"), st.get("max_concurrent_experiences"),
+                    st.get("global_particle_cap"), st.get("mobile_performance_mode"), st.get("respect_reduced_motion"),
+                    st.get("fallback_behavior"), newDefaultExpId, st.get("allow_customer_dismiss")
             );
         }
 

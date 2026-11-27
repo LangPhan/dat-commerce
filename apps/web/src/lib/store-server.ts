@@ -5,6 +5,7 @@ import type {
   StorePageSummaryDto,
   ThemeVersionDto,
 } from "@/types/api-cms-ai";
+import type { ResolvedStorefrontExperienceDto } from "@/features/experiences/types";
 import type {
   CategoryDto,
   CollectionDto,
@@ -45,6 +46,21 @@ export async function fetchStorePublishedPages(): Promise<StorePageSummaryDto[]>
 
 export function fetchStoreTheme(): Promise<ThemeVersionDto | null> {
   return fetchStoreJson<ThemeVersionDto>("/api/v1/store/theme");
+}
+
+export async function fetchStoreActiveExperience(): Promise<ResolvedStorefrontExperienceDto | null> {
+  const baseUrl = getApiInternalUrl();
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/store/experiences/active`, {
+      headers: { Accept: "application/json" },
+      next: { revalidate: 15 },
+      signal: AbortSignal.timeout(SERVER_FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as ResolvedStorefrontExperienceDto;
+  } catch {
+    return null;
+  }
 }
 
 export function fetchStoreNavigation(

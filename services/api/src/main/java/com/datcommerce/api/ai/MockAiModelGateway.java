@@ -43,6 +43,9 @@ public class MockAiModelGateway implements AiModelGateway {
         String lower = prompt.toLowerCase(Locale.ROOT);
         List<GatewayMessage> toolMsgs = extractCurrentTurnToolResults(request.messages());
         Map<String, Object> ctx = request.context() != null ? request.context() : Map.of();
+        if ("experience_design".equals(String.valueOf(ctx.get("mode")))) {
+            return generateExperienceDesignTurn(prompt, lower, ctx);
+        }
         if ("editor_suggest".equals(String.valueOf(ctx.get("mode")))) {
             return generateEditorSuggestTurn(prompt, lower, ctx);
         }
@@ -288,6 +291,25 @@ public class MockAiModelGateway implements AiModelGateway {
                         )
                 )), 160, 32);
             }
+        }
+
+        if (lower.contains("experience") || lower.contains("seasonal") || lower.contains("christmas")
+                || lower.contains("lunar") || lower.contains("tết") || lower.contains("snow")
+                || lower.contains("lễ hội") || lower.contains("mùa")) {
+            return toolResponse(List.of(new GatewayToolCall(
+                    callId(), "experience.list", Map.of()
+            )), 120, 22);
+        }
+
+        if ("experience.list".equals(lastTool.toolName()) && (lower.contains("create") || lower.contains("tạo") || lower.contains("design"))) {
+            String preset = lower.contains("lunar") || lower.contains("tết") ? "lunar-new-year"
+                    : lower.contains("black friday") ? "black-friday-luxe"
+                    : lower.contains("flash") ? "flash-sale-surge"
+                    : "christmas-wonderland";
+            return toolResponse(List.of(new GatewayToolCall(
+                    callId(), "experience.propose_draft",
+                    Map.of("presetKey", preset, "name", "AI Seasonal Experience: " + preset)
+            )), 145, 36);
         }
 
         // Grounded final answer summarizing all tool outputs safely
@@ -1020,6 +1042,279 @@ public class MockAiModelGateway implements AiModelGateway {
             );
         }
         return textResponse("I checked the live catalog — let me know which item you want to inspect or add to your cart.", 95, 26);
+    }
+
+    private GatewayTurnResponse generateExperienceDesignTurn(
+            String prompt,
+            String rawLower,
+            Map<String, Object> ctx
+    ) {
+        String merchantInstruction = prompt;
+        int idxMarker = prompt.lastIndexOf("Merchant instruction:");
+        if (idxMarker >= 0) {
+            merchantInstruction = prompt.substring(idxMarker + "Merchant instruction:".length()).trim();
+        }
+        String lower = merchantInstruction.toLowerCase(Locale.ROOT);
+
+        Map<String, Object> current = ctx.get("currentConfig") instanceof Map<?, ?> m
+                ? objectMapper.convertValue(m, new TypeReference<>() {
+                })
+                : com.datcommerce.api.experience.SeasonalExperienceValidator.defaultEmptyConfig();
+
+        List<Map<String, Object>> layers = current.get("layers") instanceof List<?> l
+                ? objectMapper.convertValue(l, new TypeReference<>() {
+                })
+                : new ArrayList<>();
+        Map<String, Object> themeOverride = current.get("themeOverride") instanceof Map<?, ?> tm
+                ? objectMapper.convertValue(tm, new TypeReference<>() {
+                })
+                : new LinkedHashMap<>(Map.of("enabled", false, "mode", "accent_tint"));
+
+        String promoCode = "WELCOME15";
+        if (ctx.get("activePromotions") instanceof List<?> promos && !promos.isEmpty()
+                && promos.get(0) instanceof Map<?, ?> firstPromo && firstPromo.get("code") != null) {
+            promoCode = String.valueOf(firstPromo.get("code"));
+        }
+
+        List<Map<String, Object>> ops = new ArrayList<>();
+        String summary;
+        String explanation;
+
+        // 1. Check full-template intent keywords
+        String matchedPreset = null;
+        if (lower.contains("christmas") || lower.contains("noel") || lower.contains("santa") || lower.contains("giáng sinh")) {
+            matchedPreset = "christmas-wonderland";
+        } else if (lower.contains("lunar") || lower.contains("tết") || lower.contains("tet") || lower.contains("giao thừa")) {
+            matchedPreset = "lunar-new-year";
+        } else if (lower.contains("valentine") || lower.contains("romantic") || lower.contains("tình yêu")) {
+            matchedPreset = "valentines-romance";
+        } else if (lower.contains("black friday") || (lower.contains("dark") && lower.contains("gold"))) {
+            matchedPreset = "black-friday-luxe";
+        } else if (lower.contains("flash sale") || lower.contains("flash drop") || (lower.contains("countdown") && layers.isEmpty())) {
+            matchedPreset = "flash-sale-surge";
+        } else if (lower.contains("spring") || lower.contains("cherry blossom") || lower.contains("hoa đào") || lower.contains("hoa mai")) {
+            matchedPreset = "spring-blossoms";
+        } else if (lower.contains("winter") || (lower.contains("snow") && layers.isEmpty())) {
+            matchedPreset = "winter-snowfall";
+        } else if (lower.contains("autumn") || lower.contains("fall") || lower.contains("mùa thu")) {
+            matchedPreset = "autumn-harvest";
+        } else if (lower.contains("halloween") || lower.contains("spooky")) {
+            matchedPreset = "halloween-night";
+        } else if (lower.contains("summer") || lower.contains("mùa hè")) {
+            matchedPreset = "summer-sunburst";
+        }
+
+        boolean isModifierOnly = (lower.contains("more ") || lower.contains("slower") || lower.contains("faster")
+                || lower.contains("denser") || lower.contains("lighter") || lower.contains("remove")
+                || lower.contains("add ") || lower.contains("make ") || lower.contains("darker")
+                || lower.contains("tăng") || lower.contains("giảm") || lower.contains("thêm") || lower.contains("bỏ"))
+                && !layers.isEmpty();
+
+        if (matchedPreset != null && !isModifierOnly) {
+            var tpl = com.datcommerce.api.experience.SeasonalExperienceTemplates.findByKey(matchedPreset);
+            Map<String, Object> proposed = objectMapper.convertValue(tpl.config(), new TypeReference<>() {
+            });
+            summary = "Design " + tpl.name() + " experience";
+            explanation = "Composed " + tpl.name() + " with coordinated particle effects, festive decorations, and storefront theme accents.";
+            ops.add(Map.of("type", "apply_template", "targetId", matchedPreset, "description", "Applied " + tpl.name() + " multi-layer composition"));
+            return serializeExperienceDesign(summary, explanation, ops, proposed);
+        }
+
+        // 2. Compositional additions & iterative adjustments
+        if (lower.contains("remove banner") || lower.contains("bỏ banner")) {
+            layers.removeIf(layer -> "promo_banner".equals(String.valueOf(layer.get("type"))));
+            ops.add(Map.of("type", "remove_layer", "targetId", "promo_banner", "description", "Removed promotional banner layer"));
+        }
+
+        if (lower.contains("add snow") || lower.contains("thêm tuyết") || (lower.contains("snow") && layers.stream().noneMatch(x -> "snowfall".equals(x.get("type"))))) {
+            Map<String, Object> snow = new LinkedHashMap<>();
+            snow.put("id", "ai-snow-" + UUID.randomUUID().toString().substring(0, 6));
+            snow.put("type", "snowfall");
+            snow.put("label", "AI Snowfall");
+            snow.put("enabled", true);
+            snow.put("locked", false);
+            snow.put("zone", "viewport_overlay");
+            snow.put("zIndex", 26);
+            snow.put("opacity", 0.9);
+            snow.put("blendMode", "normal");
+            snow.put("visibility", Map.of("desktop", true, "tablet", true, "mobile", true));
+            snow.put("trigger", "immediate");
+            snow.put("props", new LinkedHashMap<>(Map.of(
+                    "density", lower.contains("heavy") || lower.contains("dense") ? 130 : 80,
+                    "speed", 1.0,
+                    "wind", 0.35,
+                    "sizeMin", 2.0,
+                    "sizeMax", 8.0,
+                    "color", "#FFFFFF",
+                    "variant", "mixed"
+            )));
+            layers.add(snow);
+            ops.add(Map.of("type", "add_layer", "targetId", snow.get("id"), "description", "Added Snowfall effect layer"));
+        }
+
+        if (lower.contains("firework") || lower.contains("pháo hoa")) {
+            if (layers.stream().noneMatch(x -> "fireworks".equals(x.get("type")))) {
+                Map<String, Object> fw = new LinkedHashMap<>();
+                fw.put("id", "ai-fw-" + UUID.randomUUID().toString().substring(0, 6));
+                fw.put("type", "fireworks");
+                fw.put("label", "AI Festive Fireworks");
+                fw.put("enabled", true);
+                fw.put("locked", false);
+                fw.put("zone", "viewport_overlay");
+                fw.put("zIndex", 28);
+                fw.put("opacity", 0.92);
+                fw.put("blendMode", "screen");
+                fw.put("visibility", Map.of("desktop", true, "tablet", true, "mobile", true));
+                fw.put("trigger", "immediate");
+                fw.put("props", new LinkedHashMap<>(Map.of(
+                        "burstRate", 0.9,
+                        "particleCount", 60,
+                        "gravity", 0.45,
+                        "launchZone", "top_sky",
+                        "trails", true,
+                        "colors", List.of("#EF4444", "#FACC15", "#FB923C", "#F472B6")
+                )));
+                layers.add(fw);
+                ops.add(Map.of("type", "add_layer", "targetId", fw.get("id"), "description", "Added Fireworks burst layer"));
+            }
+        }
+
+        if (lower.contains("gold") || lower.contains("vàng")) {
+            if (layers.stream().noneMatch(x -> "golden_particles".equals(x.get("type")))) {
+                Map<String, Object> gp = new LinkedHashMap<>();
+                gp.put("id", "ai-gold-" + UUID.randomUUID().toString().substring(0, 6));
+                gp.put("type", "golden_particles");
+                gp.put("label", "AI Golden Particles");
+                gp.put("enabled", true);
+                gp.put("locked", false);
+                gp.put("zone", "viewport_overlay");
+                gp.put("zIndex", 25);
+                gp.put("opacity", 0.9);
+                gp.put("blendMode", "screen");
+                gp.put("visibility", Map.of("desktop", true, "tablet", true, "mobile", true));
+                gp.put("trigger", "immediate");
+                gp.put("props", new LinkedHashMap<>(Map.of(
+                        "density", 70,
+                        "speed", 0.7,
+                        "shape", "sparkle_star",
+                        "twinkle", true,
+                        "colors", List.of("#FACC15", "#FDE047", "#D97706")
+                )));
+                layers.add(gp);
+                ops.add(Map.of("type", "add_layer", "targetId", gp.get("id"), "description", "Added Golden Sparkle Particles"));
+            }
+        }
+
+        if (lower.contains("countdown") || lower.contains("đếm ngược") || lower.contains("flash")) {
+            if (layers.stream().noneMatch(x -> "countdown_bar".equals(x.get("type")))) {
+                Map<String, Object> cd = new LinkedHashMap<>();
+                cd.put("id", "ai-cd-" + UUID.randomUUID().toString().substring(0, 6));
+                cd.put("type", "countdown_bar");
+                cd.put("label", "AI Countdown Bar");
+                cd.put("enabled", true);
+                cd.put("locked", false);
+                cd.put("zone", "top_announcement");
+                cd.put("zIndex", 46);
+                cd.put("opacity", 1.0);
+                cd.put("blendMode", "normal");
+                cd.put("visibility", Map.of("desktop", true, "tablet", true, "mobile", true));
+                cd.put("trigger", "immediate");
+                cd.put("props", new LinkedHashMap<>(Map.of(
+                        "title", "Flash Event Ends In · Code " + promoCode,
+                        "syncWithExperienceEnd", true,
+                        "targetIso", "",
+                        "variant", "full_bar",
+                        "bgColor", "#991B1B",
+                        "textColor", "#FFFFFF",
+                        "digitBgColor", "#111827",
+                        "urgentColor", "#FACC15",
+                        "ctaLabel", "Shop Deals",
+                        "ctaUrl", "/store/shop"
+                )));
+                layers.add(cd);
+                ops.add(Map.of("type", "add_layer", "targetId", cd.get("id"), "description", "Added Countdown Bar synced with promo " + promoCode));
+            }
+        }
+
+        if (lower.contains("slower") || lower.contains("gentler") || lower.contains("chậm") || lower.contains("nhẹ")) {
+            for (Map<String, Object> layer : layers) {
+                if (layer.get("props") instanceof Map<?, ?> rawProps) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> p = (Map<String, Object>) rawProps;
+                    if (p.get("speed") instanceof Number n) {
+                        p.put("speed", Math.max(0.25, Math.round(n.doubleValue() * 0.65 * 100.0) / 100.0));
+                    }
+                    if (p.get("density") instanceof Number n) {
+                        p.put("density", Math.max(15, (int) Math.round(n.doubleValue() * 0.75)));
+                    }
+                }
+            }
+            ops.add(Map.of("type", "update_layer", "targetId", "all_particles", "description", "Slowed particle speed and softened density"));
+        } else if (lower.contains("denser") || lower.contains("more") || lower.contains("heavier") || lower.contains("tăng") || lower.contains("dày")) {
+            for (Map<String, Object> layer : layers) {
+                if (layer.get("props") instanceof Map<?, ?> rawProps) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> p = (Map<String, Object>) rawProps;
+                    if (p.get("density") instanceof Number n) {
+                        p.put("density", Math.min(180, (int) Math.round(n.doubleValue() * 1.4)));
+                    }
+                }
+            }
+            ops.add(Map.of("type", "update_layer", "targetId", "all_particles", "description", "Increased particle density by 40%"));
+        }
+
+        if (lower.contains("dark") || lower.contains("tối")) {
+            themeOverride.put("enabled", true);
+            themeOverride.put("mode", "dark_luxe");
+            themeOverride.put("colors", Map.of(
+                    "primary", "#EAB308",
+                    "accent", "#FACC15",
+                    "background", "#0B0C10",
+                    "surface", "#14161D",
+                    "text", "#F8FAFC",
+                    "muted", "#A1A1AA",
+                    "border", "#27272A"
+            ));
+            ops.add(Map.of("type", "update_theme_override", "targetId", "themeOverride", "description", "Switched storefront palette to Dark Luxe"));
+        }
+
+        if (ops.isEmpty()) {
+            // Sensible festive enhancement fallback
+            var tpl = com.datcommerce.api.experience.SeasonalExperienceTemplates.findByKey("flash-sale-surge");
+            Map<String, Object> proposed = objectMapper.convertValue(tpl.config(), new TypeReference<>() {
+            });
+            ops.add(Map.of("type", "apply_template", "targetId", "flash-sale-surge", "description", "Generated promotional experience with countdown & sparks"));
+            return serializeExperienceDesign("Generate promotional event experience",
+                    "Applied a complete promotional layout grounded in store code " + promoCode + ".", ops, proposed);
+        }
+
+        Map<String, Object> nextConfig = new LinkedHashMap<>(current);
+        nextConfig.put("schemaVersion", 1);
+        nextConfig.put("themeOverride", themeOverride);
+        nextConfig.put("layers", layers);
+
+        summary = "Refine seasonal experience layers";
+        explanation = "Updated your seasonal experience based on your prompt while keeping all layers schema-safe.";
+        return serializeExperienceDesign(summary, explanation, ops, nextConfig);
+    }
+
+    private GatewayTurnResponse serializeExperienceDesign(
+            String summary,
+            String explanation,
+            List<Map<String, Object>> ops,
+            Map<String, Object> proposedConfig
+    ) {
+        try {
+            String json = objectMapper.writeValueAsString(Map.of(
+                    "summary", summary,
+                    "explanation", explanation,
+                    "operations", ops,
+                    "proposedConfig", proposedConfig
+            ));
+            return textResponse(json, 220, 140);
+        } catch (Exception ex) {
+            return textResponse("{\"summary\":\"Experience update\",\"explanation\":\"\",\"operations\":[],\"proposedConfig\":{}}", 80, 40);
+        }
     }
 
     private static String extractSearchTerm(String prompt) {

@@ -35,9 +35,13 @@ html[data-theme="dark"]:has(.public-store) {
   --accent-soft: #eaf1e8;
   --green: #1e6b46;
   --red: #b22e42;
-  background: #ffffff;
-  color: var(--text);
+  background: var(--store-bg, #ffffff);
+  color: var(--store-text, var(--text));
   color-scheme: light;
+}
+
+.store[data-experience-dark="true"] {
+  color-scheme: dark;
 }
 
 .public-store {

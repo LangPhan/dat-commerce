@@ -7,6 +7,10 @@ import com.datcommerce.api.catalog.CatalogDtos;
 import com.datcommerce.api.cms.BlockSchemaValidator;
 import com.datcommerce.api.cms.CmsService;
 import com.datcommerce.api.cms.ThemeTokenValidator;
+import com.datcommerce.api.experience.SeasonalExperienceDtos;
+import com.datcommerce.api.experience.SeasonalExperienceService;
+import com.datcommerce.api.experience.SeasonalExperienceTemplates;
+import com.datcommerce.api.experience.SeasonalExperienceValidator;
 import com.datcommerce.api.common.exception.ApiException;
 import com.datcommerce.api.common.exception.ErrorCode;
 import com.datcommerce.api.common.security.AuthenticatedUser;
@@ -45,11 +49,14 @@ public class AiToolRegistry {
     private final AnalyticsService analyticsService;
     private final BlockSchemaValidator blockSchemaValidator;
     private final ThemeTokenValidator themeTokenValidator;
+    private final SeasonalExperienceService seasonalExperienceService;
+    private final SeasonalExperienceValidator seasonalExperienceValidator;
     private final AiChangePlanRepository changePlanRepository;
     private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper;
     private final List<ToolSpec> specs;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public AiToolRegistry(
             CatalogAdminService catalogAdminService,
             InventoryService inventoryService,
@@ -59,6 +66,8 @@ public class AiToolRegistry {
             AnalyticsService analyticsService,
             BlockSchemaValidator blockSchemaValidator,
             ThemeTokenValidator themeTokenValidator,
+            SeasonalExperienceService seasonalExperienceService,
+            SeasonalExperienceValidator seasonalExperienceValidator,
             AiChangePlanRepository changePlanRepository,
             AuditLogService auditLogService,
             ObjectMapper objectMapper
@@ -71,6 +80,8 @@ public class AiToolRegistry {
         this.analyticsService = analyticsService;
         this.blockSchemaValidator = blockSchemaValidator;
         this.themeTokenValidator = themeTokenValidator;
+        this.seasonalExperienceService = seasonalExperienceService;
+        this.seasonalExperienceValidator = seasonalExperienceValidator;
         this.changePlanRepository = changePlanRepository;
         this.auditLogService = auditLogService;
         this.objectMapper = objectMapper;
@@ -135,6 +146,8 @@ public class AiToolRegistry {
             case "promotion.propose_create" -> proposeCreatePromotion(actor, conversationId, safeArgs);
             case "content.propose_page_change" -> proposePageChange(actor, conversationId, safeArgs);
             case "content.propose_theme_change" -> proposeThemeChange(actor, conversationId, safeArgs);
+            case "experience.list" -> execListExperiences(actor);
+            case "experience.propose_draft" -> proposeExperienceDraft(actor, conversationId, safeArgs);
             default -> throw new ApiException(ErrorCode.BAD_REQUEST, "Unsupported tool: " + toolName);
         };
     }
@@ -684,6 +697,53 @@ public class AiToolRegistry {
         );
     }
 
+    private Map<String, Object> execListExperiences(AuthenticatedUser actor) {
+        List<SeasonalExperienceDtos.ExperienceSummaryDto> list = seasonalExperienceService.listExperiences(actor.storeId());
+        return Map.of("count", list.size(), "experiences", list);
+    }
+
+    private Map<String, Object> proposeExperienceDraft(
+            AuthenticatedUser actor,
+            UUID conversationId,
+            Map<String, Object> args
+    ) {
+        String presetKey = str(args.get("presetKey"));
+        String name = str(args.get("name"));
+        var tpl = StringUtils.hasText(presetKey) ? SeasonalExperienceTemplates.findByKey(presetKey) : null;
+        if (!StringUtils.hasText(name)) {
+            name = tpl != null ? tpl.name() : "Custom Seasonal Experience";
+        }
+        String category = StringUtils.hasText(str(args.get("category")))
+                ? seasonalExperienceValidator.normalizeCategory(str(args.get("category")))
+                : (tpl != null ? tpl.category() : "CUSTOM");
+
+        Map<String, Object> rawConfig = args.get("config") instanceof Map<?, ?>
+                ? mapArg(args.get("config"))
+                : (tpl != null ? tpl.config() : SeasonalExperienceValidator.defaultEmptyConfig());
+        Map<String, Object> cleanConfig = seasonalExperienceValidator.validateAndNormalizeConfig(rawConfig);
+
+        Map<String, Object> ops = new LinkedHashMap<>();
+        ops.put("name", name);
+        ops.put("category", category);
+        if (tpl != null) ops.put("presetKey", tpl.presetKey());
+        ops.put("config", cleanConfig);
+
+        String summary = "Create seasonal experience draft: " + name;
+        List<Map<String, Object>> preview = List.of(Map.of(
+                "name", "Seasonal Experience (Draft Only)",
+                "before", "Not created",
+                "after", name + " [" + category + "] — " + ((List<?>) cleanConfig.get("layers")).size() + " layer(s)"
+        ));
+        return createPlan(
+                actor, conversationId, "UPSERT_SEASONAL_EXPERIENCE", "LOW",
+                summary,
+                ops,
+                preview,
+                List.of(),
+                false
+        );
+    }
+
     private Map<String, Object> createPlan(
             AuthenticatedUser actor,
             UUID conversationId,
@@ -866,7 +926,11 @@ public class AiToolRegistry {
                 new ToolSpec("content.propose_page_change", "Propose validated CMS draft block updates (writes draft on apply, never auto-publishes)", "content:write",
                         objSchema(Map.of("pageSlug", Map.of("type", "string"), "blocks", Map.of("type", "array"), "changeSummary", Map.of("type", "string")), List.of("pageSlug", "blocks"))),
                 new ToolSpec("content.propose_theme_change", "Propose validated Theme Token draft updates (requires admin approval)", "content:write",
-                        objSchema(Map.of("tokens", Map.of("type", "object"), "note", Map.of("type", "string")), List.of("tokens")))
+                        objSchema(Map.of("tokens", Map.of("type", "object"), "note", Map.of("type", "string")), List.of("tokens"))),
+                new ToolSpec("experience.list", "List store seasonal and event experiences", "content:read",
+                        objSchema(Map.of(), List.of())),
+                new ToolSpec("experience.propose_draft", "Propose creating a seasonal/event experience draft (requires admin approval)", "content:write",
+                        objSchema(Map.of("name", Map.of("type", "string"), "presetKey", Map.of("type", "string"), "category", Map.of("type", "string"), "config", Map.of("type", "object")), List.of()))
         );
     }
 

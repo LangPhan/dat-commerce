@@ -2,6 +2,7 @@
 @source "../node_modules/streamdown/dist/*.js";
 @import "../src/features/builder/builder.css";
 @import "../src/features/motion/motion.css";
+@import "../src/features/experiences/experiences.css";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 

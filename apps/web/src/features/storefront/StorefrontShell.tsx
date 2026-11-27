@@ -11,6 +11,13 @@ import {
   type ReactNode,
 } from "react";
 import { Toast } from "@/components/ui/toast";
+import { experienceStoreApi } from "@/features/experiences/api";
+import {
+  matchesTargetPages,
+  mergeExperienceHeaderConfig,
+  mergeExperienceThemeVars,
+} from "@/features/experiences/theme-merge";
+import type { ResolvedStorefrontExperienceDto } from "@/features/experiences/types";
 import { GlobalTypographyStyleTag } from "@/features/typography/GlobalTypographyStyleTag";
 import { ApiError } from "@/lib/api-client";
 import { cmsStoreApi } from "@/lib/cms-ai-api";
@@ -25,6 +32,42 @@ import { StorefrontProvider } from "./storefront-context";
 
 const StorefrontAiAssistant = dynamic(
   () => import("./StorefrontAiAssistant").then((m) => m.StorefrontAiAssistant),
+  { ssr: false }
+);
+
+const ExperienceTopSlot = dynamic(
+  () =>
+    import("@/features/experiences/runtime/ExperienceRuntime").then(
+      (m) => m.ExperienceTopSlot
+    ),
+  { ssr: false }
+);
+const ExperienceHeaderFrameSlot = dynamic(
+  () =>
+    import("@/features/experiences/runtime/ExperienceRuntime").then(
+      (m) => m.ExperienceHeaderFrameSlot
+    ),
+  { ssr: false }
+);
+const ExperienceHeroSlot = dynamic(
+  () =>
+    import("@/features/experiences/runtime/ExperienceRuntime").then(
+      (m) => m.ExperienceHeroSlot
+    ),
+  { ssr: false }
+);
+const ExperienceFooterSlot = dynamic(
+  () =>
+    import("@/features/experiences/runtime/ExperienceRuntime").then(
+      (m) => m.ExperienceFooterSlot
+    ),
+  { ssr: false }
+);
+const ExperienceOverlayRuntime = dynamic(
+  () =>
+    import("@/features/experiences/runtime/ExperienceRuntime").then(
+      (m) => m.ExperienceOverlayRuntime
+    ),
   { ssr: false }
 );
 
@@ -88,10 +131,12 @@ function StoreToastHost() {
 export function StorefrontShell({
   initialTheme,
   initialNavigation,
+  initialExperience,
   children,
 }: {
   initialTheme?: ThemeVersionDto | null;
   initialNavigation?: NavigationMenuDto | null;
+  initialExperience?: ResolvedStorefrontExperienceDto | null;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -112,6 +157,33 @@ export function StorefrontShell({
     initialData: initialNavigation ?? undefined,
     staleTime: 60_000,
   });
+
+  const experienceQuery = useQuery({
+    queryKey: ["store-active-experience"],
+    queryFn: () => experienceStoreApi.getActive(),
+    initialData: initialExperience ?? undefined,
+    staleTime: 25_000,
+  });
+
+  const activeExperience = experienceQuery.data;
+
+  // Auto-switch live storefront right when a scheduled experience starts or ends
+  useEffect(() => {
+    const nextIso = activeExperience?.nextTransitionAt;
+    if (!nextIso) return;
+    const targetMs = Date.parse(nextIso);
+    if (!Number.isFinite(targetMs)) return;
+    const delayMs = targetMs - Date.now() + 1200;
+    if (delayMs <= 0) {
+      void queryClient.invalidateQueries({ queryKey: ["store-active-experience"] });
+      return;
+    }
+    const clampedDelay = Math.min(delayMs, 2_147_483_000);
+    const timer = window.setTimeout(() => {
+      void queryClient.invalidateQueries({ queryKey: ["store-active-experience"] });
+    }, clampedDelay);
+    return () => window.clearTimeout(timer);
+  }, [activeExperience?.nextTransitionAt, queryClient]);
 
   const cartQuery = useQuery({
     queryKey: ["store-cart"],
@@ -176,10 +248,45 @@ export function StorefrontShell({
     [cart?.items]
   );
   const wishlistSet = useMemo(() => new Set(wishlist), [wishlist]);
-  const themeCssVars = useMemo(
-    () => themeTokensToCssVars(themeQuery.data?.tokens),
-    [themeQuery.data?.tokens]
+
+  const routeMatchesExperience = useMemo(() => {
+    if (!activeExperience?.enabled || !activeExperience.activeExperiences?.length) {
+      return false;
+    }
+    return activeExperience.activeExperiences.some((exp) =>
+      matchesTargetPages(pathname, exp.targetPages)
+    );
+  }, [activeExperience, pathname]);
+
+  const effectiveThemeOverride = routeMatchesExperience
+    ? activeExperience?.effectiveThemeOverride
+    : null;
+
+  const themeCssVars = useMemo(() => {
+    const base = themeTokensToCssVars(themeQuery.data?.tokens);
+    return mergeExperienceThemeVars(base, effectiveThemeOverride);
+  }, [themeQuery.data?.tokens, effectiveThemeOverride]);
+
+  const mergedHeaderConfig = useMemo(
+    () =>
+      mergeExperienceHeaderConfig(
+        themeQuery.data?.tokens?.header,
+        effectiveThemeOverride
+      ),
+    [themeQuery.data?.tokens?.header, effectiveThemeOverride]
   );
+
+  const isExperienceDark =
+    Boolean(effectiveThemeOverride?.enabled) &&
+    effectiveThemeOverride?.mode === "dark_luxe";
+  const ctaHighlight = effectiveThemeOverride?.enabled
+    ? effectiveThemeOverride.ctaHighlight
+    : null;
+  const hasVisibleExperience =
+    routeMatchesExperience &&
+    Boolean(
+      activeExperience?.layers?.length || effectiveThemeOverride?.enabled
+    );
 
   const productSlugMatch = pathname.match(/^\/store\/product\/([^/?#]+)/);
   const productSlug = productSlugMatch
@@ -220,26 +327,70 @@ export function StorefrontShell({
 
   return (
     <StorefrontProvider value={contextValue}>
-      <div className="store public-store" style={themeCssVars}>
+      <div
+        className="store public-store"
+        style={themeCssVars}
+        data-experience-dark={isExperienceDark ? "true" : undefined}
+        data-experience-cta-shimmer={
+          ctaHighlight?.enabled && ctaHighlight.shimmer ? "true" : undefined
+        }
+        data-experience-cta-badge={
+          ctaHighlight?.enabled && ctaHighlight.badgeText
+            ? ctaHighlight.badgeText
+            : undefined
+        }
+      >
         <GlobalTypographyStyleTag
           typography={themeQuery.data?.tokens?.typography}
           scopeId="storefront"
           scopeSelector=".store.public-store"
         />
         <StorePageReveal ready={pageReady} brandName={brandName}>
-          <StoreHeader
-            cart={cartCount}
-            wishlistCount={wishlist.length}
-            currentPath={pathname}
-            freeShippingThresholdOverride={cart?.freeShippingThreshold}
-            headerConfig={themeQuery.data?.tokens?.header}
-            initialNavItems={navQuery.data?.items}
-          />
+          {hasVisibleExperience ? (
+            <ExperienceTopSlot
+              experience={activeExperience}
+              currentPath={pathname}
+            />
+          ) : null}
+          <div className="exp-header-anchor">
+            <StoreHeader
+              cart={cartCount}
+              wishlistCount={wishlist.length}
+              currentPath={pathname}
+              freeShippingThresholdOverride={cart?.freeShippingThreshold}
+              headerConfig={mergedHeaderConfig}
+              initialNavItems={navQuery.data?.items}
+            />
+            {hasVisibleExperience ? (
+              <ExperienceHeaderFrameSlot
+                experience={activeExperience}
+                currentPath={pathname}
+              />
+            ) : null}
+          </div>
+          {hasVisibleExperience ? (
+            <ExperienceHeroSlot
+              experience={activeExperience}
+              currentPath={pathname}
+            />
+          ) : null}
           <main>{children}</main>
+          {hasVisibleExperience ? (
+            <ExperienceFooterSlot
+              experience={activeExperience}
+              currentPath={pathname}
+            />
+          ) : null}
           <StoreFooter
             footerConfig={themeQuery.data?.tokens?.footer}
             onNotify={emitStoreToast}
           />
+          {hasVisibleExperience ? (
+            <ExperienceOverlayRuntime
+              experience={activeExperience}
+              currentPath={pathname}
+            />
+          ) : null}
           <StoreToastHost />
         </StorePageReveal>
         <StorefrontAiAssistant

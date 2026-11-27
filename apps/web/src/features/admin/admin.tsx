@@ -42,6 +42,20 @@ const Editor = dynamic(
   () => import("@/features/editor/editor").then((m) => m.Editor),
   { ssr: false, loading: loadingFallback }
 );
+const ExperiencesHub = dynamic(
+  () =>
+    import("@/features/experiences/builder/ExperiencesHub").then(
+      (m) => m.ExperiencesHub
+    ),
+  { ssr: false, loading: loadingFallback }
+);
+const ExperienceStudio = dynamic(
+  () =>
+    import("@/features/experiences/builder/ExperienceStudio").then(
+      (m) => m.ExperienceStudio
+    ),
+  { ssr: false, loading: loadingFallback }
+);
 const ThemeSettingsView = dynamic(
   () => import("./theme-settings").then((m) => m.ThemeSettingsView),
   { ssr: false, loading: loadingFallback }
@@ -173,6 +187,20 @@ export function Admin() {
     return (
       <AuthGuard requiredPermission="content:read">
         <Editor />
+      </AuthGuard>
+    );
+  }
+  if (view === "experiences") {
+    if (id) {
+      return (
+        <AuthGuard requiredPermission="content:read">
+          <ExperienceStudio key={id} experienceId={id} />
+        </AuthGuard>
+      );
+    }
+    return (
+      <AuthGuard requiredPermission="content:read">
+        <ExperiencesHub notify={setToast} />
       </AuthGuard>
     );
   }
